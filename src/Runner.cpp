@@ -1395,6 +1395,7 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
   TK_SCALAR_OUTPUT("TKSUBSID", tksubsid_for_output, cohort.year_tkdata[im].thermokarst_soid.subsidence, true)
   TK_SCALAR_OUTPUT("TKEXICE", tkexice_for_output, cohort.year_tkdata[im].thermokarst_soid.excess_ice, true)
   TK_SCALAR_OUTPUT("TKEXMELT", tkexmelt_for_output, cohort.year_tkdata[im].thermokarst_soid.excess_melted, false)
+  TK_SCALAR_OUTPUT("TKRESPC", tkrespc_for_output, cohort.year_tkdata[im].thermokarst_soi2a.orgc + cohort.year_tkdata[im].thermokarst_v2a.orgc, false)
 #undef TK_SCALAR_OUTPUT
   map_itr = netcdf_outputs.end();
 

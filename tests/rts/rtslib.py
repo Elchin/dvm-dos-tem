@@ -10,10 +10,16 @@ DATA = os.path.join(REPO, 'testing-data', 'rts-synthetic')
 RUN_ARGS = ['-p', '10', '-e', '300', '-s', '30', '-t', '30', '-n', '0']
 
 # outputs: name -> timestep column ('y' yearly, 'm' monthly)
-BASE_OUTPUTS = {'SOC': 'm', 'SHLWC': 'm', 'DEEPC': 'm', 'MOSSDZ': 'm', 'SHLWDZ': 'm',
-                'DEEPDZ': 'm', 'ALD': 'y', 'LWCLAYER': 'm', 'TLAYER': 'm',
-                'LAYERDZ': 'm', 'GPP': 'm', 'RH': 'm', 'VEGC': 'm', 'ORGN': 'm'}
-RTS_OUTPUTS = {'TKLATC': 'm', 'TKLATN': 'm', 'TKREMTHICK': 'm', 'TKICEMELT': 'm', 'DRAINTYPE': 'm'}
+BASE_OUTPUTS = {'SOC': 'm', 'SHLWC': 'm', 'DEEPC': 'm', 'MOSSDZ': 'y', 'SHLWDZ': 'y',
+                'DEEPDZ': 'y', 'ALD': 'y', 'LWCLAYER': 'm', 'TLAYER': 'm',
+                'LAYERDZ': 'm', 'VEGC': 'm', 'ORGN': 'm',
+                # carbon fluxes (RA = RG + RM; RECO = RHSOM + RHDWD + RG + RM)
+                'GPP': 'm', 'NPP': 'm', 'RG': 'm', 'RM': 'm', 'RHSOM': 'm', 'RHDWD': 'm',
+                'RECO': 'm',
+                # extra C pools for the carbon-balance check
+                'DEADC': 'm', 'DWDC': 'm'}  # MOSSDEATHC is all-fill in this model version
+RTS_OUTPUTS = {'TKLATC': 'm', 'TKLATN': 'm', 'TKREMTHICK': 'm', 'TKICEMELT': 'm', 'DRAINTYPE': 'm',
+               'TKRESPC': 'm'}
 ICE_OUTPUTS = {'TKSUBSID': 'm', 'TKEXICE': 'm', 'TKEXMELT': 'm', 'WATERTAB': 'm'}
 # PLACEHOLDER ice-rich profile for the synthetic cell (tunable)
 ICE_PARAMS = {'thermokarst_excess_fraction': 0.3, 'thermokarst_excess_top': 0.3,
@@ -35,11 +41,18 @@ def strip_js_comments(txt):
 def write_outspec(path, outputs):
     src = os.path.join(REPO, 'config', 'output_spec.csv')
     lines = open(src).read().splitlines()
+    known = {ln.split(',')[0] for ln in lines[1:]}
+    unknown = sorted(set(outputs) - known)
+    if unknown:
+        raise ValueError('requested outputs not in output_spec.csv: %s' % unknown)
     res = [lines[0]]
     for ln in lines[1:]:
         f = ln.split(',')
         if f[0] in outputs:
             ts = outputs[f[0]]
+            col = 3 if ts == 'y' else 4
+            if f[col] == 'invalid':
+                raise ValueError('%s: %s output not supported by the model' % (f[0], 'yearly' if ts == 'y' else 'monthly'))
             f[3] = 'y' if ts == 'y' else ''
             f[4] = 'm' if ts == 'm' else (f[4] if f[4] == 'invalid' else '')
         else:
@@ -86,7 +99,24 @@ def run(binary, workdir, rts_on, **kw):
                        capture_output=True, text=True, timeout=600)
     if r.returncode != 0:
         raise RuntimeError('dvmdostem failed:\n' + r.stdout[-2000:] + r.stderr[-2000:])
-    return os.path.join(workdir, 'output')
+    out = os.path.join(workdir, 'output')
+    check_outputs(out, kw.get('outputs') or BASE_OUTPUTS)
+    return out
+
+def check_outputs(outdir, outputs, stage='tr'):
+    """Fail loudly if any requested variable is missing from the run outputs."""
+    missing = []
+    for v, ts in outputs.items():
+        f = os.path.join(outdir, '%s_%s_%s.nc' % (v, 'yearly' if ts == 'y' else 'monthly', stage))
+        if not os.path.exists(f):
+            missing.append(v); continue
+        d = nc.Dataset(f)
+        if v not in d.variables: missing.append(v)
+        elif np.all(np.array(d[v][:], dtype=float) <= -9999):
+            missing.append(v + ' (all fill values)')
+        d.close()
+    if missing:
+        raise RuntimeError('requested outputs missing from %s: %s' % (outdir, missing))
 
 def read(outdir, var, ts='monthly', stage='tr'):
     d = nc.Dataset(os.path.join(outdir, '%s_%s_%s.nc' % (var, ts, stage)))

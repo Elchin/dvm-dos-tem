@@ -124,3 +124,74 @@ def test_water_table_shallows_after_subsidence(runs):
     wt_n = r.read(runs['ice_noop'], 'WATERTAB').ravel()
     assert np.array_equal(wt_r[:M], wt_n[:M])
     assert wt_r[M + 1] < wt_n[M + 1]
+
+
+# ---------------- carbon fluxes: RH / RA / GPP / NPP / balance -------------
+FLUXES = ['GPP', 'NPP', 'RG', 'RM', 'RHSOM', 'RHDWD', 'RECO']
+
+def _g(o, v):
+    return r.read(o, v).ravel()
+
+def _ra(o):
+    return _g(o, 'RG') + _g(o, 'RM')
+
+def test_fluxes_present_and_baseline_identical(runs):
+    # RTS off (and module on without initiation) bit-identical for C fluxes
+    for v in FLUXES:
+        assert np.array_equal(_g(runs['base'], v), _g(runs['noop'], v)), v
+    bad = r.compare_dirs(os.path.join(REF, 'baseline'), runs['base'], RTOL, ATOL)
+    assert bad == []
+
+def test_rh_drops_after_initiation(runs):
+    rh_b, rh_r = _g(runs['base'], 'RHSOM'), _g(runs['rts'], 'RHSOM')
+    # same calendar months one year after initiation: Aug-Sep of year 11
+    win = slice(M + 12, M + 14)
+    assert rh_r[win].sum() < 0.5 * rh_b[win].sum()
+    assert rh_r[M + 1] < 0.2 * rh_b[M + 1]
+
+def test_ra_drops_when_vegetation_removed(runs):
+    ra_b, ra_r = _ra(runs['base']), _ra(runs['rts'])
+    assert ra_r[M + 1] < 0.2 * ra_b[M + 1]
+
+def test_gpp_minus_ra_equals_npp(runs):
+    for k in ('base', 'rts'):
+        o = runs[k]
+        assert np.allclose(_g(o, 'GPP') - _ra(o), _g(o, 'NPP'), atol=1e-6), k
+
+def test_reco_components(runs):
+    o = runs['rts']
+    assert np.allclose(_g(o, 'RECO'), _g(o, 'RHSOM') + _g(o, 'RHDWD') + _ra(o), atol=1e-6)
+
+def test_direct_respired_pulse(runs):
+    o, f = runs['rts'], r.RTS_PARAMS['thermokarst_c_resp_frac']
+    resp, lat = _g(o, 'TKRESPC'), _g(o, 'TKLATC')
+    assert resp[M] > 0 and np.all(resp[:M] == 0) and np.all(resp[M + 1:] == 0)
+    # removed C = respired + lateral; respired = c_resp_frac * removed
+    assert resp[M] == pytest.approx(f * (resp[M] + lat[M]), rel=1e-9)
+
+def _total_c(o):
+    return _g(o, 'VEGC') + _g(o, 'SOC') + _g(o, 'DEADC') + _g(o, 'DWDC')
+
+def _net_flux(o):
+    f = _g(o, 'GPP') - _ra(o) - _g(o, 'RHSOM') - _g(o, 'RHDWD')
+    if os.path.exists(os.path.join(o, 'TKLATC_monthly_tr.nc')):
+        f = f - _g(o, 'TKLATC') - _g(o, 'TKRESPC')
+    return f
+
+def test_carbon_balance_before_initiation(runs):
+    for k in ('base', 'rts'):
+        C, F = _total_c(runs[k]), _net_flux(runs[k])
+        assert C[M - 1] - C[12] == pytest.approx(F[13:M].sum(), abs=0.05), k
+
+def test_carbon_balance_at_initiation(runs):
+    # window spanning the event (VEGC is recorded before the disturbance step)
+    o = runs['rts']; C, F = _total_c(o), _net_flux(o)
+    removed = _g(o, 'TKLATC')[M] + _g(o, 'TKRESPC')[M]
+    assert C[M + 1] - C[M - 1] == pytest.approx(F[M:M + 2].sum(), abs=0.01 * removed)
+
+
+@pytest.mark.xfail(strict=True, reason="KNOWN ISSUE: after RTS initiation ~25 gC/m2/yr leaves "
+                   "total C in Jul-Sep without a matching output flux (pre-RTS closes to <0.02 g)")
+def test_carbon_balance_after_initiation(runs):
+    o = runs['rts']; C, F = _total_c(o), _net_flux(o)
+    assert C[-1] - C[M + 1] == pytest.approx(F[M + 2:].sum(), abs=1.0)

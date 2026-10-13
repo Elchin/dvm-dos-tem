@@ -139,3 +139,4 @@ DRAINTYPE,Drainage class (0 well 1 poor; requires thermokarst module),,,,invalid
 TKSUBSID,Cumulative thermokarst subsidence from excess-ice melt,m,,,invalid,invalid,invalid,invalid,double,
 TKEXICE,Column excess ground ice remaining,kg/m2,,,invalid,invalid,invalid,invalid,double,
 TKEXMELT,Excess ground ice melted,kg/m2/time,,,invalid,invalid,invalid,invalid,double,
+TKRESPC,RTS/thermokarst direct respired C pulse (soil+veg) to atmosphere,g/m2/time,,,invalid,invalid,invalid,invalid,double,
