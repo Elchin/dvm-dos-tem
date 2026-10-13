@@ -1,0 +1,45 @@
+# RTS (retrogressive thaw slump) unit + regression tests.
+# Complements checkout_build_run.yml (Docker build + demo run on PRs to
+# master): this workflow builds natively on Ubuntu and runs `make rts-test`
+# (C++ unit tests + pytest regression on the 1-cell synthetic case in
+# testing-data/rts-synthetic) on every push and pull request.
+name: RTS tests
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+jobs:
+  rts-tests:
+    runs-on: ubuntu-24.04
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0   # Makefile uses `git describe` for GIT_SHA
+
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y --no-install-recommends \
+            g++ make libnetcdf-dev libboost-all-dev libjsoncpp-dev \
+            liblapacke-dev libreadline-dev
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.12'
+
+      - name: Install Python test dependencies
+        run: pip install numpy netCDF4 pytest
+
+      - name: Build dvmdostem
+        run: make -j"$(nproc)" SITE_SPECIFIC_INCLUDES="-I/usr/include/jsoncpp"
+
+      - name: Run RTS unit + regression tests
+        env:
+          # References were generated with g++ 14 / Debian 13; allow small
+          # floating-point drift from a different compiler/libm.
+          RTS_RTOL: '1e-5'
+          RTS_ATOL: '1e-6'
+        run: make rts-test SITE_SPECIFIC_INCLUDES="-I/usr/include/jsoncpp" RTS_PYTHON=python
