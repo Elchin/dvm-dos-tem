@@ -38,3 +38,12 @@ For each cell, run once with thermokarst off (baseline) and once with it on (RTS
 ## Next steps / open questions
 Parameterize from ground-ice maps (excess ice and subsidence); the `feature/thermokarst-prototype` branch has subsidence code.
 Mineral-soil removal for deep slumps. Per-CMT parameter files instead of global config.
+
+## Excess ice and subsidence (ported from feature/thermokarst-prototype)
+- **Ported:** the excess-ice profile `excess = DENICE * overlap * f/(1-f)`, the melt rule "excess melts only once the layer thaws, subsidence = melted / DENICE", and the water-table coupling (WTD reduced by each new subsidence increment).
+- **Not ported:** the prototype's finite-volume thermal column (`thermokarst::Column`) and its topology remapping.
+- **Placement:** `Layer::excess_ice` sits only in frozen **mineral** layers and is not counted in dz, so it does not affect heat or water calculations while it stays frozen.
+- **Calls:** `Ground::initExcessIce` runs once at the first thermokarst step (January of transient year 0). `Ground::meltExcessIce` runs monthly and again right after the RTS thaw.
+- **Config:** `thermokarst_excess_fraction`, `thermokarst_excess_top`, `thermokarst_excess_bottom`. These are placeholders; f = 0 turns it off.
+- **Restart:** `tkexinit`, `tksubsidence`, `EXICEsoil`.
+- **Outputs:** `TKSUBSID`, `TKEXICE`, `TKEXMELT`.
