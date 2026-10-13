@@ -40,12 +40,14 @@ RestartData::~RestartData() {
 MPI_Datatype RestartData::register_mpi_datatype() {
 
   // create types for all the dimensions in the RestartData object...
-  const int elems_in_restartdata = 64;
+  const int elems_in_restartdata = 67;
   int counts[elems_in_restartdata] = {
     1, // int dsr;
     1, // double firea2sorgn;
     1, // int yrsdist;
     1, // int drainage_type;
+    1, // int tkexinit;
+    1, // double tksubsidence;
     
     NUM_PFT, // int ifwoody[NUM_PFT];                  // - 'veg_dim'
     NUM_PFT, // int ifdeciwoody[NUM_PFT];
@@ -102,6 +104,7 @@ MPI_Datatype RestartData::register_mpi_datatype() {
     MAX_SOI_LAY, // int AGEsoil[MAX_SOI_LAY];
     MAX_SOI_LAY, // double TSsoil[MAX_SOI_LAY];
     MAX_SOI_LAY, // double LIQsoil[MAX_SOI_LAY];
+    MAX_SOI_LAY, // double EXICEsoil[MAX_SOI_LAY];
     MAX_SOI_LAY, // double ICEsoil[MAX_SOI_LAY];
     MAX_SOI_LAY, // int FROZENsoil[MAX_SOI_LAY];
     MAX_SOI_LAY, // double FROZENFRACsoil[MAX_SOI_LAY];
@@ -131,6 +134,8 @@ MPI_Datatype RestartData::register_mpi_datatype() {
     MPI_DOUBLE, // double firea2sorgn;
     MPI_INT, // int yrsdist;
     MPI_INT, // int drainage_type;
+    MPI_INT, // int tkexinit;
+    MPI_DOUBLE, // double tksubsidence;
     MPI_INT, // int ifwoody[NUM_PFT];
     MPI_INT, // int ifdeciwoody[NUM_PFT];
     MPI_INT, // int ifperenial[NUM_PFT];
@@ -175,6 +180,7 @@ MPI_Datatype RestartData::register_mpi_datatype() {
     MPI_INT, // int AGEsoil[MAX_SOI_LAY];
     MPI_DOUBLE, // double TSsoil[MAX_SOI_LAY];
     MPI_DOUBLE, // double LIQsoil[MAX_SOI_LAY];
+    MPI_DOUBLE, // double EXICEsoil[MAX_SOI_LAY];
     MPI_DOUBLE, // double ICEsoil[MAX_SOI_LAY];
     MPI_INT, // int FROZENsoil[MAX_SOI_LAY];
     MPI_DOUBLE, // double FROZENFRACsoil[MAX_SOI_LAY];
@@ -197,6 +203,8 @@ MPI_Datatype RestartData::register_mpi_datatype() {
     offsetof(RestartData, firea2sorgn),
     offsetof(RestartData, yrsdist),
     offsetof(RestartData, drainage_type),
+    offsetof(RestartData, tkexinit),
+    offsetof(RestartData, tksubsidence),
     offsetof(RestartData, ifwoody),
     offsetof(RestartData, ifdeciwoody),
     offsetof(RestartData, ifperenial),
@@ -241,6 +249,7 @@ MPI_Datatype RestartData::register_mpi_datatype() {
     offsetof(RestartData, AGEsoil),
     offsetof(RestartData, TSsoil),
     offsetof(RestartData, LIQsoil),
+    offsetof(RestartData, EXICEsoil),
     offsetof(RestartData, ICEsoil),
     offsetof(RestartData, FROZENsoil),
     offsetof(RestartData, FROZENFRACsoil),
@@ -278,6 +287,8 @@ void RestartData::reinitValue() {
   // vegetation
   yrsdist     = MISSING_I;
   drainage_type = MISSING_I;
+  tkexinit = 0;
+  tksubsidence = 0.0;
 
   for (int ip=0; ip<NUM_PFT; ip++) {
     ifwoody[ip]     = MISSING_I;
@@ -354,6 +365,7 @@ void RestartData::reinitValue() {
     AGEsoil[il]  = MISSING_I;
     TSsoil[il]   = MISSING_D;
     LIQsoil[il]  = MISSING_D;
+    EXICEsoil[il] = 0.0;
     ICEsoil[il]  = MISSING_D;
     FROZENsoil[il]= MISSING_I;
     FROZENFRACsoil[il]= MISSING_D;
@@ -581,6 +593,12 @@ void RestartData::read_px_vars(const std::string& fname, const int rowidx, const
   // optional (older restart files lack it)
   if (nc_inq_varid(ncid, "drainage_type", &cv) == NC_NOERR) {
     temutil::nc( nc_get_var1_int(ncid, cv, start, &drainage_type) );
+  }
+  if (nc_inq_varid(ncid, "tkexinit", &cv) == NC_NOERR) {
+    temutil::nc( nc_get_var1_int(ncid, cv, start, &tkexinit) );
+  }
+  if (nc_inq_varid(ncid, "tksubsidence", &cv) == NC_NOERR) {
+    temutil::nc( nc_get_var1_double(ncid, cv, start, &tksubsidence) );
   }
 
   // snow stuff
@@ -816,6 +834,9 @@ void RestartData::read_px_soil_vars(const std::string& fname, const int rowidx, 
   temutil::nc( nc_get_vara_double(ncid, cv, start, count, &TSsoil[0]) );
   temutil::nc( nc_inq_varid(ncid, "LIQsoil", &cv) );
   temutil::nc( nc_get_vara_double(ncid, cv, start, count, &LIQsoil[0]) );
+  if (nc_inq_varid(ncid, "EXICEsoil", &cv) == NC_NOERR) {
+    temutil::nc( nc_get_vara_double(ncid, cv, start, count, &EXICEsoil[0]) );
+  }
   temutil::nc( nc_inq_varid(ncid, "ICEsoil", &cv) );
   temutil::nc( nc_get_vara_double(ncid, cv, start, count, &ICEsoil[0]) );
   temutil::nc( nc_inq_varid(ncid, "FROZENFRACsoil", &cv) );
@@ -1047,6 +1068,11 @@ void RestartData::create_empty_file(const std::string& fname,
   int drainage_typeV;
   temutil::nc( nc_def_var(ncid, "drainage_type", NC_INT, 2, vartype2D_dimids, &drainage_typeV) );
   temutil::nc( nc_put_att_int(ncid, drainage_typeV, "_FillValue", NC_INT, 1, &MISSING_I) );
+  int tkexinitV, tksubsidenceV;
+  temutil::nc( nc_def_var(ncid, "tkexinit", NC_INT, 2, vartype2D_dimids, &tkexinitV) );
+  temutil::nc( nc_put_att_int(ncid, tkexinitV, "_FillValue", NC_INT, 1, &MISSING_I) );
+  temutil::nc( nc_def_var(ncid, "tksubsidence", NC_DOUBLE, 2, vartype2D_dimids, &tksubsidenceV) );
+  temutil::nc( nc_put_att_double(ncid, tksubsidenceV, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
 
   // Setup 2D vars, double
   int firea2sorgnV;
@@ -1171,6 +1197,9 @@ void RestartData::create_empty_file(const std::string& fname,
   temutil::nc( nc_put_att_double(ncid, DZsoilV, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
   temutil::nc( nc_def_var(ncid, "LIQsoil", NC_DOUBLE, 3, vartype3D_dimids, &LIQsoilV) );
   temutil::nc( nc_put_att_double(ncid, LIQsoilV, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
+  int EXICEsoilV;
+  temutil::nc( nc_def_var(ncid, "EXICEsoil", NC_DOUBLE, 3, vartype3D_dimids, &EXICEsoilV) );
+  temutil::nc( nc_put_att_double(ncid, EXICEsoilV, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
   temutil::nc( nc_def_var(ncid, "ICEsoil", NC_DOUBLE, 3, vartype3D_dimids, &ICEsoilV) );
   temutil::nc( nc_put_att_double(ncid, ICEsoilV, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
   temutil::nc( nc_def_var(ncid, "FROZENFRACsoil", NC_DOUBLE, 3, vartype3D_dimids, &FROZENFRACsoilV) );
@@ -1340,6 +1369,10 @@ void RestartData::write_px_vars(const std::string& fname, const int rowidx, cons
   temutil::nc( nc_put_var1_int(ncid, cv, start, &yrsdist) );
   temutil::nc( nc_inq_varid(ncid, "drainage_type", &cv) );
   temutil::nc( nc_put_var1_int(ncid, cv, start, &drainage_type) );
+  temutil::nc( nc_inq_varid(ncid, "tkexinit", &cv) );
+  temutil::nc( nc_put_var1_int(ncid, cv, start, &tkexinit) );
+  temutil::nc( nc_inq_varid(ncid, "tksubsidence", &cv) );
+  temutil::nc( nc_put_var1_double(ncid, cv, start, &tksubsidence) );
 
   // snow stuff
   temutil::nc( nc_inq_varid(ncid, "numsnwl", &cv) );
@@ -1594,6 +1627,8 @@ void RestartData::write_px_soil_vars(const std::string& fname, const int rowidx,
   temutil::nc( nc_put_vara_double(ncid, cv, start, count, &TSsoil[0]) );
   temutil::nc( nc_inq_varid(ncid, "LIQsoil", &cv) );
   temutil::nc( nc_put_vara_double(ncid, cv, start, count, &LIQsoil[0]) );
+  temutil::nc( nc_inq_varid(ncid, "EXICEsoil", &cv) );
+  temutil::nc( nc_put_vara_double(ncid, cv, start, count, &EXICEsoil[0]) );
   temutil::nc( nc_inq_varid(ncid, "ICEsoil", &cv) );
   temutil::nc( nc_put_vara_double(ncid, cv, start, count, &ICEsoil[0]) );
   temutil::nc( nc_inq_varid(ncid, "FROZENFRACsoil", &cv) );

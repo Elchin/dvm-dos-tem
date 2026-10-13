@@ -129,6 +129,13 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     if (ms.isMember("thermokarst_veg_remove_frac")) tk_veg_remove_frac = ms["thermokarst_veg_remove_frac"].asDouble();
     if (ms.isMember("thermokarst_thaw_depth"))      tk_thaw_depth = ms["thermokarst_thaw_depth"].asDouble();
     if (ms.isMember("thermokarst_post_drainage"))   tk_post_drainage = ms["thermokarst_post_drainage"].asInt();
+    if (ms.isMember("thermokarst_excess_fraction")) tk_excess_fraction = ms["thermokarst_excess_fraction"].asDouble();
+    if (ms.isMember("thermokarst_excess_top"))      tk_excess_top = ms["thermokarst_excess_top"].asDouble();
+    if (ms.isMember("thermokarst_excess_bottom"))   tk_excess_bottom = ms["thermokarst_excess_bottom"].asDouble();
+    if (!(tk_excess_fraction >= 0.0 && tk_excess_fraction < 0.8) || !(tk_excess_top >= 0.0) ||
+        !(tk_excess_bottom > tk_excess_top)) {
+      throw std::invalid_argument("invalid thermokarst excess-ice profile");
+    }
   }
 
   // These must be directories. If user forgets to add the trailing slash, 

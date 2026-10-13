@@ -121,6 +121,11 @@ public:
   double tk_veg_remove_frac = 0.99;
   double tk_thaw_depth = 0.0;     // m; <=0 disables the instant-thaw step
   int tk_post_drainage = -1;      // -1 keep; 0 well-drained; 1 poorly-drained
+  // Excess ground ice initialization (PLACEHOLDER, tunable). Applied once, at
+  // the first thermokarst step (start of tr), to frozen mineral layers.
+  double tk_excess_fraction = 0.0; // excess-ice volume fraction (0 <= f < 0.8); 0 = off
+  double tk_excess_top = 0.5;      // m below soil surface
+  double tk_excess_bottom = 2.0;   // m below soil surface
 
   int cell_timelimit; //Time limit in seconds for cell computation time
   time_t cell_stime; //Start time per cell. Move to Runner?

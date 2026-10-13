@@ -135,7 +135,11 @@
     "thermokarst_c_resp_frac": 0.0,      // fraction of removed C/N respired; rest exported laterally
     "thermokarst_veg_remove_frac": 0.99, // fraction of above-ground veg removed
     "thermokarst_thaw_depth": 0.0,       // m; instant thaw of whole layers to this depth (<=0: off)
-    "thermokarst_post_drainage": -1      // -1 keep; 0 well-drained; 1 poorly-drained after initiation
+    "thermokarst_post_drainage": -1,     // -1 keep; 0 well-drained; 1 poorly-drained after initiation
+    // Excess ground ice (PLACEHOLDER, TUNABLE): set once at start of tr in frozen mineral layers
+    "thermokarst_excess_fraction": 0.0,  // excess-ice volume fraction, 0 <= f < 0.8 (0: off)
+    "thermokarst_excess_top": 0.5,       // m
+    "thermokarst_excess_bottom": 2.0     // m
 //    //"dynamic_climate": 0,
 //    //"varied_co2": 0,
 //    //"fire_severity_as_input": 0,    // fire sev. as input or ??

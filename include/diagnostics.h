@@ -258,8 +258,12 @@ struct soidiag_thermokarst {
   double ice_melted;    // ice converted to liquid (kg/m2)
   double water_drained; // melt water above layer capacity, removed (kg/m2)
   int drainage_type;    // drainage class after initiation (0 well, 1 poor)
+  double subsidence;    // cumulative surface subsidence from excess-ice melt (m)
+  double excess_ice;    // column excess ice remaining (kg/m2)
+  double excess_melted; // excess ice melted this month (kg/m2)
   soidiag_thermokarst() : removal_thickness(0.0), rolr(0.0), thaw_depth(0.0),
-                          ice_melted(0.0), water_drained(0.0), drainage_type(-1) {}
+                          ice_melted(0.0), water_drained(0.0), drainage_type(-1),
+                          subsidence(0.0), excess_ice(0.0), excess_melted(0.0) {}
 };
 
 #endif /*DIAGNOSTICS_H_*/

@@ -127,6 +127,29 @@ public :
 
   double getThawDepth(); // get seasonal thaw depth
 
+  // ---- Excess ground ice & subsidence (ported from feature/thermokarst-prototype,
+  // reduced form: excess ice is thermally passive and lives in mineral layers).
+  double tk_subsidence = 0.;      // cumulative subsidence (m)
+  double tk_prev_subsidence = 0.; // subsidence already seen by the water-table coupling
+  bool tk_excess_initialized = false;
+  // Set excess ice in frozen mineral layers overlapping [top,bottom] (m) with
+  // excess volume fraction 'fraction' of the total (matrix+excess) volume.
+  // Returns total excess ice (kg/m2).
+  double initExcessIce(const double fraction, const double top, const double bottom);
+  // Melt excess ice in thawed layers (all of it if unfrozen, (1-frozenfrac) if
+  // partially frozen). Melt water fills pore space up to maxliq; surplus goes to
+  // 'drained'. Adds to tk_subsidence and returns this call's subsidence (m).
+  double meltExcessIce(double & melted, double & drained);
+  double totalExcessIce();
+  // Pure helpers (unit tested)
+  static double excessIceForLayer(const double ztop, const double dz,
+                                  const double fraction, const double top,
+                                  const double bottom);
+  static double meltExcessColumn(std::vector<double> & excess, std::vector<double> & liq,
+                                 const std::vector<double> & maxliq,
+                                 const std::vector<double> & meltfrac,
+                                 double & melted, double & drained);
+
   // RTS initiation: instantly thaw all soil layers whose bottom is within
   // 'depth' (m). Returns ice melted (kg/m2); 'drained' gets melt water above
   // layer capacity (poro*dz*DENLIQ), which is removed from the column.

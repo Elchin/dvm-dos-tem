@@ -136,3 +136,6 @@ TKLATN,RTS/thermokarst lateral export of N (soil+veg),g/m2/time,,,invalid,invali
 TKREMTHICK,RTS/thermokarst soil removal thickness,m,,,invalid,invalid,invalid,invalid,double,
 TKICEMELT,RTS/thermokarst ice melted at initiation,kg/m2,,,invalid,invalid,invalid,invalid,double,
 DRAINTYPE,Drainage class (0 well 1 poor; requires thermokarst module),,,,invalid,invalid,invalid,invalid,double,
+TKSUBSID,Cumulative thermokarst subsidence from excess-ice melt,m,,,invalid,invalid,invalid,invalid,double,
+TKEXICE,Column excess ground ice remaining,kg/m2,,,invalid,invalid,invalid,invalid,double,
+TKEXMELT,Excess ground ice melted,kg/m2/time,,,invalid,invalid,invalid,invalid,double,

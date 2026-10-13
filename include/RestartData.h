@@ -62,6 +62,8 @@ public :
   // vegetation
   int yrsdist;
   int drainage_type; // may be changed by RTS initiation
+  int tkexinit;      // 1 if excess ground ice was initialized
+  double tksubsidence; // cumulative thermokarst subsidence (m)
 
   int ifwoody[NUM_PFT]; // - 'veg_dim'
   int ifdeciwoody[NUM_PFT];
@@ -122,6 +124,7 @@ public :
   int AGEsoil[MAX_SOI_LAY];
   double TSsoil[MAX_SOI_LAY];
   double LIQsoil[MAX_SOI_LAY];
+  double EXICEsoil[MAX_SOI_LAY]; // excess ground ice per soil layer (kg/m2)
   double ICEsoil[MAX_SOI_LAY];
   int FROZENsoil[MAX_SOI_LAY];
   double FROZENFRACsoil[MAX_SOI_LAY];

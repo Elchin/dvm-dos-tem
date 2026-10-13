@@ -526,6 +526,14 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   ed->d_soi2l.qdrain = 0.0;
   //Update water table for runoff calculation
   ed->d_sois.watertab = getWaterTable(lstsoill);
+  // Thermokarst: surface settled since last step -> shallow the WTD by the
+  // collapse to preserve absolute water-table elevation (ported from
+  // feature/thermokarst-prototype). No-op unless excess ice has melted.
+  if (ground->tk_subsidence > ground->tk_prev_subsidence) {
+    ed->d_sois.watertab = fmax(0.0, ed->d_sois.watertab -
+                               (ground->tk_subsidence - ground->tk_prev_subsidence));
+    ground->tk_prev_subsidence = ground->tk_subsidence;
+  }
   if( (rnth + melt) > 0 ) {
     ed->d_soi2l.qover = getRunoff(fstsoill, drainl, rnth, melt); // mm/day
   } else {

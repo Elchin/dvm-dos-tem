@@ -1960,6 +1960,73 @@ double Ground::getThawDepth(){
   return -1;
 }
 
+double Ground::excessIceForLayer(const double ztop, const double dz,
+                                 const double fraction, const double top,
+                                 const double bottom) {
+  if (fraction <= 0.0 || fraction >= 1.0) { return 0.0; }
+  const double overlap = std::max(0.0, std::min(ztop + dz, bottom) - std::max(ztop, top));
+  // excess volume / (matrix + excess) volume == fraction  (as in the prototype)
+  return DENICE * overlap * fraction / (1.0 - fraction);
+}
+
+double Ground::meltExcessColumn(std::vector<double> & excess, std::vector<double> & liq,
+                                const std::vector<double> & maxliq,
+                                const std::vector<double> & meltfrac,
+                                double & melted, double & drained) {
+  melted = 0.0; drained = 0.0;
+  for (size_t i = 0; i < excess.size(); i++) {
+    const double f = std::min(1.0, std::max(0.0, meltfrac[i]));
+    const double m = excess[i] * f;
+    if (m <= 0.0) { continue; }
+    excess[i] -= m;
+    melted += m;
+    const double room = std::max(0.0, maxliq[i] - liq[i]);
+    const double keep = std::min(room, m);
+    liq[i] += keep;
+    drained += m - keep;
+  }
+  return melted / DENICE; // subsidence (m): volume of melted segregated ice
+}
+
+double Ground::initExcessIce(const double fraction, const double top, const double bottom) {
+  double total = 0.0;
+  for (Layer* l = fstsoill; l != NULL && l->isSoil; l = l->nextl) {
+    l->excess_ice = 0.0;
+    if (!l->isMineral || l->frozen != 1) { continue; } // only frozen mineral soil
+    l->excess_ice = excessIceForLayer(l->z, l->dz, fraction, top, bottom);
+    total += l->excess_ice;
+  }
+  tk_excess_initialized = true;
+  BOOST_LOG_SEV(glg, info) << "Initialized excess ground ice: " << total << " kg/m2";
+  return total;
+}
+
+double Ground::totalExcessIce() {
+  double total = 0.0;
+  for (Layer* l = fstsoill; l != NULL && l->isSoil; l = l->nextl) { total += l->excess_ice; }
+  return total;
+}
+
+double Ground::meltExcessIce(double & melted, double & drained) {
+  std::vector<Layer*> ls;
+  std::vector<double> excess, liq, maxliq, meltfrac;
+  for (Layer* l = fstsoill; l != NULL && l->isSoil; l = l->nextl) {
+    if (l->excess_ice <= 0.0) { continue; }
+    ls.push_back(l); excess.push_back(l->excess_ice); liq.push_back(l->liq);
+    maxliq.push_back(l->poro * l->dz * DENLIQ);
+    double f = 0.0;
+    if (l->frozen == -1) { f = 1.0; }
+    else if (l->frozen == 0) { f = 1.0 - l->frozenfrac; }
+    meltfrac.push_back(f);
+  }
+  melted = 0.0; drained = 0.0;
+  if (ls.empty()) { return 0.0; }
+  double sub = meltExcessColumn(excess, liq, maxliq, meltfrac, melted, drained);
+  for (size_t i = 0; i < ls.size(); i++) { ls[i]->excess_ice = excess[i]; ls[i]->liq = liq[i]; }
+  tk_subsidence += sub;
+  return sub;
+}
+
 double Ground::thawColumn(const std::vector<double> & ztop,
                           const std::vector<double> & dz,
                           std::vector<double> & ice, std::vector<double> & liq,

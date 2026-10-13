@@ -1392,6 +1392,9 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
   TK_SCALAR_OUTPUT("TKREMTHICK", tkremthick_for_output, cohort.year_tkdata[im].thermokarst_soid.removal_thickness, false)
   TK_SCALAR_OUTPUT("TKICEMELT", tkicemelt_for_output, cohort.year_tkdata[im].thermokarst_soid.ice_melted, false)
   TK_SCALAR_OUTPUT("DRAINTYPE", draintype_for_output, (double)cohort.year_tkdata[im].thermokarst_soid.drainage_type, true)
+  TK_SCALAR_OUTPUT("TKSUBSID", tksubsid_for_output, cohort.year_tkdata[im].thermokarst_soid.subsidence, true)
+  TK_SCALAR_OUTPUT("TKEXICE", tkexice_for_output, cohort.year_tkdata[im].thermokarst_soid.excess_ice, true)
+  TK_SCALAR_OUTPUT("TKEXMELT", tkexmelt_for_output, cohort.year_tkdata[im].thermokarst_soid.excess_melted, false)
 #undef TK_SCALAR_OUTPUT
   map_itr = netcdf_outputs.end();
 

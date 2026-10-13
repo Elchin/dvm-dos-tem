@@ -871,6 +871,17 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
   tkdata->clear(); // zero monthly thermokarst fluxes/diagnostics
   tkdata->thermokarst_soid.drainage_type = cd.drainage_type;
 
+  // Excess ground ice: one-time initialization, then monthly melt/subsidence
+  if (md->tk_excess_fraction > 0.0 && !ground.tk_excess_initialized) {
+    ground.initExcessIce(md->tk_excess_fraction, md->tk_excess_top, md->tk_excess_bottom);
+  }
+  double xs_melt = 0.0, xs_drain = 0.0;
+  if (ground.tk_excess_initialized) {
+    ground.meltExcessIce(xs_melt, xs_drain);
+    tkdata->thermokarst_soid.excess_melted += xs_melt;
+    tkdata->thermokarst_soid.water_drained += xs_drain;
+  }
+
   // see if it is an appropriate time to initiate
   if (thermokarst.should_initiate(year, midx, stage)) {
 
@@ -936,7 +947,12 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
         double melted = ground.thawToDepth(md->tk_thaw_depth, drained);
         tkdata->thermokarst_soid.thaw_depth = md->tk_thaw_depth;
         tkdata->thermokarst_soid.ice_melted = melted;
-        tkdata->thermokarst_soid.water_drained = drained;
+        tkdata->thermokarst_soid.water_drained += drained;
+        if (ground.tk_excess_initialized) { // thawed layers release their excess ice
+          ground.meltExcessIce(xs_melt, xs_drain);
+          tkdata->thermokarst_soid.excess_melted += xs_melt;
+          tkdata->thermokarst_soid.water_drained += xs_drain;
+        }
         ground.retrieveSoilDimension(&cd.m_soil);
         cd.d_soil = cd.m_soil;
       }
@@ -949,6 +965,8 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
   } else { // checking whether thermokarst is expected due to input forcing
     BOOST_LOG_SEV(glg, debug) << "Not time for thermokarst. Nothing to do.";
   }
+  tkdata->thermokarst_soid.subsidence = ground.tk_subsidence;
+  tkdata->thermokarst_soid.excess_ice = ground.totalExcessIce();
   // Transfer monthly thermokarst data, regardless of initiation
   year_tkdata[midx] = *tkdata;
 }
@@ -1478,6 +1496,17 @@ void Cohort::set_state_from_restartdata() {
   solprntenv.set_state_from_restartdata(this->restartdata);
   soilbgc.set_state_from_restartdata(this->restartdata);
   fire.set_state_from_restartdata(this->restartdata);
+  // excess ground ice / subsidence state (thermokarst pathway)
+  if (this->restartdata.tkexinit == 1) {
+    ground.tk_excess_initialized = true;
+    ground.tk_subsidence = this->restartdata.tksubsidence;
+    ground.tk_prev_subsidence = this->restartdata.tksubsidence;
+    int il = 0;
+    for (Layer* l = ground.fstsoill; l != NULL && l->isSoil && il < MAX_SOI_LAY; l = l->nextl, il++) {
+      double x = this->restartdata.EXICEsoil[il];
+      l->excess_ice = (x == MISSING_D || x < 0.0) ? 0.0 : x;
+    }
+  }
   // drainage class can be changed by RTS initiation; carry it through restarts
   if (this->restartdata.drainage_type == 0 || this->restartdata.drainage_type == 1) {
     cd.drainage_type = this->restartdata.drainage_type;
@@ -1520,6 +1549,14 @@ void Cohort::set_restartdata_from_state() {
   // vegetation
   restartdata.yrsdist     = cd.yrsdist;
   restartdata.drainage_type = cd.drainage_type;
+  restartdata.tkexinit = ground.tk_excess_initialized ? 1 : 0;
+  restartdata.tksubsidence = ground.tk_subsidence;
+  {
+    int il = 0;
+    for (Layer* l = ground.fstsoill; l != NULL && l->isSoil && il < MAX_SOI_LAY; l = l->nextl, il++) {
+      restartdata.EXICEsoil[il] = l->excess_ice;
+    }
+  }
 
   for (int ip = 0; ip < NUM_PFT; ip++) {
     if (cd.m_veg.vegcov[ip] > 0.0) {

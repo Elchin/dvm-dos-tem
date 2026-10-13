@@ -37,6 +37,9 @@ public:
   std::vector<double> tkremthick_for_output;
   std::vector<double> tkicemelt_for_output;
   std::vector<double> draintype_for_output;
+  std::vector<double> tksubsid_for_output;
+  std::vector<double> tkexice_for_output;
+  std::vector<double> tkexmelt_for_output;
   std::vector<double> burnveg2airc_for_output;
   std::vector<double> burnveg2deadc_for_output;
   std::vector<double> burnveg2soilabvc_for_output;
