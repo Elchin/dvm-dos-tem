@@ -47,3 +47,28 @@ Mineral-soil removal for deep slumps. Per-CMT parameter files instead of global 
 - **Config:** `thermokarst_excess_fraction`, `thermokarst_excess_top`, `thermokarst_excess_bottom`. These are placeholders; f = 0 turns it off.
 - **Restart:** `tkexinit`, `tksubsidence`, `EXICEsoil`.
 - **Outputs:** `TKSUBSID`, `TKEXICE`, `TKEXMELT`.
+
+## Two-stage execution workflow (scripts/run_rts_two_stage.py)
+
+Mirrors the original thermokarst branch. Ground ice is initialized only after the historical period, and the RTS initiates during the transient run.
+
+* **Stage 1:** pr/eq/sp (default `-p 100 -e 1000 -s 200`), thermokarst OFF → `stage1/restart-sp.nc`.
+  One cell takes about 71 s.
+* **Stage 2a:** historical tr run restarted from stage 1, thermokarst OFF → `stage2a_hist/restart-tr.nc`.
+* **Stage 2b:** sc run restarted from 2a with the thermokarst module ON.
+  * Excess ground ice (`thermokarst_excess_*`) is initialized in the first month.
+  * The sc years before the flagged RTS year act as the short spin-up with ice present.
+  * The RTS initiates in the year and day flagged in `projected-explicit-thermokarst*.nc`.
+
+Config switches:
+* `model_settings.thermokarst`
+* `thermokarst_initiation`: false gives a baseline run, with ice and subsidence but no slump.
+* `thermokarst_ch4`: rts-ch4 only.
+
+Driver options:
+* `--mode baseline` runs without initiation.
+* `--stage1-restart` reuses a stage-1 restart.
+* `--ch4` turns on the methane path.
+* The driver writes `timings.json`.
+
+Tests: `tests/rts/test_rts_two_stage.py` covers the short CI workflow. Set `RTS_FULL_TIMING=1` to also run the full stage 1 and assert it takes ≤ 300 s.

@@ -9,6 +9,8 @@ Derived from demo-data Toolik cell (0,0) with controlled overrides:
   * fire: none (fri=2000, explicit burn mask all 0)
   * thermokarst: RTS initiation at transient-year index RTS_YEAR, julian day
     RTS_JDAY. `thermokarst-none.nc` is the rts_init_year=-1 (no-op) variant.
+    `projected-explicit-thermokarst-rts.nc` initiates at scenario-year index
+    RTS_SC_YEAR (two-stage workflow, scripts/run_rts_two_stage.py).
 Ground-ice content is not prescribed directly: it comes from the CMT
 initialization plus the cold equilibrium climate (open question).
 Usage: python make_rts_synthetic.py [--rts-year N] [--rts-jday D]
@@ -43,6 +45,8 @@ def main():
     ap = argparse.ArgumentParser()
     ap.add_argument('--rts-year', type=int, default=10, help='transient year index of RTS initiation (-1: none)')
     ap.add_argument('--rts-jday', type=int, default=213)
+    ap.add_argument('--rts-sc-year', type=int, default=5,
+                    help='scenario-year index of RTS initiation for the two-stage workflow file')
     a = ap.parse_args()
 
     # climate: repeated mean annual cycle
@@ -78,6 +82,8 @@ def main():
     copy_1x1('historic-explicit-thermokarst.nc', 'historic-explicit-thermokarst.nc', tk(a.rts_year))
     copy_1x1('historic-explicit-thermokarst.nc', 'thermokarst-none.nc', tk(-1))
     copy_1x1('projected-explicit-thermokarst.nc', 'projected-explicit-thermokarst.nc', tk(-1))
+    # two-stage workflow: RTS in the scenario (sc) stage after a short spin-up
+    copy_1x1('projected-explicit-thermokarst.nc', 'projected-explicit-thermokarst-rts.nc', tk(a.rts_sc_year))
     print('wrote synthetic 1-cell RTS inputs to', HERE, 'rts_year =', a.rts_year)
 
 if __name__ == '__main__':

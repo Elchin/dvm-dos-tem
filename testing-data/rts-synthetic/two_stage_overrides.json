@@ -1,0 +1,30 @@
+{
+  "IO": {
+    "hist_climate_file": "historic-climate.nc",
+    "proj_climate_file": "projected-climate.nc",
+    "veg_class_file": "vegetation.nc",
+    "drainage_file": "drainage.nc",
+    "soil_texture_file": "soil-texture.nc",
+    "co2_file": "co2.nc",
+    "proj_co2_file": "projected-co2.nc",
+    "runmask_file": "run-mask.nc",
+    "topo_file": "topo.nc",
+    "fri_fire_file": "fri-fire.nc",
+    "hist_exp_fire_file": "historic-explicit-fire.nc",
+    "proj_exp_fire_file": "projected-explicit-fire.nc",
+    "hist_exp_thermokarst_file": "thermokarst-none.nc",
+    "proj_exp_thermokarst_file": "projected-explicit-thermokarst-rts.nc",
+    "output_nc_tr": 1,
+    "output_nc_sc": 1
+  },
+  "model_settings": {
+    "thermokarst_folr": 0.8,
+    "thermokarst_c_resp_frac": 0.1,
+    "thermokarst_veg_remove_frac": 0.99,
+    "thermokarst_thaw_depth": 1.0,
+    "thermokarst_post_drainage": 1,
+    "thermokarst_excess_fraction": 0.3,
+    "thermokarst_excess_top": 0.3,
+    "thermokarst_excess_bottom": 2.0
+  }
+}

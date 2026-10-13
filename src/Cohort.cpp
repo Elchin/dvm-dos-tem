@@ -883,7 +883,7 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
   }
 
   // see if it is an appropriate time to initiate
-  if (thermokarst.should_initiate(year, midx, stage)) {
+  if (md->tk_initiation && thermokarst.should_initiate(year, midx, stage)) {
 
     BOOST_LOG_SEV(glg, debug) << "Right before thermokarst.initiate(..)  " << ground.layer_report_string();
 
