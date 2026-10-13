@@ -190,8 +190,10 @@ def test_carbon_balance_at_initiation(runs):
     assert C[M + 1] - C[M - 1] == pytest.approx(F[M:M + 2].sum(), abs=0.01 * removed)
 
 
-@pytest.mark.xfail(strict=True, reason="KNOWN ISSUE: after RTS initiation ~25 gC/m2/yr leaves "
-                   "total C in Jul-Sep without a matching output flux (pre-RTS closes to <0.02 g)")
 def test_carbon_balance_after_initiation(runs):
+    """Post-RTS balance closes (was a ~25 gC/m2/yr Jul-Sep leak: soil integrator
+    'blackhole' fallback on negative mineral AVLN discarded litter input / RH)."""
     o = runs['rts']; C, F = _total_c(o), _net_flux(o)
+    res = np.diff(C)[M + 1:] - F[M + 2:]
+    assert np.max(np.abs(res)) < 0.01
     assert C[-1] - C[M + 1] == pytest.approx(F[M + 2:].sum(), abs=1.0)

@@ -40,13 +40,14 @@ RestartData::~RestartData() {
 MPI_Datatype RestartData::register_mpi_datatype() {
 
   // create types for all the dimensions in the RestartData object...
-  const int elems_in_restartdata = 67;
+  const int elems_in_restartdata = 68;
   int counts[elems_in_restartdata] = {
     1, // int dsr;
     1, // double firea2sorgn;
     1, // int yrsdist;
     1, // int drainage_type;
     1, // int tkexinit;
+    1, // int tkinit;
     1, // double tksubsidence;
     
     NUM_PFT, // int ifwoody[NUM_PFT];                  // - 'veg_dim'
@@ -135,6 +136,7 @@ MPI_Datatype RestartData::register_mpi_datatype() {
     MPI_INT, // int yrsdist;
     MPI_INT, // int drainage_type;
     MPI_INT, // int tkexinit;
+    MPI_INT, // int tkinit;
     MPI_DOUBLE, // double tksubsidence;
     MPI_INT, // int ifwoody[NUM_PFT];
     MPI_INT, // int ifdeciwoody[NUM_PFT];
@@ -204,6 +206,7 @@ MPI_Datatype RestartData::register_mpi_datatype() {
     offsetof(RestartData, yrsdist),
     offsetof(RestartData, drainage_type),
     offsetof(RestartData, tkexinit),
+    offsetof(RestartData, tkinit),
     offsetof(RestartData, tksubsidence),
     offsetof(RestartData, ifwoody),
     offsetof(RestartData, ifdeciwoody),
@@ -288,6 +291,7 @@ void RestartData::reinitValue() {
   yrsdist     = MISSING_I;
   drainage_type = MISSING_I;
   tkexinit = 0;
+  tkinit = 0;
   tksubsidence = 0.0;
 
   for (int ip=0; ip<NUM_PFT; ip++) {
@@ -593,6 +597,9 @@ void RestartData::read_px_vars(const std::string& fname, const int rowidx, const
   // optional (older restart files lack it)
   if (nc_inq_varid(ncid, "drainage_type", &cv) == NC_NOERR) {
     temutil::nc( nc_get_var1_int(ncid, cv, start, &drainage_type) );
+  }
+  if (nc_inq_varid(ncid, "tkinit", &cv) == NC_NOERR) {
+    temutil::nc( nc_get_var1_int(ncid, cv, start, &tkinit) );
   }
   if (nc_inq_varid(ncid, "tkexinit", &cv) == NC_NOERR) {
     temutil::nc( nc_get_var1_int(ncid, cv, start, &tkexinit) );
@@ -1068,7 +1075,9 @@ void RestartData::create_empty_file(const std::string& fname,
   int drainage_typeV;
   temutil::nc( nc_def_var(ncid, "drainage_type", NC_INT, 2, vartype2D_dimids, &drainage_typeV) );
   temutil::nc( nc_put_att_int(ncid, drainage_typeV, "_FillValue", NC_INT, 1, &MISSING_I) );
-  int tkexinitV, tksubsidenceV;
+  int tkexinitV, tksubsidenceV, tkinitV;
+  temutil::nc( nc_def_var(ncid, "tkinit", NC_INT, 2, vartype2D_dimids, &tkinitV) );
+  temutil::nc( nc_put_att_int(ncid, tkinitV, "_FillValue", NC_INT, 1, &MISSING_I) );
   temutil::nc( nc_def_var(ncid, "tkexinit", NC_INT, 2, vartype2D_dimids, &tkexinitV) );
   temutil::nc( nc_put_att_int(ncid, tkexinitV, "_FillValue", NC_INT, 1, &MISSING_I) );
   temutil::nc( nc_def_var(ncid, "tksubsidence", NC_DOUBLE, 2, vartype2D_dimids, &tksubsidenceV) );
@@ -1369,6 +1378,8 @@ void RestartData::write_px_vars(const std::string& fname, const int rowidx, cons
   temutil::nc( nc_put_var1_int(ncid, cv, start, &yrsdist) );
   temutil::nc( nc_inq_varid(ncid, "drainage_type", &cv) );
   temutil::nc( nc_put_var1_int(ncid, cv, start, &drainage_type) );
+  temutil::nc( nc_inq_varid(ncid, "tkinit", &cv) );
+  temutil::nc( nc_put_var1_int(ncid, cv, start, &tkinit) );
   temutil::nc( nc_inq_varid(ncid, "tkexinit", &cv) );
   temutil::nc( nc_put_var1_int(ncid, cv, start, &tkexinit) );
   temutil::nc( nc_inq_varid(ncid, "tksubsidence", &cv) );

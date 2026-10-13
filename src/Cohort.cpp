@@ -765,6 +765,7 @@ void Cohort::updateMonthly_Bgc(const int & currmind) {
   soilbgc.prepareIntegration(md->get_nfeed(), md->get_avlnflg(),
                              md->get_baseline());
   soilbgc.clear_del_structs();
+  solintegrator.tk_tolerate_neg_avln = (ground.tk_months_since_init >= 0);
   solintegrator.updateMonthlySbgc(MAX_SOI_LAY);
   soilbgc.afterIntegration();
   bdall->soil_endOfMonth(currmind);   // yearly data accumulation
@@ -961,10 +962,12 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
         cd.drainage_type = md->tk_post_drainage;
       }
       tkdata->thermokarst_soid.drainage_type = cd.drainage_type;
+      ground.tk_months_since_init = 0;
     }  
   } else { // checking whether thermokarst is expected due to input forcing
     BOOST_LOG_SEV(glg, debug) << "Not time for thermokarst. Nothing to do.";
   }
+  if (ground.tk_months_since_init >= 0) { ground.tk_months_since_init++; }
   tkdata->thermokarst_soid.subsidence = ground.tk_subsidence;
   tkdata->thermokarst_soid.excess_ice = ground.totalExcessIce();
   // Transfer monthly thermokarst data, regardless of initiation
@@ -1507,6 +1510,10 @@ void Cohort::set_state_from_restartdata() {
       l->excess_ice = (x == MISSING_D || x < 0.0) ? 0.0 : x;
     }
   }
+  // RTS initiation state
+  if (this->restartdata.tkinit > 0) {
+    ground.tk_months_since_init = this->restartdata.tkinit - 1;
+  }
   // drainage class can be changed by RTS initiation; carry it through restarts
   if (this->restartdata.drainage_type == 0 || this->restartdata.drainage_type == 1) {
     cd.drainage_type = this->restartdata.drainage_type;
@@ -1550,6 +1557,7 @@ void Cohort::set_restartdata_from_state() {
   restartdata.yrsdist     = cd.yrsdist;
   restartdata.drainage_type = cd.drainage_type;
   restartdata.tkexinit = ground.tk_excess_initialized ? 1 : 0;
+  restartdata.tkinit = ground.tk_months_since_init + 1;
   restartdata.tksubsidence = ground.tk_subsidence;
   {
     int il = 0;

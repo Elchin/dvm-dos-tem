@@ -32,6 +32,14 @@ using namespace std;
 
 class Integrator {
 public :
+  // RTS: after initiation the organic layers are gone and plant N uptake can
+  // drive mineral-layer AVLN transiently negative mid-step. Rejecting those steps
+  // ends in the 'blackhole' fallback, which discards the rest of the month's
+  // soil fluxes (litter input, RH) -> C leak. When true, negative AVLN is
+  // tolerated during the step and fixed by the existing N-conserving clip in
+  // y2cstate_soi (deficit borrowed from ORGN). Off by default (RTS-off identical).
+  bool tk_tolerate_neg_avln = false;
+
   Integrator();
   ~Integrator();
 
@@ -138,6 +146,7 @@ private:
   int boundcon( float ptstate[], float err[], float& ptol) ;
 
   int blackhol;
+
   float inittol;
   int maxit;
   int maxitmon;

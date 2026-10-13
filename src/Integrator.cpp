@@ -692,7 +692,7 @@ int Integrator::checkPools() {
       }
 
       if (ssl->get_nfeed()) {
-        if(ydum[I_L_AVLN+il]<0) {
+        if(ydum[I_L_AVLN+il]<0 && !tk_tolerate_neg_avln) {
           return I_L_AVLN+il;
         }
 

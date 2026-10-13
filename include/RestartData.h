@@ -63,6 +63,7 @@ public :
   int yrsdist;
   int drainage_type; // may be changed by RTS initiation
   int tkexinit;      // 1 if excess ground ice was initialized
+  int tkinit;        // 0: RTS not initiated; else months since initiation + 1
   double tksubsidence; // cumulative thermokarst subsidence (m)
 
   int ifwoody[NUM_PFT]; // - 'veg_dim'
