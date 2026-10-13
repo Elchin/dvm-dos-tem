@@ -27,6 +27,13 @@ def runs(tmp_path_factory):
                           outputs={**r.BASE_OUTPUTS, **r.ICE_OUTPUTS}, extra=r.ICE_PARAMS),
         'rts_ice': r.run(BIN, str(w / 'rts_ice'), True,
                          outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS, **r.ICE_OUTPUTS}, extra=r.ICE_PARAMS),
+        # legacy monthly->daily (flag off) must reproduce the pre-m2d references exactly
+        'leg_base': r.run(BIN, str(w / 'leg_base'), False, extra=r.LEGACY_M2D),
+        'leg_rts': r.run(BIN, str(w / 'leg_rts'), True, outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS},
+                         extra=r.LEGACY_M2D),
+        'leg_rts_ice': r.run(BIN, str(w / 'leg_rts_ice'), True,
+                             outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS, **r.ICE_OUTPUTS},
+                             extra={**r.LEGACY_ICE_PARAMS, **r.LEGACY_M2D}),
     }
 
 def test_unit_binary():
@@ -197,3 +204,22 @@ def test_carbon_balance_after_initiation(runs):
     res = np.diff(C)[M + 1:] - F[M + 2:]
     assert np.max(np.abs(res)) < 0.01
     assert C[-1] - C[M + 1] == pytest.approx(F[M + 2:].sum(), abs=1.0)
+
+
+# ---------------- monthly -> daily: legacy path + new path sanity -------------
+LEG = os.path.join(REF, 'legacy_m2d')
+# bit-identical locally; CI on another compiler may loosen via RTS_RTOL/RTS_ATOL
+LRTOL = float(os.environ.get('RTS_RTOL', '0'))
+LATOL = float(os.environ.get('RTS_ATOL', '0'))
+
+@pytest.mark.parametrize('case,run', [('baseline', 'leg_base'), ('rts', 'leg_rts'), ('rts_ice', 'leg_rts_ice')])
+def test_m2d_flag_off_bit_identical_to_legacy(runs, case, run):
+    """monthly2daily_mean_preserving=false reproduces the pre-m2d references."""
+    assert r.compare_dirs(os.path.join(LEG, case), runs[run], LRTOL, LATOL) == []
+
+def test_m2d_new_path_changes_and_deepens_ald(runs):
+    """Mean-preserving forcing restores lost thaw degree-days -> ALD not shallower."""
+    a_new = r.read(runs['base'], 'ALD', 'yearly').ravel()
+    a_old = r.read(runs['leg_base'], 'ALD', 'yearly').ravel()
+    assert not np.array_equal(a_new, a_old)
+    assert a_new.mean() >= a_old.mean()

@@ -24,7 +24,7 @@
     "thermokarst_thaw_depth": 1.0,
     "thermokarst_post_drainage": 1,
     "thermokarst_excess_fraction": 0.3,
-    "thermokarst_excess_top": 0.3,
+    "thermokarst_excess_top": 0.4,
     "thermokarst_excess_bottom": 2.0
   }
 }

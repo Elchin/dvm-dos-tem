@@ -72,6 +72,22 @@ public:
   
   std::vector<float> monthly2daily(const std::vector<float>& mly_vals);
 
+  // Mean-preserving monthly->daily (Killworth 1996). See docs_src/rts_m2d_design.md.
+  // true: new path (default on rts-light-m2d); false: legacy linear-midpoint
+  // interpolation, bit-identical to the old code (incl. the +13 'next Jan' quirk).
+  bool m2d_mean_preserving = true;
+
+  // m36: 36 monthly means (Jan..Dec of prev, target, next year; 365-day
+  // calendar). Returns 365 daily values for the target (middle) year whose
+  // monthly means equal m36[12..23]. nonneg: clip negatives and rescale the
+  // month so its mean is preserved (radiation, vapor pressure).
+  static std::vector<float> monthly2daily_mp(const std::vector<float>& m36, bool nonneg);
+  // Build the 36-month window for year `year` of a monthly series; series
+  // ends are padded by repeating the first/last year.
+  static std::vector<float> mp_window(const std::vector<float>& data, int year);
+  // 36-month window for a 12-month climatology (periodic).
+  static std::vector<float> mp_window_clim(const std::vector<float>& clim12);
+
   void prepare_eq_daily_driving_data(int iy, const std::string& stage);
   void prepare_daily_driving_data(int, const std::string&);
 

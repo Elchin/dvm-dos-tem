@@ -126,6 +126,7 @@ public:
   double tk_excess_fraction = 0.0; // excess-ice volume fraction (0 <= f < 0.8); 0 = off
   double tk_excess_top = 0.5;      // m below soil surface
   double tk_excess_bottom = 2.0;   // m below soil surface
+  bool m2d_mean_preserving = true; // monthly->daily: true mean-preserving (Killworth); false legacy linear
   bool tk_initiation = true; // false: thermokarst module on (ice) but never initiate RTS (baseline)
 
   int cell_timelimit; //Time limit in seconds for cell computation time

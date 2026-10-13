@@ -20,10 +20,17 @@ BASE_OUTPUTS = {'SOC': 'm', 'SHLWC': 'm', 'DEEPC': 'm', 'MOSSDZ': 'y', 'SHLWDZ':
                 'DEADC': 'm', 'DWDC': 'm'}  # MOSSDEATHC is all-fill in this model version
 RTS_OUTPUTS = {'TKLATC': 'm', 'TKLATN': 'm', 'TKREMTHICK': 'm', 'TKICEMELT': 'm', 'DRAINTYPE': 'm',
                'TKRESPC': 'm'}
+# monthly->daily legacy path (flag off): bit-identical to pre-m2d code
+LEGACY_M2D = {'monthly2daily_mean_preserving': False}
 ICE_OUTPUTS = {'TKSUBSID': 'm', 'TKEXICE': 'm', 'TKEXMELT': 'm', 'WATERTAB': 'm'}
 # PLACEHOLDER ice-rich profile for the synthetic cell (tunable)
-ICE_PARAMS = {'thermokarst_excess_fraction': 0.3, 'thermokarst_excess_top': 0.3,
+# top 0.4 m: with mean-preserving monthly->daily forcing the synthetic ALD is
+# ~0.25 m (was 0.225 m), deep enough to reach a 0.3 m ice top without any RTS.
+ICE_PARAMS = {'thermokarst_excess_fraction': 0.3, 'thermokarst_excess_top': 0.4,
               'thermokarst_excess_bottom': 2.0}
+# profile used for the legacy (flag-off) references in reference/legacy_m2d
+LEGACY_ICE_PARAMS = {'thermokarst_excess_fraction': 0.3, 'thermokarst_excess_top': 0.3,
+                     'thermokarst_excess_bottom': 2.0}
 
 # PLACEHOLDER RTS parameters for the test (tunable, not calibrated)
 RTS_PARAMS = {'thermokarst_folr': 0.8, 'thermokarst_c_resp_frac': 0.1,

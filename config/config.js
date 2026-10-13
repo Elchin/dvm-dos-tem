@@ -129,6 +129,7 @@
     "dynamic_lai": 1,                   // from model (1) or from input (0)
     "baseline_start": 1901,  //start year for baseline EQ climate
     "baseline_end": 1931,     //end year for baseline EQ climate
+    "monthly2daily_mean_preserving": true, // true: mean-preserving monthly->daily (Killworth 1996); false: legacy linear midpoints
     "thermokarst": false,     //enabling thermokarst, controlled by disturbance (dsb) stage settings above
     // RTS initiation parameters -- PLACEHOLDER values, TUNABLE, not calibrated
     "thermokarst_folr": -1.0,            // fraction of organic layer removed (<0: legacy, remove to thaw depth)

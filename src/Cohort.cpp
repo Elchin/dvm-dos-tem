@@ -71,6 +71,7 @@ Cohort::Cohort(int y, int x, ModelData* modeldatapointer):
 
   this->climate.baseline_start = modeldatapointer->baseline_start;
   this->climate.baseline_end = modeldatapointer->baseline_end;
+  this->climate.m2d_mean_preserving = modeldatapointer->m2d_mean_preserving;
   //Prepare averaged input set for EQ stage
   this->climate.prep_avg_climate();
 

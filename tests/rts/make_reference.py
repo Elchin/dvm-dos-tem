@@ -24,9 +24,16 @@ if __name__ == '__main__':
     ap.add_argument('--baseline-binary', default=os.path.join(r.REPO, 'dvmdostem'))
     ap.add_argument('--rts-binary', default=os.path.join(r.REPO, 'dvmdostem'))
     ap.add_argument('--work', default='/tmp/rts_ref_work')
+    ap.add_argument('--legacy-m2d', action='store_true',
+                    help='write flag-off (legacy monthly->daily) refs to reference/legacy_m2d')
     ap.add_argument('--only', nargs='*', default=None, help='subset of: baseline rts rts_ice')
     a = ap.parse_args()
     want = lambda n: a.only is None or n in a.only
+    if a.legacy_m2d:
+        REF = os.path.join(REF, 'legacy_m2d')
+        r.ICE_PARAMS = {**r.LEGACY_ICE_PARAMS, **r.LEGACY_M2D}
+        _run = r.run
+        r.run = lambda b, w, on, **kw: _run(b, w, on, **{**kw, 'extra': {**(kw.get('extra') or {}), **r.LEGACY_M2D}})
     if want('baseline'):
         keep(r.run(a.baseline_binary, a.work + '/baseline', False), os.path.join(REF, 'baseline'))
     if want('rts'):

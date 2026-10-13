@@ -2,7 +2,9 @@
 # Complements checkout_build_run.yml (Docker build + demo run on PRs to
 # master): this workflow builds natively on Ubuntu and runs `make rts-test`
 # (C++ unit tests + pytest regression on the 1-cell synthetic case in
-# testing-data/rts-synthetic) on every push and pull request.
+# testing-data/rts-synthetic) on every push and pull request. Includes the
+# monthly->daily (m2d) unit tests and the flag-off legacy regression
+# (tests/rts/reference/legacy_m2d).
 name: RTS tests
 
 on:
