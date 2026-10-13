@@ -154,3 +154,14 @@ CFLAGS += -DGIT_SHA=\"$(GIT_SHA)\"
 clean:
 	rm -f $(OBJECTS) $(APPNAME) TEM.o libTEM.so* *~ obj/*
 
+
+# ---- RTS (retrogressive thaw slump) tests ---------------------------------
+RTS_PYTHON ?= python3
+rts-unit-test: $(APPNAME)
+	$(CC) -std=c++11 -g -DBOOST_ALL_DYN_LINK -Iinclude $(INCLUDES) -o tests/rts/test_rts_units tests/rts/test_rts_units.cpp $(addprefix obj/, $(OBJECTS)) $(LIBDIR) $(LIBS) $(MPILFLAGS) $(OMPLFLAGS)
+	./tests/rts/test_rts_units
+
+rts-test: rts-unit-test
+	$(RTS_PYTHON) -m pytest -v tests/rts
+
+.PHONY: rts-unit-test rts-test

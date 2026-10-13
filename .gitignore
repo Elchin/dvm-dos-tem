@@ -54,3 +54,6 @@ Debug/*
 bundle*
 
 .dvc/*
+tests/rts/test_rts_units
+__pycache__/
+.pytest_cache/
