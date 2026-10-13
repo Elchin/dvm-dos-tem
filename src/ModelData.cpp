@@ -122,6 +122,14 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
   baseline_start = controldata["model_settings"]["baseline_start"].asInt();
   baseline_end = controldata["model_settings"]["baseline_end"].asInt();
   thermokarst_module = controldata["model_settings"]["thermokarst"].asBool(); 
+  {
+    const Json::Value & ms = controldata["model_settings"];
+    if (ms.isMember("thermokarst_folr"))            tk_folr = ms["thermokarst_folr"].asDouble();
+    if (ms.isMember("thermokarst_c_resp_frac"))     tk_c_resp_frac = ms["thermokarst_c_resp_frac"].asDouble();
+    if (ms.isMember("thermokarst_veg_remove_frac")) tk_veg_remove_frac = ms["thermokarst_veg_remove_frac"].asDouble();
+    if (ms.isMember("thermokarst_thaw_depth"))      tk_thaw_depth = ms["thermokarst_thaw_depth"].asDouble();
+    if (ms.isMember("thermokarst_post_drainage"))   tk_post_drainage = ms["thermokarst_post_drainage"].asInt();
+  }
 
   // These must be directories. If user forgets to add the trailing slash, 
   // do it here. Might be better to do something with boost::filesystem for 

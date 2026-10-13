@@ -61,6 +61,7 @@ public :
 
   // vegetation
   int yrsdist;
+  int drainage_type; // may be changed by RTS initiation
 
   int ifwoody[NUM_PFT]; // - 'veg_dim'
   int ifdeciwoody[NUM_PFT];

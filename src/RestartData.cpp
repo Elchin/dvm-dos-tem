@@ -40,11 +40,12 @@ RestartData::~RestartData() {
 MPI_Datatype RestartData::register_mpi_datatype() {
 
   // create types for all the dimensions in the RestartData object...
-  const int elems_in_restartdata = 63;
+  const int elems_in_restartdata = 64;
   int counts[elems_in_restartdata] = {
     1, // int dsr;
     1, // double firea2sorgn;
     1, // int yrsdist;
+    1, // int drainage_type;
     
     NUM_PFT, // int ifwoody[NUM_PFT];                  // - 'veg_dim'
     NUM_PFT, // int ifdeciwoody[NUM_PFT];
@@ -129,6 +130,7 @@ MPI_Datatype RestartData::register_mpi_datatype() {
     MPI_INT, // int dsr;
     MPI_DOUBLE, // double firea2sorgn;
     MPI_INT, // int yrsdist;
+    MPI_INT, // int drainage_type;
     MPI_INT, // int ifwoody[NUM_PFT];
     MPI_INT, // int ifdeciwoody[NUM_PFT];
     MPI_INT, // int ifperenial[NUM_PFT];
@@ -194,6 +196,7 @@ MPI_Datatype RestartData::register_mpi_datatype() {
     offsetof(RestartData, dsr),
     offsetof(RestartData, firea2sorgn),
     offsetof(RestartData, yrsdist),
+    offsetof(RestartData, drainage_type),
     offsetof(RestartData, ifwoody),
     offsetof(RestartData, ifdeciwoody),
     offsetof(RestartData, ifperenial),
@@ -274,6 +277,7 @@ void RestartData::reinitValue() {
   firea2sorgn = MISSING_D;
   // vegetation
   yrsdist     = MISSING_I;
+  drainage_type = MISSING_I;
 
   for (int ip=0; ip<NUM_PFT; ip++) {
     ifwoody[ip]     = MISSING_I;
@@ -574,6 +578,10 @@ void RestartData::read_px_vars(const std::string& fname, const int rowidx, const
   // vegegetation stuff
   temutil::nc( nc_inq_varid(ncid, "yrsdist", &cv) );
   temutil::nc( nc_get_var1_int(ncid, cv, start, &yrsdist) );
+  // optional (older restart files lack it)
+  if (nc_inq_varid(ncid, "drainage_type", &cv) == NC_NOERR) {
+    temutil::nc( nc_get_var1_int(ncid, cv, start, &drainage_type) );
+  }
 
   // snow stuff
   temutil::nc( nc_inq_varid(ncid, "numsnwl", &cv) );
@@ -1036,6 +1044,9 @@ void RestartData::create_empty_file(const std::string& fname,
   temutil::nc( nc_put_att_int(ncid, rtunfrozendaysV, "_FillValue", NC_INT, 1, &MISSING_I) );
   temutil::nc( nc_def_var(ncid, "yrsdist", NC_INT, 2, vartype2D_dimids, &yrsdistV) );
   temutil::nc( nc_put_att_int(ncid, yrsdistV, "_FillValue", NC_INT, 1, &MISSING_I) );
+  int drainage_typeV;
+  temutil::nc( nc_def_var(ncid, "drainage_type", NC_INT, 2, vartype2D_dimids, &drainage_typeV) );
+  temutil::nc( nc_put_att_int(ncid, drainage_typeV, "_FillValue", NC_INT, 1, &MISSING_I) );
 
   // Setup 2D vars, double
   int firea2sorgnV;
@@ -1327,6 +1338,8 @@ void RestartData::write_px_vars(const std::string& fname, const int rowidx, cons
   // vegegetation stuff
   temutil::nc( nc_inq_varid(ncid, "yrsdist", &cv) );
   temutil::nc( nc_put_var1_int(ncid, cv, start, &yrsdist) );
+  temutil::nc( nc_inq_varid(ncid, "drainage_type", &cv) );
+  temutil::nc( nc_put_var1_int(ncid, cv, start, &drainage_type) );
 
   // snow stuff
   temutil::nc( nc_inq_varid(ncid, "numsnwl", &cv) );

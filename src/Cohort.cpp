@@ -868,6 +868,8 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
   if (midx == 0) {
     tkdata->beginOfYear();
   }
+  tkdata->clear(); // zero monthly thermokarst fluxes/diagnostics
+  tkdata->thermokarst_soid.drainage_type = cd.drainage_type;
 
   // see if it is an appropriate time to initiate
   if (thermokarst.should_initiate(year, midx, stage)) {
@@ -882,6 +884,7 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
       BOOST_LOG_SEV(glg, debug) << "Soil column is completely frozen. No thermokarst can occur.";
     } else{
       thermokarst.setThawDepth(thaw);
+      thermokarst.setRTSParams(md->tk_folr, md->tk_c_resp_frac, md->tk_veg_remove_frac);
       thermokarst.initiate(year);
       BOOST_LOG_SEV(glg, debug) << "Right after thermokarst.initiate(..)  " << ground.layer_report_string();
 
@@ -927,13 +930,27 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
       cd.y_soil = cd.m_soil;
       getSoilFineRootFrac_Monthly();
 
-      // Transfer monthly thermokarst data, regardless
-      year_tkdata[midx] = *tkdata;
-      tkdata->clear();
+      // RTS: instant thaw of (ice-rich) layers down to thermokarst_thaw_depth
+      if (md->tk_thaw_depth > 0.0) {
+        double drained = 0.0;
+        double melted = ground.thawToDepth(md->tk_thaw_depth, drained);
+        tkdata->thermokarst_soid.thaw_depth = md->tk_thaw_depth;
+        tkdata->thermokarst_soid.ice_melted = melted;
+        tkdata->thermokarst_soid.water_drained = drained;
+        ground.retrieveSoilDimension(&cd.m_soil);
+        cd.d_soil = cd.m_soil;
+      }
+      // RTS: drainage switch (Soil_Env reads cd.drainage_type each step)
+      if (md->tk_post_drainage == 0 || md->tk_post_drainage == 1) {
+        cd.drainage_type = md->tk_post_drainage;
+      }
+      tkdata->thermokarst_soid.drainage_type = cd.drainage_type;
     }  
   } else { // checking whether thermokarst is expected due to input forcing
     BOOST_LOG_SEV(glg, debug) << "Not time for thermokarst. Nothing to do.";
   }
+  // Transfer monthly thermokarst data, regardless of initiation
+  year_tkdata[midx] = *tkdata;
 }
 
 /** Dynamic Vegetation Module function. */
@@ -1461,6 +1478,10 @@ void Cohort::set_state_from_restartdata() {
   solprntenv.set_state_from_restartdata(this->restartdata);
   soilbgc.set_state_from_restartdata(this->restartdata);
   fire.set_state_from_restartdata(this->restartdata);
+  // drainage class can be changed by RTS initiation; carry it through restarts
+  if (this->restartdata.drainage_type == 0 || this->restartdata.drainage_type == 1) {
+    cd.drainage_type = this->restartdata.drainage_type;
+  }
 
   for(int ii=0; ii<NUM_PFT; ii++){
     vegbgc[ii].set_state_from_restartdata(this->restartdata);
@@ -1498,6 +1519,7 @@ void Cohort::set_restartdata_from_state() {
 
   // vegetation
   restartdata.yrsdist     = cd.yrsdist;
+  restartdata.drainage_type = cd.drainage_type;
 
   for (int ip = 0; ip < NUM_PFT; ip++) {
     if (cd.m_veg.vegcov[ip] > 0.0) {

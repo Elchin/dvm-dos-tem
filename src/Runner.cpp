@@ -1360,6 +1360,39 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
       }
     }//end critical(outputBURNTHICK)
   }//end BURNTHICK
+
+  // RTS / thermokarst scalar outputs (monthly value or yearly sum; DRAINTYPE
+  // yearly = December value)
+#define TK_SCALAR_OUTPUT(NAME, VEC, EXPR, YEARLY_LAST)                          \
+  map_itr = netcdf_outputs.find(NAME);                                         \
+  if(map_itr != netcdf_outputs.end()){                                         \
+    curr_spec = map_itr->second;                                               \
+    _Pragma("omp critical(outputTK)")                                          \
+    {                                                                          \
+      if(curr_spec.monthly){                                                   \
+        { int im = month; outhold.VEC.push_back(EXPR); }                       \
+        if(output_this_timestep){                                              \
+          output_nc_3dim(&curr_spec, file_stage_suffix, &outhold.VEC[0], 1, month_start_idx, months_to_output); \
+          outhold.VEC.clear();                                                 \
+        }                                                                      \
+      } else if(curr_spec.yearly){                                             \
+        double v = 0.;                                                         \
+        if (YEARLY_LAST) { int im = 11; v = (EXPR); }                          \
+        else { for(int im=0; im<12; im++){ v += (EXPR); } }                    \
+        outhold.VEC.push_back(v);                                              \
+        if(output_this_timestep){                                              \
+          output_nc_3dim(&curr_spec, file_stage_suffix, &outhold.VEC[0], 1, year_start_idx, years_to_output); \
+          outhold.VEC.clear();                                                 \
+        }                                                                      \
+      }                                                                        \
+    }                                                                          \
+  }
+  TK_SCALAR_OUTPUT("TKLATC", tklatc_for_output, cohort.year_tkdata[im].thermokarst_soi2lat.orgc + cohort.year_tkdata[im].thermokarst_soi2lat.vegc, false)
+  TK_SCALAR_OUTPUT("TKLATN", tklatn_for_output, cohort.year_tkdata[im].thermokarst_soi2lat.orgn + cohort.year_tkdata[im].thermokarst_soi2lat.vegn, false)
+  TK_SCALAR_OUTPUT("TKREMTHICK", tkremthick_for_output, cohort.year_tkdata[im].thermokarst_soid.removal_thickness, false)
+  TK_SCALAR_OUTPUT("TKICEMELT", tkicemelt_for_output, cohort.year_tkdata[im].thermokarst_soid.ice_melted, false)
+  TK_SCALAR_OUTPUT("DRAINTYPE", draintype_for_output, (double)cohort.year_tkdata[im].thermokarst_soid.drainage_type, true)
+#undef TK_SCALAR_OUTPUT
   map_itr = netcdf_outputs.end();
 
 

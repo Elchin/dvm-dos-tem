@@ -6,6 +6,7 @@
 #include <cmath>
 #include <iostream>
 #include <deque>
+#include <vector>
 using namespace std;
 
 #include "DoubleLinkedList.h"
@@ -124,7 +125,21 @@ public :
   void updateWholeFrozenStatus(); //update if whole soil frozen(1)/
                                   //  unfrozen(-1)/partially-frozen(0)
 
-  double getThawDepth(); // get seasonal thaw depth  
+  double getThawDepth(); // get seasonal thaw depth
+
+  // RTS initiation: instantly thaw all soil layers whose bottom is within
+  // 'depth' (m). Returns ice melted (kg/m2); 'drained' gets melt water above
+  // layer capacity (poro*dz*DENLIQ), which is removed from the column.
+  double thawToDepth(const double depth, double & drained);
+
+  // Pure column helper for thawToDepth (unit tested). Layers are top->bottom.
+  // thawed[i] is set true for every layer fully within depth.
+  static double thawColumn(const std::vector<double> & ztop,
+                           const std::vector<double> & dz,
+                           std::vector<double> & ice, std::vector<double> & liq,
+                           const std::vector<double> & maxliq,
+                           const double depth, double & drained,
+                           std::vector<bool> & thawed);  
 
   // update water drainage layer and depth
   void setDrainL();

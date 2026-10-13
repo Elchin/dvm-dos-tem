@@ -1960,6 +1960,67 @@ double Ground::getThawDepth(){
   return -1;
 }
 
+double Ground::thawColumn(const std::vector<double> & ztop,
+                          const std::vector<double> & dz,
+                          std::vector<double> & ice, std::vector<double> & liq,
+                          const std::vector<double> & maxliq,
+                          const double depth, double & drained,
+                          std::vector<bool> & thawed) {
+  double melted = 0.0;
+  drained = 0.0;
+  thawed.assign(dz.size(), false);
+  for (size_t i = 0; i < dz.size(); i++) {
+    if (ztop[i] + dz[i] > depth + 1.e-9) { break; } // only whole layers
+    thawed[i] = true;
+    melted += ice[i];
+    liq[i] += ice[i];
+    ice[i] = 0.0;
+    if (liq[i] > maxliq[i]) {
+      drained += liq[i] - maxliq[i];
+      liq[i] = maxliq[i];
+    }
+  }
+  return melted;
+}
+
+double Ground::thawToDepth(const double depth, double & drained) {
+  drained = 0.0;
+  if (depth <= 0.0) { return 0.0; }
+  std::vector<Layer*> ls;
+  std::vector<double> ztop, dz, ice, liq, maxliq;
+  for (Layer* l = fstsoill; l != NULL && !l->isRock; l = l->nextl) {
+    ls.push_back(l); ztop.push_back(l->z); dz.push_back(l->dz);
+    ice.push_back(l->ice); liq.push_back(l->liq);
+    maxliq.push_back(l->poro * l->dz * DENLIQ);
+  }
+  std::vector<bool> thawed;
+  double melted = thawColumn(ztop, dz, ice, liq, maxliq, depth, drained, thawed);
+  double thawbot = 0.0;
+  Layer* below = NULL;
+  for (size_t i = 0; i < ls.size(); i++) {
+    if (!thawed[i]) { below = ls[i]; break; }
+    ls[i]->ice = ice[i]; ls[i]->liq = liq[i];
+    ls[i]->frozen = -1; ls[i]->frozenfrac = 0.0;
+    if (ls[i]->tem < 0.01) { ls[i]->tem = 0.01; }
+    thawbot = ztop[i] + dz[i];
+  }
+  // Reset phase-change fronts: drop fronts inside the thawed zone; if frozen
+  // ground remains directly below, put a thawing front at the thaw bottom.
+  while (!frontsz.empty() && frontsz.front() <= thawbot + 1.e-9) {
+    frontsz.pop_front(); frontstype.pop_front();
+  }
+  if (below != NULL && below->frozen >= 0 && thawbot > 0.0 &&
+      (frontstype.empty() || frontstype.front() != -1)) {
+    frontsz.push_front(thawbot); frontstype.push_front(-1);
+  }
+  checkFrontsValidity();
+  setFstLstFrontLayers();
+  checkWaterValidity();
+  BOOST_LOG_SEV(glg, info) << "RTS thaw to " << thawbot << " m: melted " << melted
+                           << " kg/m2 ice, drained " << drained << " kg/m2";
+  return melted;
+}
+
 void Ground::setDrainL() {
 
   draindepth = 0.;

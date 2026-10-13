@@ -254,7 +254,12 @@ struct soidiag_fir {
 struct soidiag_thermokarst {
   double removal_thickness;
   double rolr;
-  soidiag_thermokarst() : removal_thickness(UIN_D), rolr(UIN_D) {}
+  double thaw_depth;    // depth (m) to which ice-rich layers were thawed at initiation
+  double ice_melted;    // ice converted to liquid (kg/m2)
+  double water_drained; // melt water above layer capacity, removed (kg/m2)
+  int drainage_type;    // drainage class after initiation (0 well, 1 poor)
+  soidiag_thermokarst() : removal_thickness(0.0), rolr(0.0), thaw_depth(0.0),
+                          ice_melted(0.0), water_drained(0.0), drainage_type(-1) {}
 };
 
 #endif /*DIAGNOSTICS_H_*/

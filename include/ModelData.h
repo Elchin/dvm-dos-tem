@@ -113,6 +113,14 @@ public:
   bool dynamic_LAI; // True: calculate LAI as a function of vegc, False: use static_lai from CohortLookup 
   bool useseverity; // using fire severity inputs
   bool useThermokarstSeverity; // using thermokarst severity
+  // RTS initiation parameters. PLACEHOLDER defaults, tunable via config.js
+  // "model_settings": thermokarst_folr, thermokarst_c_resp_frac,
+  // thermokarst_veg_remove_frac, thermokarst_thaw_depth, thermokarst_post_drainage
+  double tk_folr = -1.0;          // <0 keeps legacy RTS-branch removal (to thaw depth)
+  double tk_c_resp_frac = 0.0;    // fraction of removed C/N respired; rest lateral export
+  double tk_veg_remove_frac = 0.99;
+  double tk_thaw_depth = 0.0;     // m; <=0 disables the instant-thaw step
+  int tk_post_drainage = -1;      // -1 keep; 0 well-drained; 1 poorly-drained
 
   int cell_timelimit; //Time limit in seconds for cell computation time
   time_t cell_stime; //Start time per cell. Move to Runner?

@@ -31,6 +31,12 @@ public:
   std::vector<double> ald_for_output;
   std::vector<double> burnsoil2airc_for_output;
   std::vector<double> burnthick_for_output;
+  // RTS / thermokarst outputs
+  std::vector<double> tklatc_for_output;
+  std::vector<double> tklatn_for_output;
+  std::vector<double> tkremthick_for_output;
+  std::vector<double> tkicemelt_for_output;
+  std::vector<double> draintype_for_output;
   std::vector<double> burnveg2airc_for_output;
   std::vector<double> burnveg2deadc_for_output;
   std::vector<double> burnveg2soilabvc_for_output;

@@ -384,10 +384,16 @@ void Thermokarst::initiate(int year) {
   // summarize
   BOOST_LOG_SEV(glg, info) << "Summarize...?";
   // How to parameterize "retained" C and N? for thermokarst disturbance
-  double vola_solc = lostsolc * (1.0 - firpar.r_retain_c) + wdebrisc;
-  double vola_soln = lostsoln * (1.0 - firpar.r_retain_n) + wdebrisn;
-  double reta_solc = lostsolc * firpar.r_retain_c;   //together with veg.-burned C return, This will be put into soil later
-  double reta_soln = lostsoln * firpar.r_retain_n;   //together with veg.-burned N return, This will be put into soil later
+  // RTS: removed soil C/N (+ woody debris) is either respired (rts_c_resp_frac)
+  // or exported laterally (mudflow). Nothing is retained in the cell.
+  // (Previously used firpar.r_retain_c/n, which was never initialized.)
+  double vola_solc, vola_soln, lat_solc, lat_soln;
+  partitionLostCN(lostsolc + wdebrisc, lostsoln + wdebrisn, rts_c_resp_frac,
+                  vola_solc, vola_soln, lat_solc, lat_soln);
+  double reta_solc = 0.0;
+  double reta_soln = 0.0;
+  tkdata->thermokarst_soi2lat.orgc = lat_solc;
+  tkdata->thermokarst_soi2lat.orgn = lat_soln;
 
   // For now we are assuming standing dead is removed during mudflow or detachment
   BOOST_LOG_SEV(glg, info) << "Handle Vegetation loss and mortality...";
@@ -512,8 +518,14 @@ void Thermokarst::initiate(int year) {
   } // end pft loop
 
   // How do we want to consider retention? Maybe these can be hardcoded initially?
-  double reta_vegc = (comb_vegc + comb_deadc) * firpar.r_retain_c;
-  double reta_vegn = (comb_vegn + comb_deadn) * firpar.r_retain_n;
+  double reta_vegc = 0.0;
+  double reta_vegn = 0.0;
+  // removed vegetation (+ old standing dead): resp fraction to atm, rest lateral
+  double v2a_c, v2a_n, lat_vegc, lat_vegn;
+  partitionLostCN(comb_vegc + comb_deadc, comb_vegn + comb_deadn, rts_c_resp_frac,
+                  v2a_c, v2a_n, lat_vegc, lat_vegn);
+  tkdata->thermokarst_soi2lat.vegc = lat_vegc;
+  tkdata->thermokarst_soi2lat.vegn = lat_vegn;
 
   // There was commented code here, but has now been removed. See Wildfire.cpp 
   // if this maybe needed here. Modifying bdall.
@@ -526,8 +538,8 @@ void Thermokarst::initiate(int year) {
   }
   //fd->fire_v2dead.vegC = veg_2_dead_C; 
   //fd->fire_v2dead.strN = veg_2_dead_N;
-  tkdata->thermokarst_v2a.orgc =  comb_vegc - reta_vegc;
-  tkdata->thermokarst_v2a.orgn =  comb_vegn - reta_vegn;
+  tkdata->thermokarst_v2a.orgc =  v2a_c;
+  tkdata->thermokarst_v2a.orgn =  v2a_n;
   tkdata->thermokarst_v2soi.abvc = reta_vegc;
   tkdata->thermokarst_v2soi.abvn = reta_vegn;
   tkdata->thermokarst_v2soi.blwc = dead_bg_vegc;
@@ -607,7 +619,7 @@ void Thermokarst::getThermokarstAbgVegetation(const int ipft, const int year) {
   // r_thermokarst2ag_cn is fraction of PFT vegetation combusted
   // this->r_thermokarst2ag_cn = firpar.fvcomb[exp_severity_idx][ipft];
   // changed to fraction of vegetation removed from cell through slump
-  this->veg_remove_frac = 0.99;
+  this->veg_remove_frac = this->rts_veg_remove_frac; // PLACEHOLDER default 0.99
 
   // r_dead2ag_cn is fraction of PFT vegetation killed
   // this->r_dead2ag_cn = firpar.fvdead[exp_severity_idx][ipft];
@@ -654,11 +666,12 @@ double Thermokarst::getThermokarstSoilRemoval(const int year) {
   // >>> thickness removed from thermokarst disturbance
   double removal_thickness = 0.0;
 
-  if (this->thaw_depth>0.0){
-    removal_thickness = this->thaw_depth;
-  } else {
+  if (this->folr < 0.0 && this->thaw_depth <= 0.0) {
     BOOST_LOG_SEV(glg, warn) << "Thermokarst specified but no thawing front";
   }
+  removal_thickness = organicRemovalThickness(this->folr, cd->m_soil.mossthick,
+                                              cd->m_soil.shlwthick, cd->m_soil.deepthick,
+                                              this->thaw_depth);
 
   // >>> There was a severity index based on ALFRESCO. For now there will
   // only be one severity, but this is subject to development of state
@@ -802,6 +815,30 @@ double Thermokarst::getThermokarstSoilRemoval(const int year) {
   
   return removal_thickness;
 };
+
+void Thermokarst::setRTSParams(double folr_in, double c_resp_frac, double veg_remove_frac){
+  this->folr = folr_in;
+  this->rts_c_resp_frac = std::min(1.0, std::max(0.0, c_resp_frac));
+  this->rts_veg_remove_frac = std::min(1.0, std::max(0.0, veg_remove_frac));
+}
+
+/** Thickness of soil to remove. folr>=0: that fraction of the total organic
+ *  (moss+fibric+humic) thickness. folr<0: legacy RTS-branch behavior (thaw depth). */
+double Thermokarst::organicRemovalThickness(double folr, double moss, double shlw,
+                                            double deep, double legacy_thaw){
+  if (folr < 0.0) { return legacy_thaw > 0.0 ? legacy_thaw : 0.0; }
+  double f = std::min(1.0, folr);
+  return f * (moss + shlw + deep);
+}
+
+/** Split removed C/N: resp_frac to atmosphere, remainder exported laterally. */
+void Thermokarst::partitionLostCN(double lostc, double lostn, double resp_frac,
+                                  double &respc, double &respn,
+                                  double &latc, double &latn){
+  double r = std::min(1.0, std::max(0.0, resp_frac));
+  respc = lostc * r;  respn = lostn * r;
+  latc = lostc - respc; latn = lostn - respn;
+}
 
 void Thermokarst::setThawDepth(double depth){
   thaw_depth = depth;

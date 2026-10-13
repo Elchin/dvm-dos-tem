@@ -35,6 +35,14 @@ public:
   void load_projected_explicit_data(const std::string& exp_fname, int y, int x);
   
   void setThawDepth(double);
+  // RTS initiation parameters (PLACEHOLDER values, tunable; see config.js)
+  void setRTSParams(double folr, double c_resp_frac, double veg_remove_frac);
+  // Pure helpers (unit tested)
+  static double organicRemovalThickness(double folr, double moss, double shlw,
+                                        double deep, double legacy_thaw);
+  static void partitionLostCN(double lostc, double lostn, double resp_frac,
+                              double &respc, double &respn,
+                              double &latc, double &latn);
 
   void setCohortData(CohortData* cdp);
   void setAllEnvBgcData(EnvData* edp, BgcData* bdp);
@@ -102,7 +110,9 @@ private:
 
   firepar_bgc firpar; // >>> Need to address these somewhere else in data structures
 
-  double folr;           // Fraction Organic Layer Removed
+  double folr = -1.0;    // Fraction Organic Layer Removed (<0: legacy thaw-depth removal)
+  double rts_c_resp_frac = 0.0; // fraction of removed C/N respired (rest exported laterally)
+  double rts_veg_remove_frac = 0.99;
 
   // double r_live_cn;      // Ratio of living veg. after thermokarst
 

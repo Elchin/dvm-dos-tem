@@ -39,6 +39,7 @@ public:
 
   // atm2soi_fir fire_a2soi;
   atm2soi_thermokarst thermokarst_a2soi;
+  soi2lat_thermokarst thermokarst_soi2lat;
 
   void init();
   void beginOfYear();

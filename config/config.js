@@ -129,7 +129,13 @@
     "dynamic_lai": 1,                   // from model (1) or from input (0)
     "baseline_start": 1901,  //start year for baseline EQ climate
     "baseline_end": 1931,     //end year for baseline EQ climate
-    "thermokarst": false      //enabling thermokarst, controlled by disturbance (dsb) stage settings above
+    "thermokarst": false,     //enabling thermokarst, controlled by disturbance (dsb) stage settings above
+    // RTS initiation parameters -- PLACEHOLDER values, TUNABLE, not calibrated
+    "thermokarst_folr": -1.0,            // fraction of organic layer removed (<0: legacy, remove to thaw depth)
+    "thermokarst_c_resp_frac": 0.0,      // fraction of removed C/N respired; rest exported laterally
+    "thermokarst_veg_remove_frac": 0.99, // fraction of above-ground veg removed
+    "thermokarst_thaw_depth": 0.0,       // m; instant thaw of whole layers to this depth (<=0: off)
+    "thermokarst_post_drainage": -1      // -1 keep; 0 well-drained; 1 poorly-drained after initiation
 //    //"dynamic_climate": 0,
 //    //"varied_co2": 0,
 //    //"fire_severity_as_input": 0,    // fire sev. as input or ??

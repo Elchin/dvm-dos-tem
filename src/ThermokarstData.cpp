@@ -42,6 +42,7 @@ void ThermokarstData::clear() {
   thermokarst_v2soi = veg2soi_thermokarst();
   thermokarst_soi2a = soi2atm_thermokarst();
   thermokarst_v2dead = veg2dead_thermokarst();
+  thermokarst_soi2lat = soi2lat_thermokarst();
 
   //fire_a2soi is not cleared until FRI*12 months post fire, as it
   //holds the flux value for transferring N back to the soil.
