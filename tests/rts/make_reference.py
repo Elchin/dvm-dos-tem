@@ -24,8 +24,16 @@ if __name__ == '__main__':
     ap.add_argument('--baseline-binary', default=os.path.join(r.REPO, 'dvmdostem'))
     ap.add_argument('--rts-binary', default=os.path.join(r.REPO, 'dvmdostem'))
     ap.add_argument('--work', default='/tmp/rts_ref_work')
+    ap.add_argument('--only', nargs='*', default=None, help='subset of: baseline rts rts_ice')
     a = ap.parse_args()
-    keep(r.run(a.baseline_binary, a.work + '/baseline', False), os.path.join(REF, 'baseline'))
-    keep(r.run(a.rts_binary, a.work + '/rts', True, outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS}),
-         os.path.join(REF, 'rts'))
+    want = lambda n: a.only is None or n in a.only
+    if want('baseline'):
+        keep(r.run(a.baseline_binary, a.work + '/baseline', False), os.path.join(REF, 'baseline'))
+    if want('rts'):
+        keep(r.run(a.rts_binary, a.work + '/rts', True, outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS}),
+             os.path.join(REF, 'rts'))
+    if want('rts_ice'):
+      keep(r.run(a.rts_binary, a.work + '/rts_ice', True,
+               outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS, **r.ICE_OUTPUTS}, extra=r.ICE_PARAMS),
+         os.path.join(REF, 'rts_ice'))
     print('reference outputs written to', REF)

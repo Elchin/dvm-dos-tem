@@ -14,6 +14,10 @@ BASE_OUTPUTS = {'SOC': 'm', 'SHLWC': 'm', 'DEEPC': 'm', 'MOSSDZ': 'm', 'SHLWDZ':
                 'DEEPDZ': 'm', 'ALD': 'y', 'LWCLAYER': 'm', 'TLAYER': 'm',
                 'LAYERDZ': 'm', 'GPP': 'm', 'RH': 'm', 'VEGC': 'm', 'ORGN': 'm'}
 RTS_OUTPUTS = {'TKLATC': 'm', 'TKLATN': 'm', 'TKREMTHICK': 'm', 'TKICEMELT': 'm', 'DRAINTYPE': 'm'}
+ICE_OUTPUTS = {'TKSUBSID': 'm', 'TKEXICE': 'm', 'TKEXMELT': 'm', 'WATERTAB': 'm'}
+# PLACEHOLDER ice-rich profile for the synthetic cell (tunable)
+ICE_PARAMS = {'thermokarst_excess_fraction': 0.3, 'thermokarst_excess_top': 0.3,
+              'thermokarst_excess_bottom': 2.0}
 
 # PLACEHOLDER RTS parameters for the test (tunable, not calibrated)
 RTS_PARAMS = {'thermokarst_folr': 0.8, 'thermokarst_c_resp_frac': 0.1,
@@ -94,7 +98,7 @@ def compare_dirs(a, b, rtol=0.0, atol=0.0, skip=()):
     bad = []
     fa = sorted(f for f in os.listdir(a) if f.endswith('.nc') and not f.startswith('restart') and f != 'run_status.nc')
     fb = sorted(f for f in os.listdir(b) if f.endswith('.nc') and not f.startswith('restart') and f != 'run_status.nc')
-    if fa != fb: bad.append('file sets differ: %s vs %s' % (set(fa) ^ set(fb)))
+    if fa != fb: bad.append('file sets differ: %s' % (sorted(set(fa) ^ set(fb)),))
     for f in set(fa) & set(fb):
         if any(f.startswith(s) for s in skip): continue
         da, db = nc.Dataset(os.path.join(a, f)), nc.Dataset(os.path.join(b, f))

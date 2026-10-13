@@ -22,6 +22,11 @@ def runs(tmp_path_factory):
         'base': r.run(BIN, str(w / 'base'), False),
         'noop': r.run(BIN, str(w / 'noop'), True, tk_file='thermokarst-none.nc'),
         'rts':  r.run(BIN, str(w / 'rts'), True, outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS}),
+        # ice-rich cell, module on, no RTS: excess ice stays frozen -> baseline physics
+        'ice_noop': r.run(BIN, str(w / 'ice_noop'), True, tk_file='thermokarst-none.nc',
+                          outputs={**r.BASE_OUTPUTS, **r.ICE_OUTPUTS}, extra=r.ICE_PARAMS),
+        'rts_ice': r.run(BIN, str(w / 'rts_ice'), True,
+                         outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS, **r.ICE_OUTPUTS}, extra=r.ICE_PARAMS),
     }
 
 def test_unit_binary():
@@ -75,3 +80,47 @@ def test_drainage_switch(runs):
     d = r.read(runs['rts'], 'DRAINTYPE').ravel()
     assert np.all(d[:M] == 0)                         # synthetic cell starts well-drained
     assert np.all(d[M:] == r.RTS_PARAMS['thermokarst_post_drainage'])
+
+
+# ---------------- excess ice / subsidence (ported from thermokarst-prototype) -------------
+def test_rts_ice_matches_reference(runs):
+    assert r.compare_dirs(os.path.join(REF, 'rts_ice'), runs['rts_ice'], RTOL, ATOL) == []
+
+def test_excess_ice_noop_without_melt(runs):
+    """Ice-rich profile below the ALD, no RTS: no melt, no subsidence, and all
+    baseline variables identical to the RTS-off baseline (excess ice is passive)."""
+    o = runs['ice_noop']
+    assert np.all(r.read(o, 'TKSUBSID') == 0) and np.all(r.read(o, 'TKEXMELT') == 0)
+    x = r.read(o, 'TKEXICE').ravel()
+    assert x[0] > 0 and np.all(x == x[0])
+    bad = r.compare_dirs(runs['base'], o, 0.0, 0.0, skip=('TK', 'WATERTAB'))
+    assert [b for b in bad if not b.startswith('file sets differ')] == []
+
+def test_initialized_excess_ice_amount(runs):
+    p = r.ICE_PARAMS; f = p['thermokarst_excess_fraction']
+    x0 = r.read(runs['rts_ice'], 'TKEXICE').ravel()[0]
+    # all mineral layers in [top,bottom] are frozen in January of tr year 0 at this site
+    assert x0 == pytest.approx(917.0 * (p['thermokarst_excess_bottom'] - p['thermokarst_excess_top']) * f / (1 - f), rel=1e-6)
+
+def test_subsidence_equals_excess_melt(runs):
+    o = runs['rts_ice']
+    sub, melt, x = (r.read(o, v).ravel() for v in ('TKSUBSID', 'TKEXMELT', 'TKEXICE'))
+    assert np.all(sub[:M] == 0)                                  # nothing before initiation
+    assert sub[M] > 0.1                                          # RTS thaw releases excess ice
+    assert np.all(np.diff(sub) >= 0)                             # subsidence is monotonic
+    assert sub[-1] == pytest.approx(np.cumsum(melt)[-1] / 917.0, rel=1e-9)
+    assert x[0] - x[-1] == pytest.approx(np.sum(melt), rel=1e-9) # excess-ice mass balance
+
+def test_rts_ice_carbon_and_ald(runs):
+    o, b = runs['rts_ice'], runs['base']
+    soc = r.read(o, 'SOC').ravel()
+    assert soc[M] < 0.9 * soc[M - 1]
+    ald_b, ald_r = r.read(b, 'ALD', 'yearly').ravel(), r.read(o, 'ALD', 'yearly').ravel()
+    assert ald_r[RTS_YEAR] > ald_b[RTS_YEAR] + 0.2
+
+def test_water_table_shallows_after_subsidence(runs):
+    # coupling: on the step after collapse the WTD is reduced by the subsidence increment
+    wt_r = r.read(runs['rts_ice'], 'WATERTAB').ravel()
+    wt_n = r.read(runs['ice_noop'], 'WATERTAB').ravel()
+    assert np.array_equal(wt_r[:M], wt_n[:M])
+    assert wt_r[M + 1] < wt_n[M + 1]
