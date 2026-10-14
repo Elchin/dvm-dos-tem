@@ -281,3 +281,37 @@ def test_cmt70_deepc_spinup_n_and_closure(tmp_path):
     o = os.path.join(w, 'output')
     res = np.diff(_total_c(o)) - _net_flux(o)[1:]
     assert np.all(np.isfinite(res)) and np.max(np.abs(res)) < 0.01, np.max(np.abs(res))
+
+
+@pytest.mark.skipif(not os.path.exists(os.path.join(GYDAN70, 'two_stage_overrides.json')),
+                    reason='Gydan CMT70 inputs not available')
+def test_cmt70_deepc_rts_on_monthly_closure(tmp_path):
+    """CMT70 two-stage RTS run (slump 2021, scenario to 2045): after the slump
+    the root fraction of the receiving (non-moss) layers no longer summed to 1
+    and Soil_Bgc dropped the unassigned root litter (soil C fell behind
+    litter - RH by up to 0.067 g/month, -6.8 g over 30 yr)."""
+    import json, sys, netCDF4 as nc4
+    w = str(tmp_path / 'c70rts'); os.makedirs(w)
+    sf = os.path.join(w, 'output_spec.csv')
+    r.write_outspec(sf, {**r.BASE_OUTPUTS, **r.RTS_OUTPUTS})
+    ov = json.load(open(os.path.join(GYDAN70, 'two_stage_overrides.json')))
+    for k, v in ov['IO'].items():
+        if isinstance(v, str) and v.endswith('.nc'):
+            ov['IO'][k] = os.path.join(GYDAN70, v)
+    ov['IO']['output_spec_file'] = sf
+    ov['IO']['parameter_dir'] = os.path.join(r.REPO, 'parameters/')
+    json.dump(ov, open(os.path.join(w, 'ov.json'), 'w'))
+    p = subprocess.run([sys.executable, os.path.join(r.REPO, 'scripts', 'run_rts_two_stage.py'),
+                        '--binary', BIN, '--workdir', w, '--config-overrides', os.path.join(w, 'ov.json'),
+                        '--hist', '76', '--sc', '30', '--mode', 'rts'],
+                       capture_output=True, text=True, timeout=1800)
+    assert p.returncode == 0, (p.stdout + p.stderr)[-2000:]
+    def g(v):
+        d = nc4.Dataset(os.path.join(w, 'stage2b_rts', '%s_monthly_sc.nc' % v))
+        a = np.ma.filled(np.array(d[v][:], dtype=float), np.nan); d.close()
+        return np.nan_to_num(a.reshape(a.shape[0], -1)[:, 0])
+    C = g('VEGC') + g('SOC') + g('DEADC') + g('DWDC')
+    F = g('GPP') - g('RG') - g('RM') - g('RHSOM') - g('RHDWD') - g('TKLATC') - g('TKRESPC')
+    assert g('TKRESPC').max() > 0          # the slump happened
+    res = np.diff(C) - F[1:]
+    assert np.max(np.abs(res)) < 0.01, np.max(np.abs(res))

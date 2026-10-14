@@ -125,6 +125,20 @@ void Soil_Bgc::prepareIntegration(const bool &mdnfeedback,
   // double abvlfc = bd->m_v2soi.ltrfalc[I_stem] + bd->m_v2soi.ltrfalc[I_leaf];
   // double abvlfn = bd->m_v2soi.ltrfaln[I_stem] + bd->m_v2soi.ltrfaln[I_leaf];
 
+  // Root litter goes to layers by root fraction, but only non-moss layers
+  // take it. The part with no receiving layer (root fraction in moss layers,
+  // or no root fraction at all, e.g. roots removed with a slump) was dropped:
+  // route it with the above-ground litter into the first non-moss layer.
+  double rtfrac_taken = 0.;
+  for(int i=0; i<cd->m_soil.numsl; i++) {
+    if (cd->m_soil.type[i] > 0) { rtfrac_taken += bd->m_v2soi.rtlfalfrac[i]; }
+    else { ltrflc[i] = 0.; ltrfln[i] = 0.; }
+  }
+  if (rtfrac_taken < 1.) {
+    abvlfc += (1. - rtfrac_taken) * blwlfc;
+    abvlfn += (1. - rtfrac_taken) * blwlfn;
+  }
+
   for(int i=0; i<cd->m_soil.numsl; i++) {
     //FIX litterfall should be added to the shallow layer
     //There *must* be a shallow layer
