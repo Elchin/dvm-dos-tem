@@ -250,7 +250,7 @@ def test_cmt70_baseline_carbon_balance(tmp_path):
 
 @pytest.mark.skipif(not os.path.exists(os.path.join(GYDAN70, 'vegetation.nc')),
                     reason='Gydan CMT70 inputs not available')
-def test_cmt70_equilibrium_organic_n(tmp_path):
+def test_cmt70_deepc_spinup_n_and_closure(tmp_path):
     """deep_carbon_v2 burial drains organic-layer N into frozen mineral layers;
     root N uptake beyond AVLN was then borrowed from an exhausted layer's ORGN
     (negative ORGN by eq year ~590) and an all-frozen month divided by
@@ -261,7 +261,7 @@ def test_cmt70_equilibrium_organic_n(tmp_path):
     cfgp = r.make_config(w, False, tk_file='thermokarst-none.nc', data_dir=GYDAN70,
                          extra={'baseline_start': 1940, 'baseline_end': 1970})
     p = subprocess.run([BIN, '-f', cfgp, '-l', 'fatal', '-p', '100', '-e', '1000', '-s', '200',
-                        '-t', '0', '-n', '0'], cwd=r.REPO, capture_output=True, text=True, timeout=900)
+                        '-t', '76', '-n', '0'], cwd=r.REPO, capture_output=True, text=True, timeout=900)
     assert p.returncode == 0, p.stderr[-2000:]
     tot = {}
     for st in ('eq', 'sp'):
@@ -275,3 +275,9 @@ def test_cmt70_equilibrium_organic_n(tmp_path):
         tot[st] = o.sum() + a.sum()
     # spin-up only redistributes/recycles soil N here: column N stays put
     assert abs(tot['sp'] - tot['eq']) < 0.02 * tot['eq'], tot
+    # monthly C closure over the transient, incl. integrator-retry months (float
+    # rounding accumulated over their many steps: up to 0.066 g/month before the
+    # double-shadow state in Integrator::adapt)
+    o = os.path.join(w, 'output')
+    res = np.diff(_total_c(o)) - _net_flux(o)[1:]
+    assert np.all(np.isfinite(res)) and np.max(np.abs(res)) < 0.01, np.max(np.abs(res))
