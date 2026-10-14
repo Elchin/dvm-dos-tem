@@ -225,6 +225,20 @@ void Integrator::updateMonthlySbgc(const int & numsoillayer) {
   // integration
   report_array(y);
   adapt(y, NUMEQ_SOI);
+  if (blackhol) {
+    // 'blackhole' fallback (step size underflow, usually a mineral AVLN pool
+    // overdrawn late in the growing season) discards the month's soil C/N
+    // update while litter and RH are still reported -> C leak (e.g. ~-11 g/month
+    // Aug/Sep for Gydan CMT70). Redo the month tolerating negative AVLN, as is
+    // already done after an RTS (and negative ORGN, plus an absolute error
+    // floor for ~0 pools). Months that integrate normally are unchanged.
+    for (int iv = 0; iv < NUMEQ; iv++ ) { y[iv] = 0.0; }
+    c2ystate_soi(y);
+    sbgc_retry = true;
+    adapt(y, NUMEQ_SOI);
+    sbgc_retry = false;
+    n_avln_retries++;
+  }
   report_array(y);
   // after integration , save results back to 'bd';
   y2cstate_soi(y);
@@ -692,11 +706,11 @@ int Integrator::checkPools() {
       }
 
       if (ssl->get_nfeed()) {
-        if(ydum[I_L_AVLN+il]<0 && !tk_tolerate_neg_avln) {
+        if(ydum[I_L_AVLN+il]<0 && !tk_tolerate_neg_avln && !sbgc_retry) {
           return I_L_AVLN+il;
         }
 
-        if(ydum[I_L_ORGN+il]<0) {
+        if(ydum[I_L_ORGN+il]<0 && !sbgc_retry) {
           return I_L_ORGN+il;
         }
       }
@@ -721,7 +735,7 @@ int Integrator::checkPools() {
 int Integrator::boundcon( float ptstate[], float err[], float& ptol ) {
   int test = ACCEPT;
   double same = 0.;
-  double zero = 1.e-10;
+  double zero = sbgc_retry ? 1.e-6 : 1.e-10;
 
   // Check carbon and nitrogen state/flux variables
   if (vegbgc) {

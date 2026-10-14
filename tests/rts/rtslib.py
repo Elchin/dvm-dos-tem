@@ -69,7 +69,7 @@ def write_outspec(path, outputs):
         res.append(','.join(f))
     open(path, 'w').write('\n'.join(res) + '\n')
 
-def make_config(workdir, rts_on, tk_file='historic-explicit-thermokarst.nc', outputs=None, extra=None):
+def make_config(workdir, rts_on, tk_file='historic-explicit-thermokarst.nc', outputs=None, extra=None, data_dir=None):
     cfg = json.loads(strip_js_comments(open(os.path.join(REPO, 'config', 'config.js')).read()))
     io = cfg['IO']
     files = {'hist_climate_file': 'historic-climate.nc', 'proj_climate_file': 'projected-climate.nc',
@@ -82,7 +82,7 @@ def make_config(workdir, rts_on, tk_file='historic-explicit-thermokarst.nc', out
              'hist_exp_thermokarst_file': tk_file,
              'proj_exp_thermokarst_file': 'projected-explicit-thermokarst.nc'}
     for k, v in files.items():
-        io[k] = os.path.join(DATA, v)
+        io[k] = os.path.join(data_dir or DATA, v)
     io['parameter_dir'] = os.path.join(REPO, 'parameters') + '/'
     io['output_dir'] = os.path.join(workdir, 'output') + '/'
     io['output_spec_file'] = os.path.join(workdir, 'output_spec.csv')

@@ -39,6 +39,8 @@ public :
   // tolerated during the step and fixed by the existing N-conserving clip in
   // y2cstate_soi (deficit borrowed from ORGN). Off by default (RTS-off identical).
   bool tk_tolerate_neg_avln = false;
+  int n_avln_retries = 0;   // months re-integrated after a blackhole (diagnostic)
+  bool sbgc_retry = false;  // set only while re-integrating a blackholed month
 
   Integrator();
   ~Integrator();

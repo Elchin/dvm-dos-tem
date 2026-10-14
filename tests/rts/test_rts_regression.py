@@ -232,3 +232,17 @@ def test_m2d_new_path_changes_and_deepens_ald(runs):
     assert not np.array_equal(a_new, a_old)
     assert a_new.mean() >= a_old.mean()
 
+
+# ---------------- Gydan CMT70 baseline carbon balance (optional data) ---------
+GYDAN70 = os.environ.get('RTS_GYDAN70_DIR', '/workspace/russia-inputs/inputs/gydan_cmt70')
+
+@pytest.mark.skipif(not os.path.exists(os.path.join(GYDAN70, 'vegetation.nc')),
+                    reason='Gydan CMT70 inputs not available')
+def test_cmt70_baseline_carbon_balance(tmp_path):
+    """RTS-off CMT70 closed with ~-11 gC/m2/month gaps in Aug/Sep: soil-integrator
+    'blackhole' fallback (negative AVLN/ORGN) discarded the month's soil update."""
+    o = r.run(BIN, str(tmp_path / 'c70'), False, tk_file='thermokarst-none.nc', data_dir=GYDAN70,
+              extra={'baseline_start': 1940, 'baseline_end': 1970})
+    C, F = _total_c(o), _net_flux(o)
+    res = np.diff(C) - F[1:]
+    assert np.max(np.abs(res[12:])) < 0.01
