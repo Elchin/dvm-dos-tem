@@ -465,6 +465,39 @@ void Integrator::y2cstate_veg(float y[]) {
   bd->m_vegs.deadn = y[I_DEADN];
 };
 
+double Integrator::cover_negative_orgn(double orgn[], const double rootfrac[], int n) {
+  double deficit = 0.0;
+  for (int il = 0; il < n; il++) {
+    if (orgn[il] < 0.0) { deficit -= orgn[il]; orgn[il] = 0.0; }
+  }
+  if (deficit <= 0.0) { return 0.0; }
+  const double need = deficit;
+  for (int tier = 0; tier < 2 && deficit > 0.0; tier++) {
+    double avail = 0.0;
+    for (int il = 0; il < n; il++) {
+      if (orgn[il] > 0.0 && (tier == 1 || rootfrac[il] > 0.0)) { avail += orgn[il]; }
+    }
+    if (avail <= 0.0) { continue; }
+    const double f = fmin(deficit / avail, 1.0);
+    for (int il = 0; il < n; il++) {
+      if (orgn[il] > 0.0 && (tier == 1 || rootfrac[il] > 0.0)) {
+        const double take = f * orgn[il];
+        orgn[il] -= take; deficit -= take;
+      }
+    }
+    if (f >= 1.0) { deficit = fmax(deficit, 0.0); }
+  }
+  if (deficit > 1.e-12) {
+    // nothing left to cover it: put the remainder back (N is not created)
+    for (int il = 0; il < n; il++) {
+      if (rootfrac[il] > 0.0) { orgn[il] -= deficit; deficit = 0.0; break; }
+    }
+    if (deficit > 0.0 && n > 0) { orgn[0] -= deficit; }
+    return need - deficit;
+  }
+  return need;
+}
+
 void Integrator::y2cstate_soi(float y[]) {
   for(int il=0; il<numsl; il++) {
     bd->m_sois.rawc[il] = y[I_L_RAWC+il];
@@ -480,6 +513,9 @@ void Integrator::y2cstate_soi(float y[]) {
     bd->m_sois.orgn[il] = y[I_L_ORGN+il];
     bd->m_sois.avln[il] = y[I_L_AVLN+il];
   }
+  // a layer whose ORGN went negative (deficit borrow above, or a tolerated
+  // step) draws on the other layers instead of carrying negative N forward
+  cover_negative_orgn(bd->m_sois.orgn, bd->m_v2soi.rtlfalfrac, numsl);
 
   bd->m_sois.wdebrisc = y[I_WDEBRISC];
   bd->m_sois.wdebrisn = y[I_WDEBRISN];

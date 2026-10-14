@@ -42,6 +42,13 @@ public :
   int n_avln_retries = 0;   // months re-integrated after a blackhole (diagnostic)
   bool sbgc_retry = false;  // set only while re-integrating a blackholed month
 
+  // Cover negative layer ORGN (left by the AVLN-deficit borrow in y2cstate_soi
+  // or a tolerated negative step) from other layers' positive ORGN: first
+  // root-zone layers (rootfrac>0), then any layer, in proportion to their ORGN.
+  // Column N is conserved; a remainder is left negative only if the column has
+  // no positive ORGN to cover it. Returns the amount moved (g N/m2).
+  static double cover_negative_orgn(double orgn[], const double rootfrac[], int n);
+
   Integrator();
   ~Integrator();
 

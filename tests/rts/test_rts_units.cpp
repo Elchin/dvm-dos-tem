@@ -11,6 +11,7 @@
 // white-box access to Soil_Bgc internals for the burial conservation test
 #define private public
 #include "Soil_Bgc.h"
+#include "Integrator.h"
 #undef private
 #include "CohortData.h"
 #include "EnvData.h"
@@ -266,6 +267,25 @@ static void test_burial_conserves_c_and_n() {
   CHECK(sb.del_sois.orgn[1] > -sb.tmp_sois.orgn[1]);  // humic N not over-drawn
 }
 
+// Negative layer ORGN (AVLN-deficit borrow in Integrator::y2cstate_soi) is covered
+// from other layers, root zone first; column N is conserved exactly.
+static void test_cover_negative_orgn() {
+  double o[5] = {2.0, -0.5, 1.0, 10.0, -0.25}; double rf[5] = {0.5, 0.3, 0.2, 0.0, 0.0};
+  double before = 0; for (int i = 0; i < 5; i++) before += o[i];
+  double moved = Integrator::cover_negative_orgn(o, rf, 5);
+  double after = 0; bool nonneg = true; for (int i = 0; i < 5; i++) { after += o[i]; nonneg = nonneg && o[i] >= 0; }
+  CHECK_NEAR(moved, 0.75, 1e-12); CHECK_NEAR(after, before, 1e-12); CHECK(nonneg);
+  CHECK_NEAR(o[3], 10.0, 1e-12);                 // root-zone layers covered it
+  double o2[3] = {0.1, -1.0, 5.0}; double rf2[3] = {1.0, 1.0, 0.0};
+  Integrator::cover_negative_orgn(o2, rf2, 3);   // root zone short -> rest from below
+  CHECK_NEAR(o2[0] + o2[1] + o2[2], 4.1, 1e-12); CHECK(o2[0] >= 0 && o2[1] >= 0 && o2[2] >= 0);
+  double o3[2] = {0.2, -1.0}; double rf3[2] = {1.0, 1.0};
+  Integrator::cover_negative_orgn(o3, rf3, 2);   // column short: no N created
+  CHECK_NEAR(o3[0] + o3[1], -0.8, 1e-12);
+  double o4[3] = {1.0, 2.0, 3.0}; double rf4[3] = {1, 1, 1};
+  CHECK(Integrator::cover_negative_orgn(o4, rf4, 3) == 0.0 && o4[1] == 2.0);  // no-op
+}
+
 int main() {
   test_excess_ice_init();
   test_excess_melt_subsidence();
@@ -277,6 +297,7 @@ int main() {
   test_m2d_constant_and_tdd();
   test_m2d_legacy_bit_identical();
   test_burial_conserves_c_and_n();
+  test_cover_negative_orgn();
   std::printf("RTS unit tests: %d passed, %d failed\n", g_pass, g_fail);
   return g_fail == 0 ? 0 : 1;
 }

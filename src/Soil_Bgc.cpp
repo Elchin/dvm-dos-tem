@@ -732,8 +732,12 @@ void Soil_Bgc::deltan() {
         double nminadj = del_soi2l.avlnlost +
                          totnextract - bd->m_a2soi.avlninput - totdzavln;
 
-        for(int i=0; i<cd->m_soil.numsl; i++) {
-          del_soi2soi.netnmin[i] *=nminadj/totnetnmin;
+        // totnetnmin can be 0 (all layers frozen): no mineralization to
+        // rescale, and nminadj/0 would put NaN into every N pool
+        if (totnetnmin != 0.0) {
+          for(int i=0; i<cd->m_soil.numsl; i++) {
+            del_soi2soi.netnmin[i] *=nminadj/totnetnmin;
+          }
         }
       }
     } else { // End (this->avlnflg == 1)
