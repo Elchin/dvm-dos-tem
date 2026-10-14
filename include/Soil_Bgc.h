@@ -23,6 +23,12 @@ using namespace std;
 
 class Soil_Bgc {
 public:
+  // litter/debris inputs prepared for this month's soil integration
+  double litter_c(int il) const { return ltrflc[il]; }
+  double litter_n(int il) const { return ltrfln[il]; }
+  double debris_c() const { return d2wdebrisc; }
+  double debris_n() const { return d2wdebrisn; }
+
   Soil_Bgc();
   ~Soil_Bgc();
 

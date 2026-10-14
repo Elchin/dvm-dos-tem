@@ -424,6 +424,10 @@ void Thermokarst::initiate(int year) {
       // root death ratio: must be called after both above-ground and
       // below-ground loss. r_live_cn is same for both above-ground
       // and below-ground
+      // the roots removed with the soil plus the retained (living) fraction
+      // can exceed 1 (all rooted layers removed): the removal then counted
+      // more root C/N as lost than left the pool (negative dead-root C)
+      r_thermokarst2bg_cn[ip] = fmin(r_thermokarst2bg_cn[ip], 1.0 - veg_retain_frac);
       double r_dead2bg_cn = 1.0-r_thermokarst2bg_cn[ip]-veg_retain_frac;
 
       // Dead veg C, N. Assuming all previous deadc burned.

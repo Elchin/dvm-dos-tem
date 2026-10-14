@@ -491,7 +491,10 @@ void Soil_Env::retrieveDailyFronts() {
 void Soil_Env::updateDailySM(double weighted_veg_tran) {
   // define the soil water module's domain
   //Skip moss for all soil moisture calculations
-  Layer * fstsoill = ground->fstshlwl;
+  // After an RTS (or fire) all fibric layers can be gone until litterfall
+  // builds a new one: start the domain at the first non-moss soil layer
+  Layer * fstsoill = ground->fstshlwl ? ground->fstshlwl
+                     : (ground->fstdeepl ? ground->fstdeepl : ground->fstminel);
   Layer * lstsoill = ground->lstsoill;
   Layer * drainl = ground->drainl;
   double draindepth = ground->draindepth;
@@ -623,8 +626,8 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   // a closed talik, there should be no water exiting other than
   // transpiration, and in the case of an open talik, our equations
   // may need modification. 
-  if(ground->fstshlwl->frozen != 1 && ground->fstmossl->frozen != 1){
-    richards.update(ground->fstshlwl, drainl, draindepth, baseflow,
+  if(fstsoill->frozen != 1 && ground->fstmossl->frozen != 1){
+    richards.update(fstsoill, drainl, draindepth, baseflow,
                     ed->d_sois.watertab, root_water_up, evap,
                     infil, cd->cell_slope);
     ed->d_soi2l.qdrain += richards.qdrain;
@@ -661,9 +664,9 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   }
   //for moss layers excluded from hydrological process, match
   //water to first shallow layer.
-  currl = ground->fstshlwl->prevl;
+  currl = fstsoill->prevl;
   while (currl!=NULL && currl->isMoss) {
-    double lwc = ground->fstshlwl->getVolLiq();
+    double lwc = fstsoill->getVolLiq();
     currl->liq = currl->dz*(1.0-currl->frozenfrac) * lwc * DENLIQ;
     currl=currl->prevl;
   }

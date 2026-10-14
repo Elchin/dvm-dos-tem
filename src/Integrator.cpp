@@ -239,6 +239,19 @@ void Integrator::updateMonthlySbgc(const int & numsoillayer) {
     adapt(y, NUMEQ_SOI);
     sbgc_retry = false;
     n_avln_retries++;
+    if (blackhol) {
+      // the retry also fell back: the pools (and integrated RH) stop at
+      // bh_time, but the whole month's litter/debris input is reported, so the
+      // rest of the input was lost (e.g. -11..-14 gC in Aug, Gydan CMT21 RTS).
+      // Add the unintegrated remainder of the inputs to the pools.
+      const double rest = 1.0 - (double)bh_time;
+      for (int il = 0; il < numsl; il++) {
+        y[I_L_RAWC+il] += rest * ssl->litter_c(il);
+        if (ssl->get_nfeed()) { y[I_L_ORGN+il] += rest * ssl->litter_n(il); }
+      }
+      y[I_WDEBRISC] += rest * ssl->debris_c();
+      y[I_WDEBRISN] += rest * ssl->debris_n();
+    }
   }
   report_array(y);
   // after integration , save results back to 'bd';
@@ -282,6 +295,7 @@ int Integrator::adapt(float pstate[], const int & numeq) {
   float oldstate[numeq];
   float  ptol = 0.01;
   blackhol = 0;
+  bh_time = 1.0;
   // Soil integration: keep the accepted state in double (increment pdt*yprime
   // added to a double shadow, float copy for the RK stages). In float, every
   // accepted step rounds every pool (ulp ~5e-4 g for multi-kg layer C), so months
@@ -317,6 +331,7 @@ int Integrator::adapt(float pstate[], const int & numeq) {
             for( i = 0; i < numeq; i++ ) {
               oldstate[i] = pstate[i];
             }
+            bh_time = time;
           }
 
           ++nintmon;
