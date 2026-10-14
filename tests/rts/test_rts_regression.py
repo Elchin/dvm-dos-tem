@@ -360,3 +360,14 @@ def test_cmt70_deepc_rts_on_monthly_closure(tmp_path):
     assert g('TKRESPC').max() > 0          # the slump happened
     res = np.diff(C) - F[1:]
     assert np.max(np.abs(res)) < 0.01, np.max(np.abs(res))
+
+
+@pytest.mark.skipif(not os.path.exists(os.path.join(GYDAN70, 'two_stage_overrides.json')),
+                    reason='Gydan CMT70 inputs not available')
+def test_cmt52_rts_on_no_fibric_layer(tmp_path):
+    """CMT52 (heath-lichen): the slump leaves no fibric layer and, with the
+    vegetation removed, no litter builds a new one. Soil_Env::updateDailySM
+    dereferenced ground->fstshlwl (NULL) -> segfault the month after the slump;
+    the month's litter was also dropped with no fibric layer to take it."""
+    res = _gydan_cmt_two_stage(tmp_path, 52)
+    assert np.max(np.abs(res)) < 0.01, np.max(np.abs(res))
