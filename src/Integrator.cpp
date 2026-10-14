@@ -1,3 +1,4 @@
+#include <vector>
 /*! \file
 *
 * Yuan: 1)modified for 3 plant C pools (leaf, wood, root), 1 non-living plant C
@@ -281,6 +282,14 @@ int Integrator::adapt(float pstate[], const int & numeq) {
   float oldstate[numeq];
   float  ptol = 0.01;
   blackhol = 0;
+  // Soil integration: keep the accepted state in double (increment pdt*yprime
+  // added to a double shadow, float copy for the RK stages). In float, every
+  // accepted step rounds every pool (ulp ~5e-4 g for multi-kg layer C), so months
+  // needing many steps (integrator-retry months: ~45 steps vs ~4) accumulated
+  // 0.01-0.07 gC/month mismatch between pool change and integrated fluxes.
+  const bool dshadow = soibgc;
+  std::vector<double> dstate(dshadow ? numeq : 0);
+  for (i = 0; dshadow && i < numeq; i++) { dstate[i] = pstate[i]; }
 
   while ( time != 1.0 ) {
     test = REJECT;
@@ -315,8 +324,15 @@ int Integrator::adapt(float pstate[], const int & numeq) {
 
         // We are keeping this one...
         if ( test == ACCEPT ) {
-          for( i = 0; i < numeq; i++ ) {
-            pstate[i] = dum4[i];
+          if (dshadow) {
+            for( i = 0; i < numeq; i++ ) {
+              dstate[i] += (double)dt * (double)yprime[i];
+              pstate[i] = (float)dstate[i];
+            }
+          } else {
+            for( i = 0; i < numeq; i++ ) {
+              pstate[i] = dum4[i];
+            }
           }
 
           time += dt;
