@@ -155,6 +155,7 @@ private:
   int boundcon( float ptstate[], float err[], float& ptol) ;
 
   int blackhol;
+  float bh_time;  // month fraction integrated before a blackhole fallback
 
   float inittol;
   int maxit;

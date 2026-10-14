@@ -283,6 +283,51 @@ def test_cmt70_deepc_spinup_n_and_closure(tmp_path):
     assert np.all(np.isfinite(res)) and np.max(np.abs(res)) < 0.01, np.max(np.abs(res))
 
 
+def _gydan_cmt_two_stage(tmp_path, cmt):
+    """Two-stage RTS run (slump 2021, scenario to 2045) on the Gydan CMT70 cell
+    with the vegetation class set to `cmt`; returns stage2b monthly C residuals."""
+    import json, sys, shutil, netCDF4 as nc4
+    data = str(tmp_path / ('in%02d' % cmt)); os.makedirs(data)
+    for f in os.listdir(GYDAN70):
+        if f != 'vegetation.nc':
+            os.symlink(os.path.join(GYDAN70, f), os.path.join(data, f))
+    shutil.copy(os.path.join(GYDAN70, 'vegetation.nc'), os.path.join(data, 'vegetation.nc'))
+    v = nc4.Dataset(os.path.join(data, 'vegetation.nc'), 'a'); v['veg_class'][:] = cmt; v.close()
+    w = str(tmp_path / ('c%02drts' % cmt)); os.makedirs(w)
+    sf = os.path.join(w, 'output_spec.csv')
+    r.write_outspec(sf, {**r.BASE_OUTPUTS, **r.RTS_OUTPUTS})
+    ov = json.load(open(os.path.join(data, 'two_stage_overrides.json')))
+    for k, val in ov['IO'].items():
+        if isinstance(val, str) and val.endswith('.nc'):
+            ov['IO'][k] = os.path.join(data, val)
+    ov['IO']['output_spec_file'] = sf
+    ov['IO']['parameter_dir'] = os.path.join(r.REPO, 'parameters/')
+    json.dump(ov, open(os.path.join(w, 'ov.json'), 'w'))
+    p = subprocess.run([sys.executable, os.path.join(r.REPO, 'scripts', 'run_rts_two_stage.py'),
+                        '--binary', BIN, '--workdir', w, '--config-overrides', os.path.join(w, 'ov.json'),
+                        '--hist', '76', '--sc', '30', '--mode', 'rts'],
+                       capture_output=True, text=True, timeout=1800)
+    assert p.returncode == 0, (p.stdout + p.stderr)[-2000:]
+    def g(vn):
+        d = nc4.Dataset(os.path.join(w, 'stage2b_rts', '%s_monthly_sc.nc' % vn))
+        a = np.ma.filled(np.array(d[vn][:], dtype=float), np.nan); d.close()
+        return np.nan_to_num(a.reshape(a.shape[0], -1)[:, 0])
+    C = g('VEGC') + g('SOC') + g('DEADC') + g('DWDC')
+    F = g('GPP') - g('RG') - g('RM') - g('RHSOM') - g('RHDWD') - g('TKLATC') - g('TKRESPC')
+    assert g('TKRESPC').max() > 0          # the slump happened
+    return np.diff(C) - F[1:]
+
+
+@pytest.mark.skipif(not os.path.exists(os.path.join(GYDAN70, 'two_stage_overrides.json')),
+                    reason='Gydan CMT70 inputs not available')
+def test_cmt21_rts_on_closure_double_blackhole(tmp_path):
+    """CMT21 after the slump: some Augusts blackholed again in the retry; the
+    pools stopped part-way through the month while the whole month's litter
+    was reported (-11..-14 gC/month, -122 g over 30 yr)."""
+    res = _gydan_cmt_two_stage(tmp_path, 21)
+    assert np.max(np.abs(res)) < 0.01, np.max(np.abs(res))
+
+
 @pytest.mark.skipif(not os.path.exists(os.path.join(GYDAN70, 'two_stage_overrides.json')),
                     reason='Gydan CMT70 inputs not available')
 def test_cmt70_deepc_rts_on_monthly_closure(tmp_path):
