@@ -849,6 +849,7 @@ void Soil_Bgc::deltastate() {
     //      above) will move down so that fibric horizon will be
     //      coarse-material dominated (active SOM will remain)
     if (cd->m_soil.type[il]<=1) {
+      const double s2d_before = s2d_rawc + s2d_soma + s2d_sompr + s2d_somcr;
       if (del_sois.sompr[il] > 0.) {
         s2d_sompr += del_sois.sompr[il]*s2df_sompr;   //
         del_sois.sompr[il] *= (1.0-s2df_sompr); // <<-- NOTE: may set delta sompr to zero?
@@ -877,15 +878,15 @@ void Soil_Bgc::deltastate() {
 //          del_orgn[il] = - (s2dcarbon1+s2dcarbon2) / totsomc
 //                          * tmp_sois.orgn[il]; //assuming C/N same for all
                                                //  SOM components
-        if (totsomc > (s2d_rawc + s2d_soma + s2d_somcr + s2d_sompr)) {
-          del_orgn[il] = - (s2d_rawc + s2d_soma + s2d_somcr + s2d_sompr) / totsomc
-                          * tmp_sois.orgn[il]; //assuming C/N same for all
-                                               //  SOM components
-        } else {
-          del_orgn[il] = 0.0;
+        // N leaves with the C buried from THIS layer, at this layer's C:N
+        // (deep_carbon_v2 used the running total over all layers and '=')
+        const double layc = s2d_rawc + s2d_soma + s2d_somcr + s2d_sompr - s2d_before;
+        double moved_n = 0.0;
+        if (totsomc > 0.0 && layc > 0.0) {
+          moved_n = fmin(layc / totsomc, 1.0) * fmax(tmp_sois.orgn[il], 0.0);
         }
-
-        s2d_orgn += (-del_orgn[il]); //note: del_orgn[il] above is not positive
+        del_orgn[il] -= moved_n;
+        s2d_orgn += moved_n;
       }
 
       // In case there is no existing deep humific layer
@@ -967,6 +968,7 @@ void Soil_Bgc::deltastate() {
 
 
 
+      const double d2m_before = d2m_rawc + d2m_soma + d2m_sompr + d2m_somcr;
       if (del_sois.sompr[il] > 0.) {
         d2m_sompr += del_sois.sompr[il]*d2mf_sompr;   //
         del_sois.sompr[il] *= (1.0-d2mf_sompr); // <<-- NOTE: may set delta sompr to zero?
@@ -995,15 +997,16 @@ void Soil_Bgc::deltastate() {
 //          del_orgn[il] = - (s2dcarbon1+s2dcarbon2) / totsomc
 //                          * tmp_sois.orgn[il]; //assuming C/N same for all
                                                //  SOM components
-        if (totsomc > (d2m_rawc + d2m_soma + d2m_somcr + d2m_sompr)) {
-          del_orgn[il] = - (d2m_rawc + d2m_soma + d2m_somcr + d2m_sompr) / totsomc
-                          * tmp_sois.orgn[il]; //assuming C/N same for all
-                                               //  SOM components
-        } else {
-          del_orgn[il] = 0.0;
+        // N leaves with the C buried from THIS layer, at this layer's C:N,
+        // and is subtracted from (not assigned over) the N just buried into
+        // this layer from the fibric horizon (deep_carbon_v2 overwrote it)
+        const double layc = d2m_rawc + d2m_soma + d2m_somcr + d2m_sompr - d2m_before;
+        double moved_n = 0.0;
+        if (totsomc > 0.0 && layc > 0.0) {
+          moved_n = fmin(layc / totsomc, 1.0) * fmax(tmp_sois.orgn[il], 0.0);
         }
-
-        d2m_orgn += (-del_orgn[il]); //note: del_orgn[il] above is not positive
+        del_orgn[il] -= moved_n;
+        d2m_orgn += moved_n;
       }
 
 
@@ -1035,10 +1038,8 @@ void Soil_Bgc::deltastate() {
 //      }
 
 
-      if (mlleft<=0.0) {
-        break;
-      }
-
+      // deposit this layer's share before the depth check (deep_carbon_v2
+      // broke out first, so the layer that exhausts xtopmlthick got nothing)
       del_sois.sompr[il] += dcaddfrac * d2m_sompr;
       del_sois.somcr[il] += dcaddfrac * d2m_somcr;
       del_sois.soma[il] += dcaddfrac * d2m_soma;
@@ -1046,6 +1047,10 @@ void Soil_Bgc::deltastate() {
 
       if (this->nfeed == 1) {
         del_orgn[il]+=d2m_orgn * dcaddfrac;
+      }
+
+      if (mlleft<=0.0) {
+        break;
       }
     } // end soil type 3
   }

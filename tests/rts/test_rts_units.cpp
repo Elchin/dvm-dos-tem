@@ -8,6 +8,13 @@
 #include "Climate.h"
 #include "TEMUtilityFunctions.h"
 #include <algorithm>
+// white-box access to Soil_Bgc internals for the burial conservation test
+#define private public
+#include "Soil_Bgc.h"
+#undef private
+#include "CohortData.h"
+#include "EnvData.h"
+#include "BgcData.h"
 
 static int g_fail = 0, g_pass = 0;
 #define CHECK(cond) do { if (cond) { g_pass++; } else { g_fail++; \
@@ -218,6 +225,47 @@ static void test_m2d_legacy_bit_identical() {
   CHECK(same);
 }
 
+// deep_carbon_v2 burial (Soil_Bgc::deltastate part II) must only move C and N
+// between layers. Column: fibric | humic | mineral 2.6 m | mineral 2.6 m, so the
+// second mineral layer exhausts xtopmlthick (5.2 m) exactly.
+static void test_burial_conserves_c_and_n() {
+  CohortData cd; EnvData ed; BgcData bd; Soil_Bgc sb;
+  sb.setCohortData(&cd); sb.setEnvData(&ed); sb.setBgcData(&bd);
+  const int n = 4; cd.m_soil.numsl = n;
+  int type[n] = {1, 2, 3, 3}; double dz[n] = {0.05, 0.10, 2.6, 2.6};
+  double z = 0.0;
+  for (int i = 0; i < n; ++i) { cd.m_soil.type[i] = type[i]; cd.m_soil.dz[i] = dz[i]; cd.m_soil.z[i] = z; z += dz[i]; }
+  cd.m_soil.deepthick = 0.10;
+  sb.bgcpar.som2co2 = 0.5; sb.bgcpar.fsoma = 0.3; sb.bgcpar.fsompr = 0.5; sb.bgcpar.fsomcr = 0.2;
+  sb.set_nfeed(1); sb.set_avlnflg(0); sb.set_baseline(0);
+  sb.d2wdebrisc = 0.; sb.d2wdebrisn = 0.; sb.totdzliq = 0.; sb.del_soi2l.avlnlost = 0.;
+  sb.tmp_sois.wdebrisc = 0.; sb.tmp_sois.wdebrisn = 0.; sb.del_soi2a.rhwdeb = 0.;
+  bd.m_a2soi.avlninput = 0.; bd.m_a2soi.orgninput = 0.;
+  double rhr[n] = {1.0, 0.2, 0.0, 0.0}, rha[n] = {0.0, 1.0, 0.0, 0.0}, lc[n] = {5.0, 0.5, 0.0, 0.0};
+  double expC = 0.0;
+  for (int i = 0; i < n; ++i) {
+    sb.del_soi2a.rhrawc[i] = rhr[i]; sb.del_soi2a.rhsoma[i] = rha[i];
+    sb.del_soi2a.rhsompr[i] = 0.1; sb.del_soi2a.rhsomcr[i] = 0.05;
+    sb.ltrflc[i] = lc[i]; sb.ltrfln[i] = 0.0; sb.rtnextract[i] = 0.0;
+    sb.del_soi2soi.netnmin[i] = 0.0; bd.m_v2soi.rtlfalfrac[i] = 0.0;
+    sb.tmp_sois.rawc[i] = 100.0 * (i + 1); sb.tmp_sois.soma[i] = 50.0; sb.tmp_sois.sompr[i] = 80.0;
+    sb.tmp_sois.somcr[i] = 120.0; sb.tmp_sois.orgn[i] = 10.0 * (i + 1); sb.tmp_sois.avln[i] = 0.1;
+    double rhsum = rhr[i] + rha[i] + 0.15;
+    expC += lc[i] - rhsum * (1.0 + 0.5) + rhsum * 0.5 * (0.3 + 0.5 + 0.2);   // part (I) only
+  }
+  sb.deltastate();
+  double dC = 0.0, dN = 0.0;
+  for (int i = 0; i < n; ++i) {
+    dC += sb.del_sois.rawc[i] + sb.del_sois.soma[i] + sb.del_sois.sompr[i] + sb.del_sois.somcr[i];
+    dN += sb.del_sois.orgn[i];
+  }
+  CHECK_NEAR(dC, expC, 1e-10);      // burial moves C only (no loss at the 5.2 m boundary)
+  CHECK_NEAR(dN, 0.0, 1e-10);       // burial moves N only (no overwrite in humic layers)
+  double c3 = sb.del_sois.rawc[3] + sb.del_sois.soma[3] + sb.del_sois.sompr[3] + sb.del_sois.somcr[3];
+  CHECK(c3 > 0.0);                  // layer exhausting xtopmlthick receives its share
+  CHECK(sb.del_sois.orgn[1] > -sb.tmp_sois.orgn[1]);  // humic N not over-drawn
+}
+
 int main() {
   test_excess_ice_init();
   test_excess_melt_subsidence();
@@ -228,6 +276,7 @@ int main() {
   test_m2d_continuity();
   test_m2d_constant_and_tdd();
   test_m2d_legacy_bit_identical();
+  test_burial_conserves_c_and_n();
   std::printf("RTS unit tests: %d passed, %d failed\n", g_pass, g_fail);
   return g_fail == 0 ? 0 : 1;
 }
