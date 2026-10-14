@@ -1358,7 +1358,12 @@ COMBINEBEGIN:
 
       plnew->tem = nextsl->tem;
       getLayerFrozenstatusByFronts(plnew);
-      plnew->rawc  = abvgfallC;
+      // The new fibric layer's C is this month's above-ground litter, which
+      // the soil integrator already put into the layer below: move it from
+      // there instead of creating it (was a C source, e.g. ~7 g after RTS).
+      double movec = fmax(0., fmin(abvgfallC, nextsl->rawc));
+      plnew->rawc  = movec;
+      nextsl->rawc -= movec;
       plnew->soma  = 0.;
       plnew->sompr = 0.;
       plnew->somcr = 0.;

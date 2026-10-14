@@ -70,9 +70,8 @@ def test_organic_c_drop_and_lateral_export(runs):
     assert deep[M] < deep[M - 1]
     assert latc[M] > 0 and np.all(latc[:M] == 0) and np.all(latc[M + 1:] == 0)
     # removed (soil + veg) ~= lateral / (1 - resp_frac); monthly fluxes add small noise
-    # NOTE: VEGC output for month M is captured before the disturbance step,
-    # so the veg drop appears between M and M+1 (SOC drops at M).
-    removed = (soc[M - 1] - soc[M]) + (vegc[M] - vegc[M + 1])
+    # VEGC and SOC both drop in month M (VEGC used to lag one month)
+    removed = (soc[M - 1] - soc[M]) + (vegc[M - 1] - vegc[M])
     assert latc[M] / (1 - f) == pytest.approx(removed, rel=0.02)
     assert r.read(o, 'TKLATN').ravel()[M] > 0
     assert r.read(o, 'TKREMTHICK').ravel()[M] > 0
@@ -191,10 +190,19 @@ def test_carbon_balance_before_initiation(runs):
         assert C[M - 1] - C[12] == pytest.approx(F[13:M].sum(), abs=0.05), k
 
 def test_carbon_balance_at_initiation(runs):
-    # window spanning the event (VEGC is recorded before the disturbance step)
+    # window spanning the event
     o = runs['rts']; C, F = _total_c(o), _net_flux(o)
     removed = _g(o, 'TKLATC')[M] + _g(o, 'TKRESPC')[M]
     assert C[M + 1] - C[M - 1] == pytest.approx(F[M:M + 2].sum(), abs=0.01 * removed)
+
+
+def test_carbon_balance_slump_month(runs):
+    """Pool removal and TKLATC/TKRESPC fall in the same month (VEGC used to lag
+    one month; dead-root N went to somcr; the re-created fibric layer got
+    litter C out of nothing)."""
+    o = runs['rts']; C, F = _total_c(o), _net_flux(o)
+    assert abs((C[M] - C[M - 1]) - F[M]) < 0.01
+    assert abs((C[M + 1] - C[M]) - F[M + 1]) < 0.01
 
 
 def test_carbon_balance_after_initiation(runs):
@@ -223,3 +231,4 @@ def test_m2d_new_path_changes_and_deepens_ald(runs):
     a_old = r.read(runs['leg_base'], 'ALD', 'yearly').ravel()
     assert not np.array_equal(a_new, a_old)
     assert a_new.mean() >= a_old.mean()
+

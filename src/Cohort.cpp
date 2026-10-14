@@ -901,8 +901,17 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
       thermokarst.initiate(year);
       BOOST_LOG_SEV(glg, debug) << "Right after thermokarst.initiate(..)  " << ground.layer_report_string();
 
-      // BOOST_LOG_SEV(glg, debug) << "Collect burned veg C/N from individual pfts into bdall...";
-    
+      // Rebuild bdall veg state from the post-RTS pft pools so this month's
+      // outputs (VEGC etc.) show the removal in the same month as TKLATC/TKRESPC
+      // (previously bdall kept its pre-RTS values until next month's aggregation).
+      for (int i=0; i<NUM_PFT_PART; i++) { bdall->m_vegs.c[i] = 0.; bdall->m_vegs.strn[i] = 0.; }
+      bdall->m_vegs.labn = 0.; bdall->m_vegs.call = 0.; bdall->m_vegs.strnall = 0.;
+      bdall->m_vegs.nall = 0.; bdall->m_vegs.deadc = 0.; bdall->m_vegs.deadn = 0.;
+      for (int ip=0; ip<NUM_PFT; ip++) {
+        if (cd.m_veg.vegcov[ip]>0.) {
+          bd[ip].m_vegs.strnall = bd[ip].m_vegs.strn[I_leaf] + bd[ip].m_vegs.strn[I_stem] + bd[ip].m_vegs.strn[I_root];
+        }
+      }
       for (int ip=0; ip<NUM_PFT; ip++) {
         if (cd.m_veg.vegcov[ip]>0.) {
           for (int i=0; i<NUM_PFT_PART; i++) {

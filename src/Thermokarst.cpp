@@ -229,8 +229,10 @@ void Thermokarst::initiate(int year) {
 
         BOOST_LOG_SEV(glg, debug) << "Haven't reached thermokarst depth (" << thermokarstdepth << ") yet. Remove all org C and N in layer index " << il;
 
-        lostsolc += ilsolc;
-        lostsoln += ilsoln;
+        // only the non-retained part leaves the cell (min_retain_scaler is
+        // kept in the layer); counting it all as lost created C/N
+        lostsolc += (1.0 - min_retain_scaler) * ilsolc;
+        lostsoln += (1.0 - min_retain_scaler) * ilsoln;
 
         bdall->m_sois.rawc[il] *= min_retain_scaler;
         bdall->m_sois.soma[il] *= min_retain_scaler;
@@ -241,7 +243,7 @@ void Thermokarst::initiate(int year) {
 
         for (int ip=0; ip<NUM_PFT; ip++) {
           if (cd->m_veg.vegcov[ip]>0.) {
-            r_thermokarst2bg_cn[ip] += cd->m_soil.frootfrac[il][ip];
+            r_thermokarst2bg_cn[ip] += (1.0 - min_retain_scaler) * cd->m_soil.frootfrac[il][ip];
             cd->m_soil.frootfrac[il][ip] *= min_retain_scaler;
           }
         }
@@ -295,8 +297,10 @@ void Thermokarst::initiate(int year) {
 
         BOOST_LOG_SEV(glg, debug) << "Haven't reached thermokarst depth (" << thermokarstdepth << ") yet. Remove all org C and N in layer index " << il;
 
-        lostsolc += ilsolc;
-        lostsoln += ilsoln;
+        // only the non-retained part leaves the cell (min_retain_scaler is
+        // kept in the layer); counting it all as lost created C/N
+        lostsolc += (1.0 - min_retain_scaler) * ilsolc;
+        lostsoln += (1.0 - min_retain_scaler) * ilsoln;
 
         bdall->m_sois.rawc[il] *= min_retain_scaler;
         bdall->m_sois.soma[il] *= min_retain_scaler;
@@ -307,7 +311,7 @@ void Thermokarst::initiate(int year) {
 
         for (int ip=0; ip<NUM_PFT; ip++) {
           if (cd->m_veg.vegcov[ip]>0.) {
-            r_thermokarst2bg_cn[ip] += cd->m_soil.frootfrac[il][ip];
+            r_thermokarst2bg_cn[ip] += (1.0 - min_retain_scaler) * cd->m_soil.frootfrac[il][ip];
             cd->m_soil.frootfrac[il][ip] *= min_retain_scaler;
           }
         }
@@ -482,7 +486,8 @@ void Thermokarst::initiate(int year) {
       for (int il =0; il <cd->m_soil.numsl; il++) {
         if (cd->m_soil.frootfrac[il][ip] > 0.0) {
           //for this, 'rootfrac' must be updated above
-          bdall->m_sois.somcr[il] += deadn_tmp*cd->m_soil.frootfrac[il][ip];
+          // dead root N goes to soil organic N (was wrongly added to somcr, creating C)
+          bdall->m_sois.orgn[il] += deadn_tmp*cd->m_soil.frootfrac[il][ip];
         }
       }
       dead_bg_vegn +=deadn_tmp;
