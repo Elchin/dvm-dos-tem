@@ -371,3 +371,13 @@ def test_cmt52_rts_on_no_fibric_layer(tmp_path):
     the month's litter was also dropped with no fibric layer to take it."""
     res = _gydan_cmt_two_stage(tmp_path, 52)
     assert np.max(np.abs(res)) < 0.01, np.max(np.abs(res))
+
+
+@pytest.mark.skipif(not os.path.exists(os.path.join(GYDAN70, 'two_stage_overrides.json')),
+                    reason='Gydan CMT70 inputs not available')
+def test_cmt55_rts_on_slump_month_root_removal(tmp_path):
+    """CMT55 slump month: root fraction removed with the soil plus the retained
+    living fraction exceeded 1, so TKLATC/TKRESPC counted 0.028 g more root C
+    than left the root pool (negative dead-root C)."""
+    res = _gydan_cmt_two_stage(tmp_path, 55)
+    assert np.max(np.abs(res)) < 0.01, np.max(np.abs(res))
