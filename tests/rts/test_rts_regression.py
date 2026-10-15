@@ -285,7 +285,8 @@ def test_cmt70_deepc_spinup_n_and_closure(tmp_path):
 
 def _gydan_cmt_two_stage(tmp_path, cmt):
     """Two-stage RTS run (slump 2021, scenario to 2045) on the Gydan CMT70 cell
-    with the vegetation class set to `cmt`; returns stage2b monthly C residuals."""
+    with the vegetation class set to `cmt`; asserts the monthly N balance
+    (NBAL_DIAG) closes within 0.01 g and returns stage2b monthly C residuals."""
     import json, sys, shutil, netCDF4 as nc4
     data = str(tmp_path / ('in%02d' % cmt)); os.makedirs(data)
     for f in os.listdir(GYDAN70):
@@ -303,11 +304,21 @@ def _gydan_cmt_two_stage(tmp_path, cmt):
     ov['IO']['output_spec_file'] = sf
     ov['IO']['parameter_dir'] = os.path.join(r.REPO, 'parameters/')
     json.dump(ov, open(os.path.join(w, 'ov.json'), 'w'))
+    nbf = os.path.join(w, 'nbal.txt')
+    wrap = os.path.join(w, 'nbwrap.sh')
+    open(wrap, 'w').write('#!/bin/bash\nNBAL_DIAG=1 %s "$@" 2>>%s\n' % (os.path.abspath(BIN), nbf))
+    os.chmod(wrap, 0o755)
     p = subprocess.run([sys.executable, os.path.join(r.REPO, 'scripts', 'run_rts_two_stage.py'),
-                        '--binary', BIN, '--workdir', w, '--config-overrides', os.path.join(w, 'ov.json'),
+                        '--binary', wrap, '--workdir', w, '--config-overrides', os.path.join(w, 'ov.json'),
                         '--hist', '76', '--sc', '30', '--mode', 'rts'],
                        capture_output=True, text=True, timeout=1800)
     assert p.returncode == 0, (p.stdout + p.stderr)[-2000:]
+    # monthly N balance of the scenario stage from the NBAL_DIAG check:
+    # yr m N0 N1 avlninput orgninput avlnlost orgnlost tk_lat tk_resp vegin
+    nb = np.array([[float(x) for x in l.split()[1:]] for l in open(nbf) if l.startswith('NB ')])[-360:]
+    _, _, n0, n1, ai, oi, al, ol, tl, tv, vi = nb.T
+    nres = (n1 - n0) - (ai + oi + vi - al - tl - tv)
+    assert np.max(np.abs(nres)) < 0.01, ('N', np.max(np.abs(nres)))
     def g(vn):
         d = nc4.Dataset(os.path.join(w, 'stage2b_rts', '%s_monthly_sc.nc' % vn))
         a = np.ma.filled(np.array(d[vn][:], dtype=float), np.nan); d.close()
@@ -331,34 +342,12 @@ def test_cmt21_rts_on_closure_double_blackhole(tmp_path):
 @pytest.mark.skipif(not os.path.exists(os.path.join(GYDAN70, 'two_stage_overrides.json')),
                     reason='Gydan CMT70 inputs not available')
 def test_cmt70_deepc_rts_on_monthly_closure(tmp_path):
-    """CMT70 two-stage RTS run (slump 2021, scenario to 2045): after the slump
-    the root fraction of the receiving (non-moss) layers no longer summed to 1
-    and Soil_Bgc dropped the unassigned root litter (soil C fell behind
-    litter - RH by up to 0.067 g/month, -6.8 g over 30 yr)."""
-    import json, sys, netCDF4 as nc4
-    w = str(tmp_path / 'c70rts'); os.makedirs(w)
-    sf = os.path.join(w, 'output_spec.csv')
-    r.write_outspec(sf, {**r.BASE_OUTPUTS, **r.RTS_OUTPUTS})
-    ov = json.load(open(os.path.join(GYDAN70, 'two_stage_overrides.json')))
-    for k, v in ov['IO'].items():
-        if isinstance(v, str) and v.endswith('.nc'):
-            ov['IO'][k] = os.path.join(GYDAN70, v)
-    ov['IO']['output_spec_file'] = sf
-    ov['IO']['parameter_dir'] = os.path.join(r.REPO, 'parameters/')
-    json.dump(ov, open(os.path.join(w, 'ov.json'), 'w'))
-    p = subprocess.run([sys.executable, os.path.join(r.REPO, 'scripts', 'run_rts_two_stage.py'),
-                        '--binary', BIN, '--workdir', w, '--config-overrides', os.path.join(w, 'ov.json'),
-                        '--hist', '76', '--sc', '30', '--mode', 'rts'],
-                       capture_output=True, text=True, timeout=1800)
-    assert p.returncode == 0, (p.stdout + p.stderr)[-2000:]
-    def g(v):
-        d = nc4.Dataset(os.path.join(w, 'stage2b_rts', '%s_monthly_sc.nc' % v))
-        a = np.ma.filled(np.array(d[v][:], dtype=float), np.nan); d.close()
-        return np.nan_to_num(a.reshape(a.shape[0], -1)[:, 0])
-    C = g('VEGC') + g('SOC') + g('DEADC') + g('DWDC')
-    F = g('GPP') - g('RG') - g('RM') - g('RHSOM') - g('RHDWD') - g('TKLATC') - g('TKRESPC')
-    assert g('TKRESPC').max() > 0          # the slump happened
-    res = np.diff(C) - F[1:]
+    """CMT70 two-stage RTS run (slump 2021, scenario to 2045). C: root litter
+    with no receiving layer was dropped after the slump (up to 0.067 g/month).
+    N: the slump restructuring moved layer C but not ORGN/AVLN (-91.5 g),
+    rootless layers lost their net mineralization (-22 g/month) and uptake
+    from layers without root litter was never removed (+0.3 g/month)."""
+    res = _gydan_cmt_two_stage(tmp_path, 70)
     assert np.max(np.abs(res)) < 0.01, np.max(np.abs(res))
 
 

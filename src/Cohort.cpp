@@ -384,6 +384,20 @@ void Cohort::initialize_state_parameters() {
 //  }
 //};
 
+// Optional monthly N-balance check (env NBAL_DIAG set; off by default):
+// prints total ecosystem N (veg structural+labile, standing dead, soil
+// ORGN+AVLN, woody debris) at month start/end and the external N fluxes.
+static double nbal_total(Cohort* c) {
+  double n = c->bdall->m_sois.wdebrisn;
+  for (int ip = 0; ip < NUM_PFT; ip++) {
+    if (c->cd.m_veg.vegcov[ip] > 0.) {
+      n += c->bd[ip].m_vegs.strn[I_leaf] + c->bd[ip].m_vegs.strn[I_stem] + c->bd[ip].m_vegs.strn[I_root]
+           + c->bd[ip].m_vegs.labn + c->bd[ip].m_vegs.deadn;
+    }
+  }
+  for (int i = 0; i < c->cd.m_soil.numsl; i++) { n += c->bdall->m_sois.orgn[i] + c->bdall->m_sois.avln[i]; }
+  return n;
+}
 void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
                            const int & dinmcurr, std::string stage) {
 
@@ -398,6 +412,8 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
 
   BOOST_LOG_SEV(glg, debug) << "Clean up before a month starts.";
   cd.beginOfMonth();
+  static const bool nbal_diag = getenv("NBAL_DIAG") != NULL;
+  const double nbal_n0 = nbal_diag ? nbal_total(this) : 0.0;
   if(md->get_envmodule()) {
   
     BOOST_LOG_SEV(glg, debug) << "RIGHT BEFORE updateMonthlyEnv()"
@@ -437,6 +453,22 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
   // otherwise the model enters the next month's integration with
   // old values.
   this->bdall->soil_updatePools(currmind);
+  if (nbal_diag) {
+    const ThermokarstData & t = year_tkdata[currmind];
+    // plant N uptake not taken from any soil layer (non-vascular uptake is a
+    // parameterized external source: deposition/fixation): an implicit input
+    double next = 0.;
+    for (int il = 0; il < cd.m_soil.numsl; il++) { next += bdall->m_soi2v.nextract[il]; }
+    const double vegin = bdall->m_soi2v.snuptakeall + bdall->m_soi2v.lnuptake - next;
+    // columns: yr m N0 N1 avlninput orgninput avlnlost orgnlost tk_lat tk_resp vegin
+    // (in 'baseline' mode orgnlost is the C:N-budget mismatch; it is not
+    //  removed from the pools, so it is not part of the N balance)
+    fprintf(stderr, "NB %d %d %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n", yrcnt, currmind,
+            nbal_n0, nbal_total(this), bdall->m_a2soi.avlninput, bdall->m_a2soi.orgninput,
+            bdall->m_soi2l.avlnlost, bdall->m_soi2l.orgnlost,
+            t.thermokarst_soi2lat.orgn + t.thermokarst_soi2lat.vegn,
+            t.thermokarst_soi2a.orgn + t.thermokarst_v2a.orgn, vegin);
+  }
 
   if(currmind == 11) {
     BOOST_LOG_SEV(glg, debug) << "Clean up at end of year.";
