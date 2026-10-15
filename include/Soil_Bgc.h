@@ -28,6 +28,7 @@ public:
   double litter_n(int il) const { return ltrfln[il]; }
   double debris_c() const { return d2wdebrisc; }
   double debris_n() const { return d2wdebrisn; }
+  double root_n_extract(int il) const { return rtnextract[il]; }
 
   Soil_Bgc();
   ~Soil_Bgc();

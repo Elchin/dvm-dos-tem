@@ -247,7 +247,12 @@ void Integrator::updateMonthlySbgc(const int & numsoillayer) {
       const double rest = 1.0 - (double)bh_time;
       for (int il = 0; il < numsl; il++) {
         y[I_L_RAWC+il] += rest * ssl->litter_c(il);
-        if (ssl->get_nfeed()) { y[I_L_ORGN+il] += rest * ssl->litter_n(il); }
+        if (ssl->get_nfeed()) {
+          y[I_L_ORGN+il] += rest * ssl->litter_n(il);
+          // plant uptake is reported for the whole month too: take the rest
+          // of the root N extraction (negative AVLN is clipped against ORGN)
+          y[I_L_AVLN+il] -= rest * ssl->root_n_extract(il);
+        }
       }
       y[I_WDEBRISC] += rest * ssl->debris_c();
       y[I_WDEBRISN] += rest * ssl->debris_n();

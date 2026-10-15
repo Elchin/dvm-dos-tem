@@ -62,6 +62,10 @@ void Soil_Bgc::assignCarbonBd2LayerMonthly() {
       currl->soma  =  bd->m_sois.soma[currl->solind-1];
       currl->sompr =  bd->m_sois.sompr[currl->solind-1];
       currl->somcr =  bd->m_sois.somcr[currl->solind-1];
+      // N moves with C: the disturbance layer restructuring (layer removal,
+      // humification, re-division) works on the Layer objects
+      currl->orgn  =  bd->m_sois.orgn[currl->solind-1];
+      currl->avln  =  bd->m_sois.avln[currl->solind-1];
     } else {
       break;
     }
@@ -88,6 +92,8 @@ void Soil_Bgc::assignCarbonLayer2BdMonthly() {
       bd->m_sois.soma[currl->solind-1] = currl->soma;
       bd->m_sois.sompr[currl->solind-1]= currl->sompr;
       bd->m_sois.somcr[currl->solind-1]= currl->somcr;
+      bd->m_sois.orgn[currl->solind-1] = currl->orgn;
+      bd->m_sois.avln[currl->solind-1] = currl->avln;
     } else {
       break;
     }
@@ -100,6 +106,8 @@ void Soil_Bgc::assignCarbonLayer2BdMonthly() {
     bd->m_sois.soma[il] = 0.0;
     bd->m_sois.sompr[il] = 0.0;
     bd->m_sois.somcr[il] = 0.0;
+    bd->m_sois.orgn[il] = 0.0;
+    bd->m_sois.avln[il] = 0.0;
   }
 
 }
@@ -971,6 +979,17 @@ void Soil_Bgc::deltastate() {
   /////////////// Nitrogen pools in soil ///////////////////////////////////
   if (this->nfeed == 1) {
     for(int il = 0; il<cd->m_soil.numsl; il++) {
+      // no mineralization in rootless layers (AVLN is not updated there, see
+      // below): zero it before the ORGN update, which otherwise lost (or
+      // created) the layer's net mineralization (e.g. -22 gN/month in the
+      // rootless layers left after an RTS)
+      // a layer counts as rooted if it gets root litter or roots take N from
+      // it (after an RTS root litter can be zero everywhere while the
+      // remaining roots still extract N: that uptake was never removed)
+      const bool rooted = bd->m_v2soi.rtlfalfrac[il] > 0. || rtnextract[il] > 0.;
+      if (!rooted) {
+        del_soi2soi.netnmin[il] = 0.0;
+      }
       // organic N pools
       //del_orgn[il] is from above SOM C mixing and moving
       del_sois.orgn[il] = ltrfln[il] - del_soi2soi.netnmin[il] + del_orgn[il];
@@ -1029,7 +1048,7 @@ void Soil_Bgc::deltastate() {
           }
         }
       }
-      if(bd->m_v2soi.rtlfalfrac[il] > 0.){
+      if(rooted){
         del_sois.avln[il] = ninput + del_soi2soi.netnmin[il]
                             - ndrain - rtnextract[il];
       } else {
