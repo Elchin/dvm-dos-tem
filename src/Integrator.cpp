@@ -254,6 +254,10 @@ void Integrator::updateMonthlySbgc(const int & numsoillayer) {
           y[I_L_AVLN+il] -= rest * ssl->root_n_extract(il);
         }
       }
+      // external AVLN input (RTS regrow floor N supply; 0 otherwise -> unchanged)
+      if (ssl->get_nfeed() && ssl->avln_input() != 0.0 && ssl->tk_ninput_layer < numsl) {
+        y[I_L_AVLN + ssl->tk_ninput_layer] += rest * ssl->avln_input();
+      }
       y[I_WDEBRISC] += rest * ssl->debris_c();
       y[I_WDEBRISN] += rest * ssl->debris_n();
     }

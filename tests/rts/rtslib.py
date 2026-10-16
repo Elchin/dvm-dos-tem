@@ -29,6 +29,9 @@ V01_OFF = {'thermokarst_rh_cap': False, 'thermokarst_floor_export': False, 'ther
 # RTS CH4 outputs (rts-ch4-a / rts-ch4-b)
 CH4_OUTPUTS = {v: 'm' for v in ('TKCH4PROD', 'TKCH4OXID', 'TKCH4EMIS', 'TKCH4PLANT', 'TKCH4POOL',
                                  'TKRHCO2', 'TKLATCH4', 'TKPONDSAT')}
+# RTS post-slump regrowth (rts-regrow; thermokarst_regrow, default off)
+REGROW_OUTPUTS = {'TKREGROWC': 'm', 'TKREGROWN': 'm', 'NINPUT': 'm', 'LAI': 'm'}
+REGROW_ON = {'thermokarst_regrow': True}
 ICE_OUTPUTS = {'TKSUBSID': 'm', 'TKEXICE': 'm', 'TKEXMELT': 'm', 'WATERTAB': 'm'}
 # PLACEHOLDER ice-rich profile for the synthetic cell (tunable)
 # top 0.4 m: with mean-preserving monthly->daily forcing the synthetic ALD is

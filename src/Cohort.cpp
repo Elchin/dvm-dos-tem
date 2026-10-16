@@ -463,11 +463,12 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
     // columns: yr m N0 N1 avlninput orgninput avlnlost orgnlost tk_lat tk_resp vegin
     // (in 'baseline' mode orgnlost is the C:N-budget mismatch; it is not
     //  removed from the pools, so it is not part of the N balance)
-    fprintf(stderr, "NB %d %d %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n", yrcnt, currmind,
+    // last column: RTS regrow external N to veg/organic layer (TKREGROWN)
+    fprintf(stderr, "NB %d %d %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n", yrcnt, currmind,
             nbal_n0, nbal_total(this), bdall->m_a2soi.avlninput, bdall->m_a2soi.orgninput,
             bdall->m_soi2l.avlnlost, bdall->m_soi2l.orgnlost,
             t.thermokarst_soi2lat.orgn + t.thermokarst_soi2lat.vegn,
-            t.thermokarst_soi2a.orgn + t.thermokarst_v2a.orgn, vegin);
+            t.thermokarst_soi2a.orgn + t.thermokarst_v2a.orgn, vegin, t.thermokarst_soid.regrow_n);
   }
 
   if(currmind == 11) {
@@ -769,6 +770,7 @@ void Cohort::updateMonthly_Bgc(const int & currmind) {
     bdall->land_beginOfYear();
   }
 
+  if (md->tk_regrow.on && tk_rg_have && ground.tk_months_since_init >= 0) { updateMonthly_RTSRegrowVeg(); }
   // vegetation BGC module calling
   for (int ip=0; ip<NUM_PFT; ip++) {
     if (cd.m_veg.vegcov[ip]>0.) {
@@ -800,6 +802,21 @@ void Cohort::updateMonthly_Bgc(const int & currmind) {
   soilbgc.clear_del_structs();
   tk_cur_month = currmind;
   if (md->tk_floor.any()) { updateMonthly_RTSFloorPrep(); }
+  if (md->tk_regrow.on) {
+    // RTS regrow (RTSRegrow.h (5),(6)): floor N supply into soil available N via the atmospheric-input hook
+    const int m = ground.tk_months_since_init;
+    soilbgc.tk_navln_exempt = md->tk_regrow.navln_exempt && m >= 0;
+    // first rooted layer (Soil_Bgc updates AVLN only in rooted layers)
+    soilbgc.tk_ninput_layer = -1;
+    for (int il = 0; il < std::min(cd.m_soil.numsl, MAX_SOI_LAY); il++) {
+      if (bdall->m_v2soi.rtlfalfrac[il] > 0. || bdall->m_soi2v.nextract[il] > 0.) { soilbgc.tk_ninput_layer = il; break; }
+    }
+    bdall->m_a2soi.avlninput = (tk_rg_have && m >= 0) ?
+        RTSRegrow::avlnSupplyMonth(md->tk_regrow, RTSRegrow::tYears(md->tk_regrow, m)) : 0.0;
+    if (soilbgc.tk_ninput_layer < 0) {  // nothing rooted (AVLN not updated): carry the supply to the next rooted month
+      soilbgc.tk_ninput_layer = 0; tk_rg_ncarry += bdall->m_a2soi.avlninput; bdall->m_a2soi.avlninput = 0.0;
+    } else { bdall->m_a2soi.avlninput += tk_rg_ncarry; tk_rg_ncarry = 0.0; }
+  }
   solintegrator.tk_tolerate_neg_avln = (ground.tk_months_since_init >= 0);
   solintegrator.updateMonthlySbgc(MAX_SOI_LAY);
   soilbgc.afterIntegration();
@@ -929,6 +946,9 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
     tkdata->thermokarst_soid.water_drained += xs_drain;
   }
 
+  if (md->tk_regrow.on && ground.tk_months_since_init < 0) {  // pre-slump GPP record (last 60 months)
+    tk_gpp_ring[tk_gpp_i] = bdall->m_a2v.gppall; tk_gpp_i = (tk_gpp_i + 1) % 60; tk_gpp_n = std::min(60, tk_gpp_n + 1);
+  }
   // see if it is an appropriate time to initiate
   if (md->tk_initiation && thermokarst.should_initiate(year, midx, stage)) {
 
@@ -943,6 +963,21 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
     } else{
       thermokarst.setThawDepth(thaw);
       thermokarst.setRTSParams(md->tk_folr, md->tk_c_resp_frac, md->tk_veg_remove_frac);
+      if (md->tk_regrow.on) {  // RTS regrow: record the pre-slump state
+        for (int ip = 0; ip < NUM_PFT; ip++) {
+          tk_rg_type[ip] = RTSRegrow::pftType(chtlu.ifwoody[ip], chtlu.ifdeciwoody[ip], chtlu.nonvascular[ip]);
+          for (int i = 0; i < 3; i++) {
+            tk_rg_cpre[ip][i] = cd.m_veg.vegcov[ip] > 0. ? std::max(0.0, bd[ip].m_vegs.c[i]) : 0.0;
+            tk_rg_npre[ip][i] = cd.m_veg.vegcov[ip] > 0. ? std::max(0.0, bd[ip].m_vegs.strn[i]) : 0.0;
+          }
+        }
+        double g = 0.0; for (int k = 0; k < tk_gpp_n; k++) { g += tk_gpp_ring[k]; }
+        tk_rg_gpp = tk_gpp_n > 0 ? 12.0 * g / tk_gpp_n : 0.0;   // gC/m2/yr
+        tk_rg_s = RTSRegrow::siteScale(md->tk_regrow, tk_rg_gpp / 1000.0);
+        tk_rg_olpre = tk_rg_olc(); tk_rg_oladd = 0.0; tk_rg_have = true;
+        BOOST_LOG_SEV(glg, info) << "RTS regrow: GPP_pre " << tk_rg_gpp << " gC/m2/yr, tau "
+                                 << RTSRegrow::tau(md->tk_regrow, tk_rg_gpp / 1000.0) << " yr, s " << tk_rg_s;
+      }
       thermokarst.initiate(year);
       BOOST_LOG_SEV(glg, debug) << "Right after thermokarst.initiate(..)  " << ground.layer_report_string();
 
@@ -1023,6 +1058,7 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
     BOOST_LOG_SEV(glg, debug) << "Not time for thermokarst. Nothing to do.";
   }
   if (md->tk_floor.exp_on && ground.tk_months_since_init >= 1) { updateMonthly_RTSFloorExport(); }
+  if (md->tk_regrow.on && tk_rg_have && ground.tk_months_since_init >= 0) { updateMonthly_RTSRegrow(); }
   if (ground.tk_months_since_init >= 0) { ground.tk_months_since_init++; }
   tkdata->thermokarst_soid.subsidence = ground.tk_subsidence;
   tkdata->thermokarst_soid.excess_ice = ground.totalExcessIce();
@@ -1834,4 +1870,111 @@ void Cohort::set_restartdata_from_state() {
       restartdata.prvltrfcnA[i][il]= tmpdeque[i];
     }
   }
+}
+
+/////////////////////////////////////////////////////////////////////////////////
+// RTS post-slump regrowth (RTSRegrow.h)
+double Cohort::tk_rg_olc() const {
+  double c = 0.0; int il = 0;
+  for (Layer* l = ground.fstsoill; l != NULL && l->isSoil && il < MAX_SOI_LAY; l = l->nextl, il++) {
+    if (l->isMineral) { continue; }
+    c += bdall->m_sois.rawc[il] + bdall->m_sois.soma[il] + bdall->m_sois.sompr[il] + bdall->m_sois.somcr[il];
+  }
+  return c;
+}
+
+void Cohort::rebuildBdallVeg() {
+  for (int i=0; i<NUM_PFT_PART; i++) { bdall->m_vegs.c[i] = 0.; bdall->m_vegs.strn[i] = 0.; }
+  bdall->m_vegs.labn = 0.; bdall->m_vegs.call = 0.; bdall->m_vegs.strnall = 0.;
+  bdall->m_vegs.nall = 0.; bdall->m_vegs.deadc = 0.; bdall->m_vegs.deadn = 0.;
+  for (int ip=0; ip<NUM_PFT; ip++) {
+    if (cd.m_veg.vegcov[ip]>0.) {
+      for (int i=0; i<NUM_PFT_PART; i++) {
+        bdall->m_vegs.c[i] += bd[ip].m_vegs.c[i];
+        bdall->m_vegs.strn[i] += bd[ip].m_vegs.strn[i];
+      }
+      bdall->m_vegs.labn += bd[ip].m_vegs.labn;
+      bdall->m_vegs.call += bd[ip].m_vegs.call;
+      bdall->m_vegs.strnall += bd[ip].m_vegs.strnall;
+      bdall->m_vegs.nall += bd[ip].m_vegs.nall;
+      bdall->m_vegs.deadc += bd[ip].m_vegs.deadc;
+      bdall->m_vegs.deadn += bd[ip].m_vegs.deadn;
+    }
+  }
+}
+
+/** (0),(2),(3): per-PFT cmax/nmax multipliers for this month (parameters only; vegetation equations unchanged). */
+void Cohort::updateMonthly_RTSRegrowVeg() {
+  const RTSRegrowParams & p = md->tk_regrow;
+  const double t = RTSRegrow::tYears(p, ground.tk_months_since_init);
+  const double hold = std::max(0.0, 1.0 - md->tk_veg_remove_frac);
+  for (int ip = 0; ip < NUM_PFT; ip++) {
+    if (!(cd.m_veg.vegcov[ip] > 0.)) { continue; }
+    const double B = RTSRegrow::boost(p, tk_rg_type[ip], t);
+    double mult = B;
+    const double L = RTSRegrow::targetFrac(p, tk_rg_type[ip], t, tk_rg_s, hold);
+    if (p.limit_on && L < p.release) {
+      const double cpre = tk_rg_cpre[ip][0] + tk_rg_cpre[ip][1] + tk_rg_cpre[ip][2];
+      const double cnow = bd[ip].m_vegs.c[I_leaf] + bd[ip].m_vegs.c[I_stem] + bd[ip].m_vegs.c[I_root];
+      mult *= RTSRegrow::limitMult(cnow, B * L * cpre);
+    }
+    vegbgc[ip].calpar.cmax = chtlu.cmax[ip] * mult;
+    vegbgc[ip].calpar.nmax = chtlu.nmax[ip] * B;
+  }
+}
+
+/** (1) reseed at stabilization, (4) organic-layer rebuild. External inputs -> TKREGROWC/TKREGROWN. */
+void Cohort::updateMonthly_RTSRegrow() {
+  const RTSRegrowParams & p = md->tk_regrow;
+  const int m = ground.tk_months_since_init;
+  const double t = RTSRegrow::tYears(p, m);
+  double addc = 0.0, addn = 0.0;
+  bool vegchanged = false;
+  if (m == RTSRegrow::stabMonth(p) && p.f_reseed > 0.0) {
+    for (int ip = 0; ip < NUM_PFT; ip++) {
+      if (!(cd.m_veg.vegcov[ip] > 0.)) { continue; }
+      const double cpre = tk_rg_cpre[ip][0] + tk_rg_cpre[ip][1] + tk_rg_cpre[ip][2];
+      const double cnow = bd[ip].m_vegs.c[I_leaf] + bd[ip].m_vegs.c[I_stem] + bd[ip].m_vegs.c[I_root];
+      const double need = p.f_reseed * cpre - cnow;
+      if (!(need > 0.0) || !(cpre > 0.0)) { continue; }
+      for (int i = 0; i < 3; i++) {
+        const double dc = need * tk_rg_cpre[ip][i] / cpre;
+        const double dn = tk_rg_cpre[ip][i] > 0.0 ? dc * tk_rg_npre[ip][i] / tk_rg_cpre[ip][i] : 0.0;
+        bd[ip].m_vegs.c[i] += dc; bd[ip].m_vegs.strn[i] += dn;
+        bd[ip].m_vegs.call += dc; bd[ip].m_vegs.strnall += dn; bd[ip].m_vegs.nall += dn;
+        addc += dc; addn += dn;
+      }
+      vegchanged = true;
+    }
+    if (vegchanged) { rebuildBdallVeg(); }
+    tk_rg_olstab = tk_rg_olc();
+  }
+  if (m >= RTSRegrow::stabMonth(p)) {
+    // organic-layer rebuild toward olstab + integral of the rate, never above the pre-slump organic C
+    const double tt = std::max(0.0, t + 1.0 / 12.0);  // end of this month
+    const double cum = std::min(tt, p.ol_T) * p.ol_rate1 + std::max(0.0, tt - p.ol_T) * p.ol_rate2;
+    const double target = std::min(tk_rg_olpre, tk_rg_olstab + cum);
+    double x = std::min(std::max(1.0, p.ol_maxmult) * RTSRegrow::olRate(p, t) / 12.0, std::max(0.0, target - tk_rg_olc()));
+    x = std::min(x, std::max(0.0, tk_rg_olpre - tk_rg_olstab - tk_rg_oladd));  // never import more than the slump removed
+    if (x > 0.0) {
+      int il = 0, itop = 0; bool found = false;
+      for (Layer* l = ground.fstsoill; l != NULL && l->isSoil && il < MAX_SOI_LAY; l = l->nextl, il++) {
+        if (l->isOrganic && !l->isMoss) { itop = il; found = true; break; }   // moss C follows moss thickness
+      }
+      if (!found) {  // no fibric/humic layer left: first non-moss soil layer
+        il = 0;
+        for (Layer* l = ground.fstsoill; l != NULL && l->isSoil && il < MAX_SOI_LAY; l = l->nextl, il++) {
+          if (!l->isMoss) { itop = il; break; }
+        }
+      }
+      const double xn = p.ol_cn > 0.0 ? x / p.ol_cn : 0.0;
+      const double fr = std::max(0.0, std::min(1.0, p.ol_frac_raw));
+      bdall->m_sois.rawc[itop] += fr * x; bdall->m_sois.sompr[itop] += (1.0 - fr) * x; bdall->m_sois.orgn[itop] += xn;
+      addc += x; addn += xn; tk_rg_oladd += x;
+      soilbgc.assignCarbonBd2LayerMonthly();
+      assignSoilBd2pfts_monthly();
+    }
+  }
+  tkdata->thermokarst_soid.regrow_c += addc;
+  tkdata->thermokarst_soid.regrow_n += addn;
 }

@@ -43,6 +43,14 @@ def runs(tmp_path_factory):
         'leg_rts_ice': r.run(BIN, str(w / 'leg_rts_ice'), True,
                              outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS, **r.ICE_OUTPUTS},
                              extra={**r.LEGACY_ICE_PARAMS, **r.LEGACY_M2D, **r.V01_OFF}),
+        # post-slump regrowth: explicit off must be bitwise v0.2; on: C/N closure with tracked inputs
+        'rts_rgoff': r.run(BIN, str(w / 'rts_rgoff'), True, outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS},
+                           extra={'thermokarst_regrow': False}),
+        'rts_ice_rgoff': r.run(BIN, str(w / 'rts_ice_rgoff'), True,
+                               outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS, **r.ICE_OUTPUTS},
+                               extra={**r.ICE_PARAMS, 'thermokarst_regrow': False}),
+        'rts_rg': r.run(BIN, str(w / 'rts_rg'), True, outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS, **r.REGROW_OUTPUTS},
+                        extra=r.REGROW_ON),
     }
 
 def test_unit_binary():
@@ -308,7 +316,7 @@ def test_cmt70_deepc_spinup_n_and_closure(tmp_path):
     assert np.all(np.isfinite(res)) and np.max(np.abs(res)) < 0.01, np.max(np.abs(res))
 
 
-def _gydan_cmt_two_stage(tmp_path, cmt, extra=None, return_dir=False):
+def _gydan_cmt_two_stage(tmp_path, cmt, extra=None, return_dir=False, regrow=False):
     """Two-stage RTS run (slump 2021, scenario to 2045) on the Gydan CMT70 cell
     with the vegetation class set to `cmt`; asserts the monthly N balance
     (NBAL_DIAG) closes within 0.01 g and returns stage2b monthly C residuals."""
@@ -321,7 +329,7 @@ def _gydan_cmt_two_stage(tmp_path, cmt, extra=None, return_dir=False):
     v = nc4.Dataset(os.path.join(data, 'vegetation.nc'), 'a'); v['veg_class'][:] = cmt; v.close()
     w = str(tmp_path / ('c%02drts' % cmt)); os.makedirs(w)
     sf = os.path.join(w, 'output_spec.csv')
-    r.write_outspec(sf, {**r.BASE_OUTPUTS, **r.RTS_OUTPUTS})
+    r.write_outspec(sf, {**r.BASE_OUTPUTS, **r.RTS_OUTPUTS, **(r.REGROW_OUTPUTS if regrow else {})})
     ov = json.load(open(os.path.join(data, 'two_stage_overrides.json')))
     for k, val in ov['IO'].items():
         if isinstance(val, str) and val.endswith('.nc'):
@@ -341,9 +349,10 @@ def _gydan_cmt_two_stage(tmp_path, cmt, extra=None, return_dir=False):
     assert p.returncode == 0, (p.stdout + p.stderr)[-2000:]
     # monthly N balance of the scenario stage from the NBAL_DIAG check:
     # yr m N0 N1 avlninput orgninput avlnlost orgnlost tk_lat tk_resp vegin
+    # (+ last column: RTS regrow N to veg/organic layer)
     nb = np.array([[float(x) for x in l.split()[1:]] for l in open(nbf) if l.startswith('NB ')])[-360:]
-    _, _, n0, n1, ai, oi, al, ol, tl, tv, vi = nb.T
-    nres = (n1 - n0) - (ai + oi + vi - al - tl - tv)
+    _, _, n0, n1, ai, oi, al, ol, tl, tv, vi, rn = nb.T
+    nres = (n1 - n0) - (ai + oi + vi + rn - al - tl - tv)
     assert np.max(np.abs(nres)) < 0.01, ('N', np.max(np.abs(nres)))
     def g(vn):
         d = nc4.Dataset(os.path.join(w, 'stage2b_rts', '%s_monthly_sc.nc' % vn))
@@ -351,6 +360,7 @@ def _gydan_cmt_two_stage(tmp_path, cmt, extra=None, return_dir=False):
         return np.nan_to_num(a.reshape(a.shape[0], -1)[:, 0])
     C = g('VEGC') + g('SOC') + g('DEADC') + g('DWDC')
     F = g('GPP') - g('RG') - g('RM') - g('RHSOM') - g('RHDWD') - g('TKLATC') - g('TKRESPC')
+    if regrow: F = F + g('TKREGROWC')     # external reseed + organic-layer input
     assert g('TKRESPC').max() > 0          # the slump happened
     if return_dir: return np.diff(C) - F[1:], os.path.join(w, 'stage2b_rts')
     return np.diff(C) - F[1:]
@@ -443,3 +453,50 @@ def test_floor_rmin_dry_upland(tmp_path, cmt):
     assert np.all(yr1 >= 0.3 * pre - 1e-6)
     assert 0.25 <= yr1.sum() / pre.sum() <= 0.55
     assert g(d0, 'RHSOM')[m + 1:m + 13].sum() < yr1.sum()
+
+
+# ---------------- post-slump vegetation regrowth (thermokarst_regrow) ----------------
+@pytest.mark.parametrize('case,run', [('rts', 'rts_rgoff'), ('rts_ice', 'rts_ice_rgoff')])
+def test_regrow_off_bit_identical_to_v02(runs, case, run):
+    """thermokarst_regrow = false (the default): bitwise identical to the v0.2 references."""
+    assert r.compare_dirs(os.path.join(REF02, case), runs[run], 0.0, 0.0) == []
+
+def test_regrow_default_is_off(runs):
+    assert r.compare_dirs(runs['rts'], runs['rts_rgoff'], 0.0, 0.0) == []
+
+def test_regrow_synthetic_closure_and_inputs(runs):
+    """Regrow on: identical before initiation; reseed + OL input in TKREGROWC only from stabilization
+    (12 months after initiation); monthly C balance closes with TKREGROWC as an input."""
+    o, b = runs['rts_rg'], runs['rts']
+    for v in ['SOC', 'VEGC', 'GPP']:
+        assert np.array_equal(r.read(o, v)[:M], r.read(b, v)[:M]), v
+    rc = _g(o, 'TKREGROWC'); rn = _g(o, 'TKREGROWN')
+    assert np.all(rc[:M + 12] == 0) and rc[M + 12] > 0 and np.all(rc >= 0) and np.all(rn >= 0)
+    C, F = _total_c(o), _net_flux(o) + rc
+    res = np.diff(C)[M + 1:] - F[M + 2:]
+    assert np.max(np.abs(res)) < 0.01
+    # floor N supply enters as an input (NINPUT) only after stabilization
+    ni = _g(o, 'NINPUT')
+    assert np.all(ni[:M + 12] == 0) and ni[M + 12:].sum() > 0
+
+@pytest.mark.skipif(not os.path.exists(os.path.join(GYDAN70, 'two_stage_overrides.json')),
+                    reason='Gydan CMT70 inputs not available')
+@pytest.mark.parametrize('cmt,limit', [(70, True), (5, False), (7, False)])
+def test_regrow_gydan_closure_and_recovery(tmp_path, cmt, limit):
+    """Regrow on (v0.2 floor defaults): monthly N balance (NBAL_DIAG incl. floor N supply in avlninput and
+    reseed/OL N column) and C balance (TKREGROWC input) close < 0.01 g; post-slump GPP higher than v0.2.
+    CMT05/07 recover in v0.2 already: there the logistic growth limit (rts_regrow_limit) holds GPP below v0.2,
+    so they are tested with the limit off (regrowth_diag/regrow/README.md)."""
+    import netCDF4 as nc4
+    res, d = _gydan_cmt_two_stage(tmp_path / 'rg', cmt, extra={**r.REGROW_ON, 'rts_regrow_limit': limit},
+                                  return_dir=True, regrow=True)
+    assert np.max(np.abs(res)) < 0.01, np.max(np.abs(res))
+    res0, d0 = _gydan_cmt_two_stage(tmp_path / 'v02', cmt, return_dir=True)
+    def g(dd, vn):
+        x = nc4.Dataset(os.path.join(dd, '%s_monthly_sc.nc' % vn))
+        a = np.ma.filled(np.array(x[vn][:], dtype=float), np.nan); x.close()
+        return np.nan_to_num(a.reshape(a.shape[0], -1)[:, 0])
+    m = int(np.argmax(g(d, 'TKRESPC') > 0))
+    assert np.array_equal(g(d, 'GPP')[:m + 1], g(d0, 'GPP')[:m + 1])
+    assert g(d, 'TKREGROWC')[m + 12] > 0                       # reseed at stabilization
+    assert g(d, 'GPP')[m + 13:].sum() > g(d0, 'GPP')[m + 13:].sum()

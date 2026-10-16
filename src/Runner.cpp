@@ -1404,6 +1404,8 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
   TK_SCALAR_OUTPUT("TKRHCO2", tkrhco2_for_output, cohort.year_tkdata[im].thermokarst_soid.rh_co2, false)
   TK_SCALAR_OUTPUT("TKLATCH4", tklatch4_for_output, cohort.year_tkdata[im].thermokarst_soid.lat_ch4, false)
   TK_SCALAR_OUTPUT("TKPONDSAT", tkpondsat_for_output, cohort.year_tkdata[im].thermokarst_soid.pond_sat, true)
+  TK_SCALAR_OUTPUT("TKREGROWC", tkregrowc_for_output, cohort.year_tkdata[im].thermokarst_soid.regrow_c, false)
+  TK_SCALAR_OUTPUT("TKREGROWN", tkregrown_for_output, cohort.year_tkdata[im].thermokarst_soid.regrow_n, false)
 #undef TK_SCALAR_OUTPUT
   map_itr = netcdf_outputs.end();
 

@@ -31,10 +31,14 @@ public:
   RTSFloorParams tk_floorpar;
   double tk_rhmult[MAX_SOI_LAY];   // anoxia multiplier per layer (1 = none)
   bool tk_capmask[MAX_SOI_LAY];    // layer subject to the mineralization cap (mineral layers)
+  int tk_ninput_layer = 0;          // layer receiving m_a2soi.avlninput (0 = legacy; RTS regrow: first rooted layer)
+  bool tk_navln_exempt = false;    // RTS regrow: net N mineralization from the uncapped RH (RTSRegrow.h (6))
+  double tk_rh_precap[MAX_SOI_LAY]; // layer RH before the floor cap (valid when tk_navln_exempt && tk_floor_on)
   double tk_rmin_target = -1.0;    // minimum column RHSOM this month, g/month (<0: off)
 
   // litter/debris inputs prepared for this month's soil integration
   double litter_c(int il) const { return ltrflc[il]; }
+  double avln_input() const;          // m_a2soi.avlninput (external AVLN input this month)
   double litter_n(int il) const { return ltrfln[il]; }
   double debris_c() const { return d2wdebrisc; }
   double debris_n() const { return d2wdebrisn; }

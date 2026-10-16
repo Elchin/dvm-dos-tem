@@ -120,3 +120,22 @@ old rts-ch4 diagnostic).
 
 We use 5 gC/m2/yr for fully saturated wet sedge tundra. The dry case (CMT07 heath, model WT) then gives
 ~0.1-0.2 gC/m2/yr. Neither scheme has CH4 uptake by upland soils (no atmospheric CH4 oxidation sink).
+
+## Post-slump vegetation regrowth (`thermokarst_regrow`, default off)
+
+This is a reduced-form recovery rule (`include/RTSRegrow.h`). Spec: `russia-inputs/rts_recovery_equations.md`. Vegetation equations are unchanged. The rule acts only through parameters (cmax/nmax per PFT), tracked external inputs and the soil N input hook. With the switch off, outputs are bitwise identical to v0.2 (and to v0.1 when the floor switches are also off).
+
+t = years since stabilization = (months since initiation − 12·`rts_regrow_t_active`) / 12, with `rts_regrow_t_active` = 1 yr.
+
+| process | rule | keys (default) | tracked as |
+|---|---|---|---|
+| active slump | the 99% kill is kept; growth limited to (1 − veg_remove_frac)·C_pre | `rts_regrow_t_active` (1) | – |
+| reseed at t = 0 | each PFT raised to f·C_pre,p (pre-slump tissue split and C:N) | `rts_regrow_f_reseed` (0.07) | TKREGROWC/N (external) |
+| logistic limit | cmax_p × min(1, B·L_p(t)·C_pre,p / C_p); L_p = max(f, 1/(1+exp(−k_p(t − s·t50_p)))); released for L_p ≥ 0.95 | `rts_regrow_limit` (true), `rts_regrow_t50_*`, `rts_regrow_k_*` (gram 4/0.8, shrub 30/0.15, moss 30/0.1, evergreen 100/0.03, lichen 100/0.03), `rts_regrow_release` | – |
+| site scale | s = tau/tau_ref; tau = 1.35·GPP_pre^−1.68 (Xia et al. 2026: yr, mean annual GPP in kgC m−2 yr−1; GPP_pre = model GPP over ≤ 5 yr before initiation), clamped 2–150 yr | `rts_regrow_tau_ref` (7) | – |
+| shrub boost | deciduous-shrub cmax and nmax × B(t) = 1 + (B0 − 1)·exp(−t/Tb) | `rts_regrow_B0` (1.3), `rts_regrow_Tb` (80) | – |
+| organic layer | up to 32 (t ≤ 60) then 6.5 gC m−2 yr−1 added to the top fibric/humic layer as slow SOM (Pizano's rate is net accumulation), at C:N 30; only while organic C is below its target; cumulative input capped at the C the slump removed | `rts_regrow_ol_rate1/2`, `_ol_T`, `_ol_cn`, `_ol_frac_raw` (0), `_ol_maxmult` (1) | TKREGROWC/N (external) |
+| floor N supply | 2.2 (t ≤ 60) then 0.4 gN m−2 yr−1, minus the nominal OL N, into AVLN of the first rooted layer through `m_a2soi.avlninput` (an input like deposition). Months with no rooted layer carry it over. | `rts_regrow_n_rate1/2`, `_n_T` | NINPUT; NBAL_DIAG avlninput |
+| RH-cap exemption | net N mineralization uses the RH before the floor cap (cap applies to CO2 only) | `rts_regrow_navln_exempt` (true) | internal transfer |
+
+NBAL_DIAG lines have one more column: TKREGROWN. A double integrator fallback now also adds the unintegrated part of `avlninput` (always 0 without regrow). Limitation: the regrow state (pre-slump C, GPP_pre) is not in the restart file. A run restarted after initiation does no regrowth. Single-cell results and recommended defaults: `russia-inputs/regrowth_diag/regrow/README.md`.

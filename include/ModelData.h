@@ -2,6 +2,7 @@
 #define MODELDATA_H_
 #include "RTSMethane.h"
 #include "RTSFloor.h"
+#include "RTSRegrow.h"
 #include <string>
 #include <iostream>
 #include <fstream>
@@ -132,6 +133,7 @@ public:
   // RTS CH4 (opt-in; off -> identical to rts-light-v0.1). See RTSMethane.h for parameters.
   bool tk_ch4 = false;
   RTSMethaneParams tk_ch4par;
+  RTSRegrowParams tk_regrow;  // post-slump vegetation recovery (off -> v0.2)
   RTSFloorParams tk_floor;   // post-slump floor RH cap / export / anoxia (all off -> v0.1)
   bool tk_initiation = true; // false: thermokarst module on (ice) but never initiate RTS (baseline)
 

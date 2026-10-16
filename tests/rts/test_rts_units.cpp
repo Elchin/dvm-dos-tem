@@ -5,6 +5,7 @@
 #include <vector>
 #include "Thermokarst.h"
 #include "RTSMethane.h"
+#include "RTSRegrow.h"
 #include "Ground.h"
 #include "Climate.h"
 #include "TEMUtilityFunctions.h"
@@ -398,7 +399,48 @@ static void test_rts_floor() {
     CHECK_NEAR(tot0, tot1 + out, 1e-9); }
 }
 
+static void test_rts_regrow() {
+  RTSRegrowParams p;
+  CHECK(!p.on);                                            // default OFF
+  // Xia et al. 2026: tau = 1.35 GPP^-1.68 (GPP kgC/m2/yr): 0.3 -> ~10.2 yr, s ~1.46
+  CHECK_NEAR(RTSRegrow::tau(p, 0.3), 1.35 * std::pow(0.3, -1.68), 1e-12);
+  CHECK(RTSRegrow::tau(p, 0.3) > 10.0 && RTSRegrow::tau(p, 0.3) < 10.5);
+  CHECK_NEAR(RTSRegrow::siteScale(p, 0.3), RTSRegrow::tau(p, 0.3) / 7.0, 1e-12);
+  CHECK(RTSRegrow::tau(p, 0.0) == p.tau_max);              // no GPP -> slowest
+  CHECK(RTSRegrow::tau(p, 100.0) == p.tau_min);            // clamped
+  // PFT classes
+  CHECK(RTSRegrow::pftType(0, 0, 3) == RG_LICHEN);
+  CHECK(RTSRegrow::pftType(0, 0, 2) == RG_MOSS && RTSRegrow::pftType(0, 0, 1) == RG_MOSS);
+  CHECK(RTSRegrow::pftType(1, 1, 0) == RG_SHRUB && RTSRegrow::pftType(1, 0, 0) == RG_EVERGREEN);
+  CHECK(RTSRegrow::pftType(0, 0, 0) == RG_GRAM);
+  // time axis: stabilization 12 months after initiation by default
+  CHECK(RTSRegrow::stabMonth(p) == 12);
+  CHECK_NEAR(RTSRegrow::tYears(p, 36), 2.0, 1e-12);
+  // target: hold while active, >= f_reseed after, logistic midpoint at s t50, monotone, -> 1
+  CHECK(RTSRegrow::targetFrac(p, RG_GRAM, -0.5, 1.0, 0.01) == 0.01);
+  CHECK(RTSRegrow::targetFrac(p, RG_SHRUB, 0.0, 1.0, 0.01) == p.f_reseed);
+  CHECK_NEAR(RTSRegrow::targetFrac(p, RG_GRAM, 2.0 * 4.0, 2.0, 0.01), 0.5, 1e-12);
+  double prev = 0.0; bool mono = true;
+  for (int i = 0; i < 400; i++) { const double v = RTSRegrow::targetFrac(p, RG_SHRUB, i * 0.5, 1.4, 0.01); mono &= v >= prev; prev = v; }
+  CHECK(mono && prev > 0.999);
+  // shrub boost: B0 at t=0, decays with Tb, only for deciduous shrubs, none while active
+  CHECK_NEAR(RTSRegrow::boost(p, RG_SHRUB, 0.0), p.boost0, 1e-12);
+  CHECK_NEAR(RTSRegrow::boost(p, RG_SHRUB, p.boost_T), 1.0 + (p.boost0 - 1.0) * std::exp(-1.0), 1e-12);
+  CHECK(RTSRegrow::boost(p, RG_GRAM, 0.0) == 1.0 && RTSRegrow::boost(p, RG_SHRUB, -0.1) == 1.0);
+  // OL rebuild and N supply rates (Pizano et al. 2014)
+  CHECK(RTSRegrow::olRate(p, -0.1) == 0.0 && RTSRegrow::olRate(p, 10.0) == 32.0 && RTSRegrow::olRate(p, 61.0) == 6.5);
+  CHECK(RTSRegrow::nRate(p, -0.1) == 0.0 && RTSRegrow::nRate(p, 59.9) == 2.2 && RTSRegrow::nRate(p, 60.1) == 0.4);
+  // avln part + nominal OL N = total N supply (annual), never negative
+  CHECK_NEAR(12.0 * RTSRegrow::avlnSupplyMonth(p, 10.0) + 32.0 / 30.0, 2.2, 1e-12);
+  CHECK_NEAR(12.0 * RTSRegrow::avlnSupplyMonth(p, 70.0) + 6.5 / 30.0, 0.4, 1e-12);
+  RTSRegrowParams q; q.ol_cn = 5.0; CHECK(RTSRegrow::avlnSupplyMonth(q, 10.0) == 0.0);
+  // growth limit multiplier
+  CHECK(RTSRegrow::limitMult(50.0, 100.0) == 1.0 && RTSRegrow::limitMult(0.0, 1.0) == 1.0);
+  CHECK_NEAR(RTSRegrow::limitMult(200.0, 100.0), 0.5, 1e-12);
+}
+
 int main() {
+  test_rts_regrow();
   test_rts_floor();
   test_rts_ch4();
   test_excess_ice_init();

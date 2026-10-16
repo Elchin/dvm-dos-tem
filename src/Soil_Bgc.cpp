@@ -674,6 +674,7 @@ void Soil_Bgc::deltac() {
       // RTS floor: oxygen limitation, then labile-limited cap on exposed mineral C (RTSFloor.h)
       double m = tk_rhmult[il];
       double r = (del_soi2a.rhrawc[il] + del_soi2a.rhsoma[il] + del_soi2a.rhsompr[il] + del_soi2a.rhsomcr[il]) * m;
+      if (tk_navln_exempt) { tk_rh_precap[il] = r; }
       if (tk_cap_on && tk_capmask[il] && r > 0.0) {
         const double c = std::max(0.0, tmp_sois.rawc[il]) + std::max(0.0, tmp_sois.soma[il])
                        + std::max(0.0, tmp_sois.sompr[il]) + std::max(0.0, tmp_sois.somcr[il]);
@@ -729,6 +730,7 @@ void Soil_Bgc::deltan() {
                      del_soi2a.rhsoma[i] +
                      del_soi2a.rhsompr[i]+
                      del_soi2a.rhsomcr[i];
+      if (tk_navln_exempt && tk_floor_on && tk_cap_on && tk_capmask[i]) { rhsum = std::max(rhsum, tk_rh_precap[i]); }
 
       double nimmob = getNimmob(ed->m_sois.liq[i], totc,
                                 tmp_sois.orgn[i], tmp_sois.avln[i],
@@ -1149,7 +1151,7 @@ void Soil_Bgc::deltastate() {
       // Inorganic N pools
       double ninput = 0.;
 
-      if (il == 0) {
+      if (il == tk_ninput_layer) {
         ninput = bd->m_a2soi.avlninput;
       }
 
@@ -1357,3 +1359,5 @@ int Soil_Bgc::get_baseline() {
 }
 
 
+
+double Soil_Bgc::avln_input() const { return bd->m_a2soi.avlninput; }

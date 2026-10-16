@@ -147,6 +147,16 @@ private:
   double tk_rh_hist[10][12] = {{0}};  // pre-initiation monthly RHSOM ring buffer (years x months)
   int tk_rh_nyr[12] = {0};            // number of recorded years per calendar month (<= 10)
   int tk_rh_next[12] = {0};           // next ring slot per calendar month
+  // RTS post-slump regrowth (RTSRegrow.h); state is not in the restart file (set at initiation)
+  bool tk_rg_have = false;            // pre-slump state recorded
+  double tk_rg_cpre[NUM_PFT][3] = {{0}}, tk_rg_npre[NUM_PFT][3] = {{0}};
+  int tk_rg_type[NUM_PFT] = {0};
+  double tk_rg_s = 1.0, tk_rg_gpp = 0.0, tk_rg_olpre = 0.0, tk_rg_olstab = 0.0, tk_rg_oladd = 0.0, tk_rg_ncarry = 0.0;
+  double tk_gpp_ring[60] = {0}; int tk_gpp_n = 0, tk_gpp_i = 0;
+  double tk_rg_olc() const;           // organic (non-mineral) soil layer SOM C, g/m2
+  void updateMonthly_RTSRegrowVeg();  // cmax/nmax nudges before the veg integration
+  void updateMonthly_RTSRegrow();     // reseed + organic-layer rebuild (thermokarst step)
+  void rebuildBdallVeg();
   soidiag_thermokarst tk_ch4_month; // this month's CH4 (kept across the slump step, which resets tkdata)
 
   // update root distribution

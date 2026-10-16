@@ -148,3 +148,5 @@ TKCH4POOL,RTS soil CH4 pool (as C; scheme b),g/m2,,,invalid,invalid,invalid,inva
 TKRHCO2,Soil heterotrophic CO2 when CH4 is on (RHSOM - CH4 partition + CH4 oxidized),g/m2/time,,,invalid,invalid,invalid,invalid,double,
 TKLATCH4,Part of TKLATC mineralized downstream as CH4 (as C),g/m2/time,,,invalid,invalid,invalid,invalid,double,
 TKPONDSAT,RTS post-slump ponding saturation factor,,,,invalid,invalid,invalid,invalid,double,
+TKREGROWC,RTS regrow external C input (reseed + organic-layer rebuild),g/m2/time,,,invalid,invalid,invalid,invalid,double,
+TKREGROWN,RTS regrow external N input to veg/organic layer (reseed + OL rebuild; avln supply is in NINPUT),g/m2/time,,,invalid,invalid,invalid,invalid,double,

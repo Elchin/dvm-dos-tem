@@ -82,7 +82,8 @@ SOURCES= 	src/TEM.o \
 		src/Thermokarst.o \
 		src/ThermokarstData.o \
 		src/RTSMethane.o \
-		src/RTSFloor.o 
+		src/RTSFloor.o \
+		src/RTSRegrow.o 
 
 OBJECTS =	ArgHandler.o \
 		TEMLogger.o \
@@ -131,7 +132,8 @@ OBJECTS =	ArgHandler.o \
 		Thermokarst.o \
 		ThermokarstData.o \
 		RTSMethane.o \
-		RTSFloor.o
+		RTSFloor.o \
+		RTSRegrow.o
 
 
 # Set if not set from environment or command line...
