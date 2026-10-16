@@ -40,7 +40,7 @@ RestartData::~RestartData() {
 MPI_Datatype RestartData::register_mpi_datatype() {
 
   // create types for all the dimensions in the RestartData object...
-  const int elems_in_restartdata = 68;
+  const int elems_in_restartdata = 69;
   int counts[elems_in_restartdata] = {
     1, // int dsr;
     1, // double firea2sorgn;
@@ -49,6 +49,7 @@ MPI_Datatype RestartData::register_mpi_datatype() {
     1, // int tkexinit;
     1, // int tkinit;
     1, // double tksubsidence;
+    MAX_SOI_LAY, // double tkch4pool[MAX_SOI_LAY];
     
     NUM_PFT, // int ifwoody[NUM_PFT];                  // - 'veg_dim'
     NUM_PFT, // int ifdeciwoody[NUM_PFT];
@@ -138,6 +139,7 @@ MPI_Datatype RestartData::register_mpi_datatype() {
     MPI_INT, // int tkexinit;
     MPI_INT, // int tkinit;
     MPI_DOUBLE, // double tksubsidence;
+    MPI_DOUBLE, // double tkch4pool[MAX_SOI_LAY];
     MPI_INT, // int ifwoody[NUM_PFT];
     MPI_INT, // int ifdeciwoody[NUM_PFT];
     MPI_INT, // int ifperenial[NUM_PFT];
@@ -208,6 +210,7 @@ MPI_Datatype RestartData::register_mpi_datatype() {
     offsetof(RestartData, tkexinit),
     offsetof(RestartData, tkinit),
     offsetof(RestartData, tksubsidence),
+    offsetof(RestartData, tkch4pool),
     offsetof(RestartData, ifwoody),
     offsetof(RestartData, ifdeciwoody),
     offsetof(RestartData, ifperenial),
@@ -293,6 +296,7 @@ void RestartData::reinitValue() {
   tkexinit = 0;
   tkinit = 0;
   tksubsidence = 0.0;
+  for (int il = 0; il < MAX_SOI_LAY; il++) { tkch4pool[il] = 0.0; }
 
   for (int ip=0; ip<NUM_PFT; ip++) {
     ifwoody[ip]     = MISSING_I;
@@ -852,6 +856,9 @@ void RestartData::read_px_soil_vars(const std::string& fname, const int rowidx, 
   temutil::nc( nc_get_vara_double(ncid, cv, start, count, &rawc[0]) );
   temutil::nc( nc_inq_varid(ncid, "soma", &cv) );
   temutil::nc( nc_get_vara_double(ncid, cv, start, count, &soma[0]) );
+  if (nc_inq_varid(ncid, "tkch4pool", &cv) == NC_NOERR) { // optional (older restarts lack it)
+    temutil::nc( nc_get_vara_double(ncid, cv, start, count, &tkch4pool[0]) );
+  }
   temutil::nc( nc_inq_varid(ncid, "sompr", &cv) );
   temutil::nc( nc_get_vara_double(ncid, cv, start, count, &sompr[0]) );
   temutil::nc( nc_inq_varid(ncid, "somcr", &cv) );
@@ -1216,6 +1223,9 @@ void RestartData::create_empty_file(const std::string& fname,
   temutil::nc( nc_def_var(ncid, "rawc", NC_DOUBLE, 3, vartype3D_dimids, &rawcV) );
   temutil::nc( nc_put_att_double(ncid, rawcV, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
   temutil::nc( nc_def_var(ncid, "soma", NC_DOUBLE, 3, vartype3D_dimids, &somaV) );
+  int tkch4poolV;
+  temutil::nc( nc_def_var(ncid, "tkch4pool", NC_DOUBLE, 3, vartype3D_dimids, &tkch4poolV) );
+  temutil::nc( nc_put_att_double(ncid, tkch4poolV, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
   temutil::nc( nc_put_att_double(ncid, somaV, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
   temutil::nc( nc_def_var(ncid, "sompr", NC_DOUBLE, 3, vartype3D_dimids, &somprV) );
   temutil::nc( nc_put_att_double(ncid, somprV, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
@@ -1648,6 +1658,8 @@ void RestartData::write_px_soil_vars(const std::string& fname, const int rowidx,
   temutil::nc( nc_put_vara_double(ncid, cv, start, count, &rawc[0]) );
   temutil::nc( nc_inq_varid(ncid, "soma", &cv) );
   temutil::nc( nc_put_vara_double(ncid, cv, start, count, &soma[0]) );
+  temutil::nc( nc_inq_varid(ncid, "tkch4pool", &cv) );
+  temutil::nc( nc_put_vara_double(ncid, cv, start, count, &tkch4pool[0]) );
   temutil::nc( nc_inq_varid(ncid, "sompr", &cv) );
   temutil::nc( nc_put_vara_double(ncid, cv, start, count, &sompr[0]) );
   temutil::nc( nc_inq_varid(ncid, "somcr", &cv) );

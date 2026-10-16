@@ -132,6 +132,7 @@ public :
   double tk_subsidence = 0.;      // cumulative subsidence (m)
   double tk_prev_subsidence = 0.; // subsidence already seen by the water-table coupling
   bool tk_excess_initialized = false;
+  double tk_ch4pool[MAX_SOI_LAY] = {0};  // RTS CH4 pool per soil layer (gC/m2; scheme b)
   int tk_months_since_init = -1;  // -1: RTS not initiated; else months since initiation
   // Set excess ice in frozen mineral layers overlapping [top,bottom] (m) with
   // excess volume fraction 'fraction' of the total (matrix+excess) volume.

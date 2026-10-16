@@ -64,6 +64,7 @@ public :
   int drainage_type; // may be changed by RTS initiation
   int tkexinit;      // 1 if excess ground ice was initialized
   int tkinit;        // 0: RTS not initiated; else months since initiation + 1
+  double tkch4pool[MAX_SOI_LAY]; // RTS CH4 pool per soil layer (gC/m2)
   double tksubsidence; // cumulative thermokarst subsidence (m)
 
   int ifwoody[NUM_PFT]; // - 'veg_dim'

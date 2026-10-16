@@ -905,6 +905,10 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
   tkdata->clear(); // zero monthly thermokarst fluxes/diagnostics
   tkdata->thermokarst_soid.drainage_type = cd.drainage_type;
 
+  // RTS CH4 (opt-in): computed on this month's soil state/RH before any slump
+  // restructuring, so layer indices match the integrated fluxes.
+  if (md->tk_ch4) { updateMonthly_RTSMethane(midx); }
+
   // Excess ground ice: one-time initialization, then monthly melt/subsidence
   if (md->tk_excess_fraction > 0.0 && !ground.tk_excess_initialized) {
     ground.initExcessIce(md->tk_excess_fraction, md->tk_excess_top, md->tk_excess_bottom);
@@ -1012,8 +1016,84 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
   if (ground.tk_months_since_init >= 0) { ground.tk_months_since_init++; }
   tkdata->thermokarst_soid.subsidence = ground.tk_subsidence;
   tkdata->thermokarst_soid.excess_ice = ground.totalExcessIce();
+  if (md->tk_ch4) { updateMonthly_RTSMethane_lateral(); }
   // Transfer monthly thermokarst data, regardless of initiation
   year_tkdata[midx] = *tkdata;
+}
+
+/** RTS CH4 scheme (b): monthly production/oxidation/plant transport with a
+ *  per-layer CH4 pool (ground.tk_ch4pool, in restart). Production is an extra
+ *  anaerobic decomposition pathway removed from the SOM pools (C conserved:
+ *  the C leaves the soil into the CH4 pool, then as CO2 or CH4). */
+void Cohort::updateMonthly_RTSMethane(const int & midx) {
+  const int nsl = std::min(cd.m_soil.numsl, (int)MAX_SOI_LAY);
+  // keep the column CH4 if the layer count shrank (layer combination)
+  for (int il = std::max(nsl, 1); il < MAX_SOI_LAY; il++) {
+    if (nsl > 0 && ground.tk_ch4pool[il] != 0.0) {
+      ground.tk_ch4pool[nsl - 1] += ground.tk_ch4pool[il];
+      ground.tk_ch4pool[il] = 0.0;
+    }
+  }
+  std::vector<RTSMethaneLayer> col;
+  std::vector<Layer*> lay;
+  int il = 0;
+  for (Layer* l = ground.fstsoill; l != NULL && l->isSoil && il < nsl; l = l->nextl, il++) {
+    RTSMethaneLayer c;
+    c.ztop = l->z; c.dz = l->dz; c.tem = l->tem;
+    c.c[0] = bdall->m_sois.rawc[il]; c.c[1] = bdall->m_sois.soma[il];
+    c.c[2] = bdall->m_sois.sompr[il]; c.c[3] = bdall->m_sois.somcr[il];
+    c.kd[0] = soilbgc.bgcpar.kdrawc[il]; c.kd[1] = soilbgc.bgcpar.kdsoma[il];
+    c.kd[2] = soilbgc.bgcpar.kdsompr[il]; c.kd[3] = soilbgc.bgcpar.kdsomcr[il];
+    double fr = 0.0, cov = 0.0;
+    for (int ip = 0; ip < NUM_PFT; ip++) {
+      if (cd.m_veg.vegcov[ip] > 0.0 && cd.m_soil.frootfrac[il][ip] > 0.0) {
+        fr += cd.m_soil.frootfrac[il][ip] * cd.m_veg.vegcov[ip];
+      }
+      if (cd.m_veg.vegcov[ip] > 0.0) { cov += cd.m_veg.vegcov[ip]; }
+    }
+    c.froot = cov > 0.0 ? fr / cov : 0.0;
+    c.pool = ground.tk_ch4pool[il];
+    col.push_back(c); lay.push_back(l);
+  }
+  double lai = 0.0;
+  for (int ip = 0; ip < NUM_PFT; ip++) {
+    if (cd.m_veg.vegcov[ip] > 0.0 && cd.m_veg.lai[ip] > 0.0) { lai += cd.m_veg.lai[ip] * cd.m_veg.vegcov[ip]; }
+  }
+  const double pond = RTSMethane::pondSaturation(md->tk_ch4par, ground.tk_months_since_init);
+  const double sx = 1.0 - (1.0 - pond) * (1.0 - std::max(0.0, std::min(1.0, md->tk_ch4par.bg_sat)));
+  RTSMethaneFluxes f = RTSMethane::compute(col, md->tk_ch4par, edall->m_sois.watertab, sx, lai, DINM[midx]);
+  double removed = 0.0;
+  for (size_t i = 0; i < col.size(); i++) {
+    const RTSMethaneLayer & c = col[i];
+    bdall->m_sois.rawc[i] -= c.dc[0]; bdall->m_sois.soma[i] -= c.dc[1];
+    bdall->m_sois.sompr[i] -= c.dc[2]; bdall->m_sois.somcr[i] -= c.dc[3];
+    lay[i]->rawc = bdall->m_sois.rawc[i]; lay[i]->soma = bdall->m_sois.soma[i];
+    lay[i]->sompr = bdall->m_sois.sompr[i]; lay[i]->somcr = bdall->m_sois.somcr[i];
+    removed += c.dc[0] + c.dc[1] + c.dc[2] + c.dc[3];
+    ground.tk_ch4pool[i] = c.pool;
+  }
+  if (removed > 0.0) { assignSoilBd2pfts_monthly(); }
+  soidiag_thermokarst & d = tk_ch4_month;  // copied into tkdata after the slump step
+  d.ch4_prod = f.prod; d.ch4_oxid = f.oxid; d.ch4_emis = f.emis; d.ch4_plant = f.plant;
+  d.ch4_pool = f.pool; d.pond_sat = pond;
+  d.rh_co2 = bdall->m_soi2a.rhsom + f.oxid;
+}
+
+void Cohort::updateMonthly_RTSMethane_lateral() {
+  // the initiation step resets tkdata->thermokarst_soid: copy this month's CH4 now
+  soidiag_thermokarst & t = tkdata->thermokarst_soid;
+  t.ch4_prod = tk_ch4_month.ch4_prod; t.ch4_oxid = tk_ch4_month.ch4_oxid; t.ch4_emis = tk_ch4_month.ch4_emis;
+  t.ch4_plant = tk_ch4_month.ch4_plant; t.ch4_pool = tk_ch4_month.ch4_pool; t.rh_co2 = tk_ch4_month.rh_co2;
+  t.pond_sat = tk_ch4_month.pond_sat;
+  const double latc = tkdata->thermokarst_soi2lat.orgc + tkdata->thermokarst_soi2lat.vegc;
+  tkdata->thermokarst_soid.lat_ch4 = md->tk_ch4par.lat_ch4_frac * latc;
+  // slump month: the disturbed column degasses its CH4 pool
+  if (tkdata->thermokarst_soid.removal_thickness > 0.0 || latc > 0.0) {
+    double p = 0.0;
+    for (int il = 0; il < MAX_SOI_LAY; il++) { p += ground.tk_ch4pool[il]; ground.tk_ch4pool[il] = 0.0; }
+    tkdata->thermokarst_soid.ch4_emis += p;
+    tkdata->thermokarst_soid.ch4_pool = 0.0;
+  }
 }
 
 /** Dynamic Vegetation Module function. */
@@ -1556,6 +1636,11 @@ void Cohort::set_state_from_restartdata() {
   if (this->restartdata.tkinit > 0) {
     ground.tk_months_since_init = this->restartdata.tkinit - 1;
   }
+  // RTS CH4 pool (scheme b); missing in older restarts -> 0
+  for (int il = 0; il < MAX_SOI_LAY; il++) {
+    double x = this->restartdata.tkch4pool[il];
+    ground.tk_ch4pool[il] = (x == MISSING_D || !(x > 0.0)) ? 0.0 : x;
+  }
   // drainage class can be changed by RTS initiation; carry it through restarts
   if (this->restartdata.drainage_type == 0 || this->restartdata.drainage_type == 1) {
     cd.drainage_type = this->restartdata.drainage_type;
@@ -1601,6 +1686,7 @@ void Cohort::set_restartdata_from_state() {
   restartdata.tkexinit = ground.tk_excess_initialized ? 1 : 0;
   restartdata.tkinit = ground.tk_months_since_init + 1;
   restartdata.tksubsidence = ground.tk_subsidence;
+  for (int il = 0; il < MAX_SOI_LAY; il++) { restartdata.tkch4pool[il] = ground.tk_ch4pool[il]; }
   {
     int il = 0;
     for (Layer* l = ground.fstsoill; l != NULL && l->isSoil && il < MAX_SOI_LAY; l = l->nextl, il++) {

@@ -261,9 +261,17 @@ struct soidiag_thermokarst {
   double subsidence;    // cumulative surface subsidence from excess-ice melt (m)
   double excess_ice;    // column excess ice remaining (kg/m2)
   double excess_melted; // excess ice melted this month (kg/m2)
+  // RTS CH4 (thermokarst_ch4; gC/m2/month as C): see RTSMethane.h
+  double ch4_prod, ch4_oxid, ch4_emis, ch4_plant; // production, oxidized to CO2, emitted (incl. plant), plant-mediated part of emis
+  double ch4_pool;   // soil CH4 pool at end of month (gC/m2; scheme b only)
+  double rh_co2;     // soil heterotrophic CO2 = RHSOM - CH4 partition + CH4 oxidized (gC/m2/month)
+  double lat_ch4;    // part of TKLATC assumed to be mineralized downstream as CH4 (gC/m2/month)
+  double pond_sat;   // post-slump ponding saturation factor (0-1)
   soidiag_thermokarst() : removal_thickness(0.0), rolr(0.0), thaw_depth(0.0),
                           ice_melted(0.0), water_drained(0.0), drainage_type(-1),
-                          subsidence(0.0), excess_ice(0.0), excess_melted(0.0) {}
+                          subsidence(0.0), excess_ice(0.0), excess_melted(0.0),
+                          ch4_prod(0.0), ch4_oxid(0.0), ch4_emis(0.0), ch4_plant(0.0),
+                          ch4_pool(0.0), rh_co2(0.0), lat_ch4(0.0), pond_sat(0.0) {}
 };
 
 #endif /*DIAGNOSTICS_H_*/

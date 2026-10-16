@@ -4,6 +4,7 @@
 #include <cstdio>
 #include <vector>
 #include "Thermokarst.h"
+#include "RTSMethane.h"
 #include "Ground.h"
 #include "Climate.h"
 #include "TEMUtilityFunctions.h"
@@ -286,7 +287,64 @@ static void test_cover_negative_orgn() {
   CHECK(Integrator::cover_negative_orgn(o4, rf4, 3) == 0.0 && o4[1] == 2.0);  // no-op
 }
 
+// ---- RTS CH4 scheme (b): per-layer pool, production from SOM pools ----
+static std::vector<RTSMethaneLayer> ch4_col(double tem0) {
+  std::vector<RTSMethaneLayer> col(6);
+  for (int i = 0; i < 6; i++) {
+    RTSMethaneLayer & l = col[i]; l.ztop = 0.1 * i; l.dz = 0.1; l.tem = tem0 - 4 * i;
+    l.c[0] = 100 + 10 * i; l.c[1] = 500; l.c[2] = 2000; l.c[3] = 8000;
+    l.kd[0] = 0.02; l.kd[1] = 0.005; l.kd[2] = 0.001; l.kd[3] = 1e-5;
+    l.froot = 0.3 / (1 + i); l.pool = 0.05 * i;
+  }
+  return col;
+}
+static void test_rts_ch4() {
+  RTSMethaneParams p;
+  CHECK_NEAR(RTSMethane::saturatedFraction(0.4, 0.2, 0.5), 0.5, 1e-12);
+  double prev = -1.0;
+  for (double z = -0.5; z <= 3.0; z += 0.01) {
+    double f = RTSMethane::oxidFraction(p, z);
+    CHECK(f >= p.oxid_min - 1e-15 && f <= p.oxid_max + 1e-15 && f >= 0.0 && f <= 1.0);
+    CHECK(f >= prev - 1e-15); prev = f;
+  }
+  CHECK(RTSMethane::pondSaturation(p, -1) == 0.0);
+  CHECK_NEAR(RTSMethane::pondSaturation(p, (int)(12 * p.pond_tau)), p.pond_sat0 / std::exp(1.0), 1e-12);
+  for (double kf : {0.0, 0.05, 1.0, 1000.0}) {
+    for (double wtd : {0.0, 0.25, 2.0}) {
+      for (double sx : {0.0, 0.5, 1.0}) {
+        RTSMethaneParams r = p; r.kfrac = kf;
+        std::vector<RTSMethaneLayer> col = ch4_col(20.0);
+        double pool0 = 0.0, ctot = 0.0; for (auto & l : col) { pool0 += l.pool; ctot += l.c[0] + l.c[1] + l.c[2] + l.c[3]; }
+        RTSMethaneFluxes f = RTSMethane::compute(col, r, wtd, sx, 1.5, 31.0);
+        double dc = 0.0, pool1 = 0.0; bool layer_ok = true;
+        for (auto & l : col) {
+          double lc = l.c[0] + l.c[1] + l.c[2] + l.c[3], ld = 0.0;
+          for (int k = 0; k < 4; k++) { ld += l.dc[k]; layer_ok = layer_ok && l.dc[k] >= 0.0 && l.dc[k] <= l.c[k] + 1e-12; }
+          layer_ok = layer_ok && ld <= r.avail_frac * lc + 1e-9 && l.pool >= 0.0;   // prod <= available C
+          dc += ld; pool1 += l.pool;
+        }
+        CHECK(layer_ok);
+        CHECK(f.prod >= 0.0 && f.prod <= r.avail_frac * ctot + 1e-9);
+        CHECK_NEAR(dc, f.prod, 1e-9);                                    // C removed == CH4 produced
+        CHECK_NEAR(pool1 - pool0, f.prod - f.oxid - f.emis, 1e-9);       // pool mass balance
+        CHECK_NEAR(f.pool, pool1, 1e-12);
+        CHECK(f.oxid >= 0.0 && f.emis >= 0.0 && f.plant <= f.emis + 1e-12);
+        CHECK(f.oxid + f.emis <= pool0 + f.prod + 1e-9);                 // oxidation bounded by available CH4
+      }
+    }
+  }
+  // frozen column: nothing produced, transported or oxidized; pool stored
+  { std::vector<RTSMethaneLayer> col = ch4_col(-2.0); for (auto & l : col) l.tem = -2.0;
+    double pool0 = 0.0; for (auto & l : col) pool0 += l.pool;
+    RTSMethaneFluxes f = RTSMethane::compute(col, p, 0.0, 1.0, 1.0, 31.0);
+    CHECK(f.prod == 0.0 && f.oxid == 0.0 && f.emis == 0.0); CHECK_NEAR(f.pool, pool0, 1e-15); }
+  // deep WT, no ponding, empty pool: no CH4 (A_RTS=0 / no anoxia baseline)
+  { std::vector<RTSMethaneLayer> col = ch4_col(20.0); for (auto & l : col) l.pool = 0.0;
+    CHECK(RTSMethane::compute(col, p, 10.0, 0.0, 1.0, 31.0).prod == 0.0); }
+}
+
 int main() {
+  test_rts_ch4();
   test_excess_ice_init();
   test_excess_melt_subsidence();
   test_removal_thickness();
