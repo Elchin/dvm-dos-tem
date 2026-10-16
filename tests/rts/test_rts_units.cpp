@@ -341,7 +341,37 @@ static void test_rts_ch4() {
   CHECK(RTSMethane::compute(col, p, 0.3, 0.5, 1.0).prod > RTSMethane::compute(col, p, 0.3, 0.0, 1.0).prod);
 }
 
+static void test_rts_floor() {
+  RTSFloorParams p;
+  // all switches off by default (bitwise v0.1)
+  CHECK(!p.rh_cap && !p.exp_on && !p.anox && !p.any());
+  // cap rate: cap0 at initiation, cap_inf + (cap0-cap_inf)/e after cap_tau years
+  CHECK_NEAR(RTSFloor::capRate(p, 0), p.cap0, 1e-15);
+  CHECK_NEAR(RTSFloor::capRate(p, (int)(12 * p.cap_tau + 0.5)) , p.cap_inf + (p.cap0 - p.cap_inf) * std::exp(-std::floor(12 * p.cap_tau + 0.5) / (12 * p.cap_tau)), 1e-12);
+  CHECK(RTSFloor::capRate(p, 100000) - p.cap_inf < 1e-12);
+  // layer cap: no change before initiation or below the cap, limited above it
+  CHECK(RTSFloor::capLayerRH(p, -1, 50.0, 100.0) == 50.0);
+  CHECK(RTSFloor::capLayerRH(p, 0, 1e-6, 1000.0) == 1e-6);
+  CHECK_NEAR(RTSFloor::capLayerRH(p, 0, 1e6, 1200.0), p.cap0 / 12.0 * 1200.0, 1e-12);
+  CHECK(RTSFloor::capLayerRH(p, 3, 0.0, 1000.0) == 0.0);
+  // export fraction: lat0/12 at initiation, e-folding lat_tau, 0 before
+  CHECK(RTSFloor::exportFraction(p, -1) == 0.0);
+  CHECK_NEAR(RTSFloor::exportFraction(p, 0), p.lat0 / 12.0, 1e-15);
+  CHECK_NEAR(RTSFloor::exportFraction(p, (int)(12 * p.lat_tau)), p.lat0 / 12.0 / std::exp(1.0), 1e-12);
+  // anoxia: 1 for unsaturated, anox_f for saturated, linear between, clipped
+  CHECK(RTSFloor::anoxFactor(p, 0.0) == 1.0);
+  CHECK_NEAR(RTSFloor::anoxFactor(p, 1.0), p.anox_f, 1e-15);
+  CHECK_NEAR(RTSFloor::anoxFactor(p, 0.5), 0.5 * (1.0 + p.anox_f), 1e-15);
+  CHECK(RTSFloor::anoxFactor(p, 2.0) == RTSFloor::anoxFactor(p, 1.0));
+  // export of a pool set conserves mass
+  { double c[4] = {10.0, 200.0, 3000.0, 40000.0}, out = 0.0, tot0 = 0.0, tot1 = 0.0;
+    const double f = RTSFloor::exportFraction(p, 7);
+    for (double & x : c) { tot0 += x; const double d = f * x; x -= d; out += d; tot1 += x; }
+    CHECK_NEAR(tot0, tot1 + out, 1e-9); }
+}
+
 int main() {
+  test_rts_floor();
   test_rts_ch4();
   test_excess_ice_init();
   test_excess_melt_subsidence();

@@ -283,7 +283,7 @@ def test_cmt70_deepc_spinup_n_and_closure(tmp_path):
     assert np.all(np.isfinite(res)) and np.max(np.abs(res)) < 0.01, np.max(np.abs(res))
 
 
-def _gydan_cmt_two_stage(tmp_path, cmt):
+def _gydan_cmt_two_stage(tmp_path, cmt, extra=None, return_dir=False):
     """Two-stage RTS run (slump 2021, scenario to 2045) on the Gydan CMT70 cell
     with the vegetation class set to `cmt`; asserts the monthly N balance
     (NBAL_DIAG) closes within 0.01 g and returns stage2b monthly C residuals."""
@@ -303,6 +303,7 @@ def _gydan_cmt_two_stage(tmp_path, cmt):
             ov['IO'][k] = os.path.join(data, val)
     ov['IO']['output_spec_file'] = sf
     ov['IO']['parameter_dir'] = os.path.join(r.REPO, 'parameters/')
+    if extra: ov['model_settings'].update(extra)
     json.dump(ov, open(os.path.join(w, 'ov.json'), 'w'))
     nbf = os.path.join(w, 'nbal.txt')
     wrap = os.path.join(w, 'nbwrap.sh')
@@ -326,6 +327,7 @@ def _gydan_cmt_two_stage(tmp_path, cmt):
     C = g('VEGC') + g('SOC') + g('DEADC') + g('DWDC')
     F = g('GPP') - g('RG') - g('RM') - g('RHSOM') - g('RHDWD') - g('TKLATC') - g('TKRESPC')
     assert g('TKRESPC').max() > 0          # the slump happened
+    if return_dir: return np.diff(C) - F[1:], os.path.join(w, 'stage2b_rts')
     return np.diff(C) - F[1:]
 
 
@@ -370,3 +372,24 @@ def test_cmt55_rts_on_slump_month_root_removal(tmp_path):
     than left the root pool (negative dead-root C)."""
     res = _gydan_cmt_two_stage(tmp_path, 55)
     assert np.max(np.abs(res)) < 0.01, np.max(np.abs(res))
+
+
+FLOOR_ON = {'thermokarst_rh_cap': True, 'thermokarst_floor_export': True, 'thermokarst_floor_anox': True}
+
+@pytest.mark.skipif(not os.path.exists(os.path.join(GYDAN70, 'two_stage_overrides.json')),
+                    reason='Gydan CMT70 inputs not available')
+def test_cmt70_floor_on_c_n_closure_and_rh_limit(tmp_path):
+    """RTS floor (cap + export + anoxia, v0.2 defaults): monthly C and N closure < 0.01 g
+    (lateral export in TKLATC/TKLATN); first post-slump year RH limited (cap0 = 4.5%/yr of floor
+    mineral C, Lena chamber yr-1 160-184 gC/m2/yr) and floor export continues after the slump month."""
+    import netCDF4 as nc4
+    res, d = _gydan_cmt_two_stage(tmp_path, 70, extra=FLOOR_ON, return_dir=True)
+    assert np.max(np.abs(res)) < 0.01, np.max(np.abs(res))
+    def g(vn):
+        x = nc4.Dataset(os.path.join(d, '%s_monthly_sc.nc' % vn))
+        a = np.ma.filled(np.array(x[vn][:], dtype=float), np.nan); x.close()
+        return np.nan_to_num(a.reshape(a.shape[0], -1)[:, 0])
+    m = int(np.argmax(g('TKRESPC') > 0))
+    lat = g('TKLATC')
+    assert np.all(lat[m + 1:m + 13] > 0)                        # floor export after the slump month
+    assert g('RHSOM')[m + 1:m + 13].sum() < 300.0               # was > 2000 g/m2 in v0.1 (thick ice v2)

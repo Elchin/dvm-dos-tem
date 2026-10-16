@@ -39,10 +39,31 @@ old rts-ch4 diagnostic).
   x ~100 d) to ~16 gC/m2/yr (Baldwin Peninsula RTS 159 mg/d x ~100 d, EGU26-19294). The mg factor leaves CO2
   physics unchanged: suppressed CH4 C stays in TKRHCO2.
   Full data table: russia-inputs/ch4_compare/chamber_data.md/.csv.
-- **Known issue (flagged, not changed): post-slump RH.** v0.1 RHSOM on CMT70 reaches 908 gC/m2/month and
-  2213 gC/m2/yr in the slump year. Chamber and EC data give CO2 0.24-2.6 g C/m2/d and 160-184 gC/m2/yr (yr 1,
-  Lena; Knoblauch et al. 2021). Several studies report LOWER Reco on slump floors than on undisturbed tundra
-  (Cassidy et al. 2016; Abbott & Jones 2015; Tibet 2025). See the proposal in ch4_compare/chamber_data.md.
+- **Post-slump floor RH (v0.2, `include/RTSFloor.h`; three switches, all default false = bitwise v0.1).**
+  Without them, v0.1 RHSOM at CMT70 (Gydan, thick ice v2) reaches 908 gC/m2/month and ~3500 gC/m2 in the
+  first post-slump year. Chamber data give 160-184 gC/m2/yr (Lena, yr 1) and floor Reco at or below undisturbed
+  (ch4_compare/chamber_data.md).
+  1. `thermokarst_rh_cap`: labile-limited mineralization of the exposed mineral-layer C.
+     `RH_l <= k(m)/12 * C_l`, with `k(m) = cap_inf + (cap0-cap_inf) exp(-m/(12 cap_tau))`.
+     `cap0 = 0.045/yr`, `cap_inf = 0.002/yr`, `cap_tau = 1.5 yr`.
+     Knoblauch et al. 2021 (doi:10.1029/2021JG006543) mineralized ~0.8% of thawed C in yr 1, with rates falling
+     as labile C is depleted. Calibrated: first-year floor RH 178 (CMT70) and 126 (CMT56) gC/m2.
+  2. `thermokarst_floor_export`: floor mass wasting (mudflows, debris tongue) moves exposed mineral C/N laterally.
+     The monthly fraction is `lat0/12 exp(-m/(12 lat_tau))` of each mineral SOM pool and orgN, added to
+     TKLATC/TKLATN. `lat0 = 0.02/yr`, `lat_tau = 5 yr`.
+     Sources: slumps export most of the ecosystem C off-site (Abbott & Jones 2015, doi:10.1111/gcb.13069;
+     Abbott et al. 2015, doi:10.5194/bg-12-3725-2015), and sediment export decays as the floor stabilises
+     (Kokelj et al. 2013, JGR Earth Surf., doi:10.1002/jgrf.20063).
+     The data constrain this only weakly: 0.05-0.1/yr exported 13-23 kgC/m2 more over 25 yr.
+  3. `thermokarst_floor_anox`: oxygen limitation on the saturated floor, `RH_l *= 1 - (1-anox_f) sat_l`.
+     sat_l is the saturated fraction below the water table, raised by the ponding factor. `anox_f = 0.3`:
+     anaerobic C release is ~3.4x smaller than aerobic (Schädel et al. 2016, Nat. Clim. Change,
+     doi:10.1038/nclimate3054).
+  Recommended v0.2 RTS settings: all three switches true plus `thermokarst_ch4_mg0 = 1.0`. With RH constrained,
+  the methanogen suppression is no longer needed: first-5-yr CH4 is 2.5 (CMT70) and 2.0 (CMT56) gC/m2/yr, inside
+  the chamber range of 0.4-16. With the floor switches off, keep `mg0 = 0.05` (the default).
+  All terms apply only after initiation, so baseline runs are unchanged (tested). The C/N balance closes
+  (< 0.01 g/month, tested).
 - **Exposed thawed carbon:** no new term. The v0.1 slump thaws the deep column and RH from the newly thawed
   layers feeds CH4 production (a) or the SOM-based production (b).
 - **Lateral export split:** `TKLATCH4 = lat_ch4_frac * TKLATC` with `lat_ch4_frac = 0.02`, the part of the exported
@@ -69,6 +90,9 @@ old rts-ch4 diagnostic).
 | pond_sat0, pond_tau | 0.2, 5 yr | 0.5, 10 yr (b unchanged) | chamber-constrained, weakly sensitive (see above) |
 | mg0, mg_tau | 0.05, 10 yr | - | calibrated to slump-floor chamber CH4 (see above) |
 | lat_ch4_frac | 0.02 | same | see above |
+| rh_cap: cap0, cap_inf, cap_tau | 0.045 /yr, 0.002 /yr, 1.5 yr | same | calibrated (floor section) |
+| floor_export: lat0, lat_tau | 0.02 /yr, 5 yr | same | Abbott & Jones 2015; Kokelj et al. 2013 |
+| floor_anox: anox_f | 0.3 | same | Schädel et al. 2016 |
 
 **Calibration targets:**
 - FLUXNET-CH4 (Knox et al. 2019, BAMS; Delwiche et al. 2021, ESSD): most freshwater wetlands emit
