@@ -798,6 +798,7 @@ void Cohort::updateMonthly_Bgc(const int & currmind) {
   soilbgc.prepareIntegration(md->get_nfeed(), md->get_avlnflg(),
                              md->get_baseline());
   soilbgc.clear_del_structs();
+  if (md->tk_floor.any()) { updateMonthly_RTSFloorPrep(); }
   solintegrator.tk_tolerate_neg_avln = (ground.tk_months_since_init >= 0);
   solintegrator.updateMonthlySbgc(MAX_SOI_LAY);
   soilbgc.afterIntegration();
@@ -1013,6 +1014,7 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
   } else { // checking whether thermokarst is expected due to input forcing
     BOOST_LOG_SEV(glg, debug) << "Not time for thermokarst. Nothing to do.";
   }
+  if (md->tk_floor.exp_on && ground.tk_months_since_init >= 1) { updateMonthly_RTSFloorExport(); }
   if (ground.tk_months_since_init >= 0) { ground.tk_months_since_init++; }
   tkdata->thermokarst_soid.subsidence = ground.tk_subsidence;
   tkdata->thermokarst_soid.excess_ice = ground.totalExcessIce();
@@ -1046,6 +1048,45 @@ void Cohort::updateMonthly_RTSMethane(const int & midx) {
   d.ch4_prod = f.prod; d.ch4_oxid = f.oxid; d.ch4_emis = f.emis; d.ch4_plant = f.plant;
   d.ch4_pool = 0.0; d.pond_sat = pond;
   d.rh_co2 = bdall->m_soi2a.rhsom - f.prod + f.oxid;   // = RHSOM - emis
+}
+
+/** RTS floor (RTSFloor.h): per-layer RH modifiers used inside Soil_Bgc::deltac. Only after initiation. */
+void Cohort::updateMonthly_RTSFloorPrep() {
+  const int m = ground.tk_months_since_init;
+  const RTSFloorParams & p = md->tk_floor;
+  soilbgc.tk_floor_on = (m >= 0) && (p.rh_cap || p.anox);
+  if (!soilbgc.tk_floor_on) { return; }
+  soilbgc.tk_cap_on = p.rh_cap; soilbgc.tk_months = m; soilbgc.tk_floorpar = p;
+  for (int il = 0; il < MAX_SOI_LAY; il++) { soilbgc.tk_rhmult[il] = 1.0; soilbgc.tk_capmask[il] = false; }
+  const double pond = RTSMethane::pondSaturation(md->tk_ch4par, m);
+  int il = 0;
+  for (Layer* l = ground.fstsoill; l != NULL && l->isSoil && il < MAX_SOI_LAY; l = l->nextl, il++) {
+    soilbgc.tk_capmask[il] = l->isMineral;
+    if (p.anox) {
+      double sat = RTSMethane::saturatedFraction(l->z, l->dz, edall->m_sois.watertab);
+      sat += (1.0 - sat) * pond;
+      soilbgc.tk_rhmult[il] = RTSFloor::anoxFactor(p, sat);
+    }
+  }
+}
+
+/** RTS floor (RTSFloor.h): lateral export of a monthly fraction of mineral-layer SOM C and orgN
+ *  (floor mass wasting / mudflows). Added to TKLATC/TKLATN, so the cell C/N balance closes. */
+void Cohort::updateMonthly_RTSFloorExport() {
+  const double f = RTSFloor::exportFraction(md->tk_floor, ground.tk_months_since_init);
+  if (f <= 0.0) { return; }
+  double dc = 0.0, dn = 0.0;
+  int il = 0;
+  for (Layer* l = ground.fstsoill; l != NULL && l->isSoil && il < MAX_SOI_LAY; l = l->nextl, il++) {
+    if (!l->isMineral) { continue; }
+    double * pools[4] = { &bdall->m_sois.rawc[il], &bdall->m_sois.soma[il], &bdall->m_sois.sompr[il], &bdall->m_sois.somcr[il] };
+    for (double * q : pools) { if (*q > 0.0) { const double x = f * (*q); *q -= x; dc += x; } }
+    if (bdall->m_sois.orgn[il] > 0.0) { const double x = f * bdall->m_sois.orgn[il]; bdall->m_sois.orgn[il] -= x; dn += x; }
+  }
+  tkdata->thermokarst_soi2lat.orgc += dc;
+  tkdata->thermokarst_soi2lat.orgn += dn;
+  soilbgc.assignCarbonBd2LayerMonthly();
+  assignSoilBd2pfts_monthly();
 }
 
 void Cohort::updateMonthly_RTSMethane_lateral() {

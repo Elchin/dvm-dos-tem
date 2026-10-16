@@ -140,6 +140,8 @@ private:
   void updateMonthly_Fir(const int & year, const int & midx, std::string stage);
   void updateMonthly_Thermokarst(const int &year, const int &midx, std::string stage);
   void updateMonthly_RTSMethane(const int & midx);   // RTS CH4 (thermokarst_ch4)
+  void updateMonthly_RTSFloorPrep();                  // per-layer RH modifiers before soil integration
+  void updateMonthly_RTSFloorExport();                // monthly lateral export of floor mineral C/N
   void updateMonthly_RTSMethane_lateral();           // CO2/CH4 split of TKLATC
   soidiag_thermokarst tk_ch4_month; // this month's CH4 (kept across the slump step, which resets tkdata)
 

@@ -21,8 +21,17 @@
 
 using namespace std;
 
+#include "RTSFloor.h"
 class Soil_Bgc {
 public:
+  // RTS floor (RTSFloor.h); tk_floor_on=false -> code path untouched (bitwise v0.1)
+  bool tk_floor_on = false;
+  bool tk_cap_on = false;
+  int tk_months = -1;
+  RTSFloorParams tk_floorpar;
+  double tk_rhmult[MAX_SOI_LAY];   // anoxia multiplier per layer (1 = none)
+  bool tk_capmask[MAX_SOI_LAY];    // layer subject to the mineralization cap (mineral layers)
+
   // litter/debris inputs prepared for this month's soil integration
   double litter_c(int il) const { return ltrflc[il]; }
   double litter_n(int il) const { return ltrfln[il]; }

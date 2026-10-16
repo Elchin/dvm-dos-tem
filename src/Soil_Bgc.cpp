@@ -670,6 +670,18 @@ void Soil_Bgc::deltac() {
     } else {
       del_soi2a.rhsomcr[il] = 0.;
     }
+    if (tk_floor_on) {
+      // RTS floor: oxygen limitation, then labile-limited cap on exposed mineral C (RTSFloor.h)
+      double m = tk_rhmult[il];
+      double r = (del_soi2a.rhrawc[il] + del_soi2a.rhsoma[il] + del_soi2a.rhsompr[il] + del_soi2a.rhsomcr[il]) * m;
+      if (tk_cap_on && tk_capmask[il] && r > 0.0) {
+        const double c = std::max(0.0, tmp_sois.rawc[il]) + std::max(0.0, tmp_sois.soma[il])
+                       + std::max(0.0, tmp_sois.sompr[il]) + std::max(0.0, tmp_sois.somcr[il]);
+        m *= RTSFloor::capLayerRH(tk_floorpar, tk_months, r, c) / r;
+      }
+      del_soi2a.rhrawc[il] *= m; del_soi2a.rhsoma[il] *= m;
+      del_soi2a.rhsompr[il] *= m; del_soi2a.rhsomcr[il] *= m;
+    }
   } // loop for each soil layer
 
   // for wood debris at ground surface
