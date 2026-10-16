@@ -25,7 +25,7 @@ LEGACY_M2D = {'monthly2daily_mean_preserving': False}
 # v0.2 defaults have the RTS floor terms on and methanogen suppression off; these settings restore v0.1
 # (bitwise identical to rts-light-v0.1 with thermokarst_ch4 off; tested against the v0.1 references)
 V01_OFF = {'thermokarst_rh_cap': False, 'thermokarst_floor_export': False, 'thermokarst_floor_anox': False,
-           'thermokarst_ch4_mg0': 0.05}
+           'thermokarst_floor_rmin': False, 'thermokarst_ch4_mg0': 0.05}
 # RTS CH4 outputs (rts-ch4-a / rts-ch4-b)
 CH4_OUTPUTS = {v: 'm' for v in ('TKCH4PROD', 'TKCH4OXID', 'TKCH4EMIS', 'TKCH4PLANT', 'TKCH4POOL',
                                  'TKRHCO2', 'TKLATCH4', 'TKPONDSAT')}

@@ -146,10 +146,13 @@
     // defaults and sources in include/RTSMethane.h and docs_src/rts_ch4.md.
     "thermokarst_ch4": false,
     // RTS v0.2 post-slump floor (include/RTSFloor.h; docs_src/rts_ch4.md). Defaults ON;
-    // all three false + thermokarst_ch4_mg0 0.05 -> v0.1 floor behaviour (bitwise v0.1 with ch4 off).
+    // all four switches false + thermokarst_ch4_mg0 0.05 -> v0.1 floor behaviour (bitwise v0.1 with ch4 off).
     "thermokarst_rh_cap": true,          // labile-limited RH cap on exposed mineral C
     "thermokarst_floor_export": true,    // lateral export of floor mineral C/N
     "thermokarst_floor_anox": true,      // O2 limitation of RH on saturated floor layers
+    "thermokarst_floor_rmin": true,      // minimum floor RH >= r(age) x pre-slump RH (from existing pools)
+    "rts_floor_rmin0": 0.3,              // r at initiation; r -> 1 with e-folding rts_floor_rmin_tau (yr)
+    "rts_floor_rmin_tau": 10.0,
     "thermokarst_ch4_mg0": 1.0           // methanogen suppression off (v0.2 default)
 //    //"dynamic_climate": 0,
 //    //"varied_co2": 0,

@@ -59,6 +59,20 @@ old rts-ch4 diagnostic).
      sat_l is the saturated fraction below the water table, raised by the ponding factor. `anox_f = 0.3`:
      anaerobic C release is ~3.4x smaller than aerobic (Schädel et al. 2016, Nat. Clim. Change,
      doi:10.1038/nclimate3054).
+  4. `thermokarst_floor_rmin` (default true): minimum floor respiration. Column RHSOM in each month after
+     initiation is at least `r(m) * RH_pre`, with `r(m) = 1 - (1-rmin0) exp(-m/(12 rmin_tau))`,
+     `rts_floor_rmin0 = 0.3` and `rts_floor_rmin_tau = 10 yr`. RH_pre is a running mean of column RHSOM for the
+     same calendar month over the last 5 years before the trigger (`rts_floor_rmin_years`), so the seasonal cycle
+     is kept. It is column-level, not per layer, because the slump restructures the layers. The deficit is
+     respired from the existing SOM pools. Layers are weighted by SOM C x moisture x Q10 scaler, pools in
+     proportion to their C, and a layer gives at most 5% of its C per month. No C is created, so C/N closure
+     holds (tested). If there is no pre-trigger history in the current stage, the term does nothing.
+     Data: dry/bare floors have floor/undisturbed ratios of 0.28-0.55, and stabilised slumps return to
+     undisturbed (Jensen et al. 2014, doi:10.1088/1748-9326/9/2/025001; Cassidy et al. 2016; Tibet 2025;
+     russia-inputs/ch4_compare/chamber_data_dryupland.md).
+     Result with 0.3 / 10 yr (no recalibration needed): yr-1 floor/pre-slump ratio is 0.34 (CMT05) and 0.34
+     (CMT07), up from 0.12 and 0.04. CMT70 yr-1 RH is unchanged at 178 gC/m2 (the minimum is not binding there).
+     A sweep of rmin0 0.3-0.4 and tau 5-10 gives ratios 0.34-0.47.
   v0.2 defaults (include/RTSFloor.h, include/RTSMethane.h, config/config.js): all three switches true plus
   `thermokarst_ch4_mg0 = 1.0`. With RH constrained,
   the methanogen suppression is no longer needed: first-5-yr CH4 is 2.5 (CMT70) and 2.0 (CMT56) gC/m2/yr, inside
@@ -94,6 +108,7 @@ old rts-ch4 diagnostic).
 | rh_cap: cap0, cap_inf, cap_tau | 0.045 /yr, 0.002 /yr, 1.5 yr | same | calibrated (floor section) |
 | floor_export: lat0, lat_tau | 0.02 /yr, 5 yr | same | Abbott & Jones 2015; Kokelj et al. 2013 |
 | floor_anox: anox_f | 0.3 | same | Schädel et al. 2016 |
+| floor_rmin: rmin0, rmin_tau, years | 0.3, 10 yr, 5 yr | same | Jensen et al. 2014; dry-upland compilation |
 
 **Calibration targets:**
 - FLUXNET-CH4 (Knox et al. 2019, BAMS; Delwiche et al. 2021, ESSD): most freshwater wetlands emit

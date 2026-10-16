@@ -346,8 +346,33 @@ static void test_rts_floor() {
   // v0.2 defaults: all switches on, calibrated values; all off -> any() false (bitwise v0.1 path)
   CHECK(p.rh_cap && p.exp_on && p.anox && p.any());
   CHECK(p.cap0 == 0.045 && p.cap_inf == 0.002 && p.cap_tau == 1.5 && p.lat0 == 0.02 && p.lat_tau == 5.0 && p.anox_f == 0.3);
-  { RTSFloorParams q = p; q.rh_cap = q.exp_on = q.anox = false; CHECK(!q.any()); }
+  { RTSFloorParams q = p; q.rh_cap = q.exp_on = q.anox = false; CHECK(q.any() == q.rmin_on); q.rmin_on = false; CHECK(!q.any()); }
   { RTSMethaneParams mp; CHECK(mp.mg0 == 1.0); CHECK(mp.ch4_frac == 0.135); }
+  CHECK(p.rmin_on && p.rmin0 == 0.3 && p.rmin_tau == 10.0 && p.rmin_years == 5);
+  { RTSFloorParams q = p; q.rh_cap = q.exp_on = q.anox = q.rmin_on = false; CHECK(!q.any()); }
+  // rmin factor: 1 before initiation, rmin0 at initiation, 1-(1-rmin0)/e after rmin_tau years, -> 1
+  CHECK(RTSFloor::rminFactor(p, -1) == 1.0);
+  CHECK_NEAR(RTSFloor::rminFactor(p, 0), p.rmin0, 1e-15);
+  CHECK_NEAR(RTSFloor::rminFactor(p, (int)(12 * p.rmin_tau)), 1.0 - (1.0 - p.rmin0) / std::exp(1.0), 1e-12);
+  CHECK(RTSFloor::rminFactor(p, 120000) > 0.999999);
+  { RTSFloorParams q = p; q.rmin0 = -2.0; CHECK(RTSFloor::rminFactor(q, 0) == 0.0); q.rmin0 = 3.0; CHECK(RTSFloor::rminFactor(q, 0) == 1.0); }
+  // minimum respiration: raises RH to the target from the pools, conserves C, never above rmin_maxfrac of C
+  { const int n = 3; double w[n] = {1.0, 0.5, 0.0};
+    double cr[n] = {10, 0, 5}, ca[n] = {100, 200, 50}, cp[n] = {1000, 500, 0}, cc[n] = {5000, 3000, 100};
+    double rr[n] = {0.01, 0, 0}, ra[n] = {0.1, 0.2, 0}, rp[n] = {0.05, 0.02, 0}, rc[n] = {0.01, 0.01, 0};
+    double r0 = 0; for (int i = 0; i < n; i++) r0 += rr[i] + ra[i] + rp[i] + rc[i];
+    const double add = RTSFloor::applyMinimum(10.0, n, w, cr, ca, cp, cc, rr, ra, rp, rc);
+    double r1 = 0; for (int i = 0; i < n; i++) r1 += rr[i] + ra[i] + rp[i] + rc[i];
+    CHECK_NEAR(r1, 10.0, 1e-9); CHECK_NEAR(r1 - r0, add, 1e-12);
+    CHECK(rr[2] == 0 && ra[2] == 0 && rc[2] == 0);                 // zero weight (e.g. no activity): untouched
+    for (int i = 0; i < n; i++) CHECK(rr[i] + ra[i] + rp[i] + rc[i] <= RTSFloor::rmin_maxfrac * (cr[i] + ca[i] + cp[i] + cc[i]) + 1e-12);
+    // above target: unchanged; huge target: limited by rmin_maxfrac (no C creation beyond pools)
+    double before = rr[0]; CHECK(RTSFloor::applyMinimum(1.0, n, w, cr, ca, cp, cc, rr, ra, rp, rc) == 0.0); CHECK(rr[0] == before);
+    RTSFloor::applyMinimum(1e9, n, w, cr, ca, cp, cc, rr, ra, rp, rc);
+    for (int i = 0; i < n; i++) CHECK(rr[i] + ra[i] + rp[i] + rc[i] <= RTSFloor::rmin_maxfrac * (cr[i] + ca[i] + cp[i] + cc[i]) + 1e-9);
+    // empty pools: nothing added
+    double z[n] = {0, 0, 0}, a2[n] = {0, 0, 0}, b2[n] = {0, 0, 0}, c2[n] = {0, 0, 0}, d2[n] = {0, 0, 0};
+    CHECK(RTSFloor::applyMinimum(5.0, n, w, z, z, z, z, a2, b2, c2, d2) == 0.0); }
   // cap rate: cap0 at initiation, cap_inf + (cap0-cap_inf)/e after cap_tau years
   CHECK_NEAR(RTSFloor::capRate(p, 0), p.cap0, 1e-15);
   CHECK_NEAR(RTSFloor::capRate(p, (int)(12 * p.cap_tau + 0.5)) , p.cap_inf + (p.cap0 - p.cap_inf) * std::exp(-std::floor(12 * p.cap_tau + 0.5) / (12 * p.cap_tau)), 1e-12);

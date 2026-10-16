@@ -143,6 +143,10 @@ private:
   void updateMonthly_RTSFloorPrep();                  // per-layer RH modifiers before soil integration
   void updateMonthly_RTSFloorExport();                // monthly lateral export of floor mineral C/N
   void updateMonthly_RTSMethane_lateral();           // CO2/CH4 split of TKLATC
+  int tk_cur_month = 0;               // calendar month of the current step (RTS floor rmin)
+  double tk_rh_hist[10][12] = {{0}};  // pre-initiation monthly RHSOM ring buffer (years x months)
+  int tk_rh_nyr[12] = {0};            // number of recorded years per calendar month (<= 10)
+  int tk_rh_next[12] = {0};           // next ring slot per calendar month
   soidiag_thermokarst tk_ch4_month; // this month's CH4 (kept across the slump step, which resets tkdata)
 
   // update root distribution

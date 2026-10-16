@@ -31,6 +31,7 @@ public:
   RTSFloorParams tk_floorpar;
   double tk_rhmult[MAX_SOI_LAY];   // anoxia multiplier per layer (1 = none)
   bool tk_capmask[MAX_SOI_LAY];    // layer subject to the mineralization cap (mineral layers)
+  double tk_rmin_target = -1.0;    // minimum column RHSOM this month, g/month (<0: off)
 
   // litter/debris inputs prepared for this month's soil integration
   double litter_c(int il) const { return ltrflc[il]; }

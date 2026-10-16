@@ -97,14 +97,15 @@ def test_cmt70_blend_zero_is_baseline(c70):
 def test_floor_switches_off_identical_to_v01(tmp_path):
     """RTS floor switches given explicitly false: RTS-on synthetic run == stored v0.1 reference, exact."""
     off = {'thermokarst_rh_cap': False, 'thermokarst_floor_export': False, 'thermokarst_floor_anox': False,
-           'thermokarst_ch4': False}
+           'thermokarst_floor_rmin': False, 'thermokarst_ch4': False}
     o = r.run(BIN, str(tmp_path / 'floor_off'), True, outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS}, extra=off)
     assert r.compare_dirs(os.path.join(REF, 'rts'), o, 0.0, 0.0) == []
 
 def test_floor_on_no_effect_without_slump(tmp_path):
     """Floor terms act only after initiation: RTS module on but no initiation (baseline) -> v0.1 baseline
     run with the same settings, exact."""
-    on = {'thermokarst_rh_cap': True, 'thermokarst_floor_export': True, 'thermokarst_floor_anox': True}
+    on = {'thermokarst_rh_cap': True, 'thermokarst_floor_export': True, 'thermokarst_floor_anox': True,
+          'thermokarst_floor_rmin': True}
     a = r.run(BIN, str(tmp_path / 'b_off'), False, outputs=r.BASE_OUTPUTS)
     b = r.run(BIN, str(tmp_path / 'b_on'), False, outputs=r.BASE_OUTPUTS, extra=on)
     assert r.compare_dirs(a, b, 0.0, 0.0) == []

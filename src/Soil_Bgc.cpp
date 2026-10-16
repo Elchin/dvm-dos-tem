@@ -683,6 +683,14 @@ void Soil_Bgc::deltac() {
       del_soi2a.rhsompr[il] *= m; del_soi2a.rhsomcr[il] *= m;
     }
   } // loop for each soil layer
+  if (tk_floor_on && tk_rmin_target > 0.0) {
+    // RTS floor minimum respiration (RTSFloor.h (4)): from the existing pools only
+    double w[MAX_SOI_LAY];
+    const int n = std::min(cd->m_soil.numsl, MAX_SOI_LAY);
+    for (int il = 0; il < n; il++) { w[il] = bd->m_soid.rhmoist[il] * bd->m_soid.rhq10[il]; }
+    RTSFloor::applyMinimum(tk_rmin_target, n, w, tmp_sois.rawc, tmp_sois.soma, tmp_sois.sompr, tmp_sois.somcr,
+                           del_soi2a.rhrawc, del_soi2a.rhsoma, del_soi2a.rhsompr, del_soi2a.rhsomcr);
+  }
 
   // for wood debris at ground surface
   del_soi2a.rhwdeb = 0.;

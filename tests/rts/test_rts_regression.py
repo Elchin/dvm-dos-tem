@@ -168,12 +168,17 @@ def test_fluxes_present_and_baseline_identical(runs):
     bad = r.compare_dirs(os.path.join(REF, 'baseline'), runs['base'], RTOL, ATOL)
     assert bad == []
 
-def test_rh_drops_after_initiation(runs):
-    rh_b, rh_r = _g(runs['base'], 'RHSOM'), _g(runs['rts'], 'RHSOM')
+@pytest.mark.parametrize('run', ['rts_v01', 'rts'])
+def test_rh_drops_after_initiation(runs, run):
+    rh_b, rh_r = _g(runs['base'], 'RHSOM'), _g(runs[run], 'RHSOM')
     # same calendar months one year after initiation: Aug-Sep of year 11
     win = slice(M + 12, M + 14)
     assert rh_r[win].sum() < 0.5 * rh_b[win].sum()
-    assert rh_r[M + 1] < 0.2 * rh_b[M + 1]
+    if run == 'rts_v01':
+        assert rh_r[M + 1] < 0.2 * rh_b[M + 1]
+    else:   # v0.2 floor minimum respiration: >= rmin0 (0.3) x 5-yr pre-slump mean of the same month
+        pre = np.mean([rh_r[M + 1 - 12 * k] for k in range(1, 6)])
+        assert 0.3 * pre - 1e-9 <= rh_r[M + 1] < 0.5 * rh_b[M + 1]
 
 def test_ra_drops_when_vegetation_removed(runs):
     ra_b, ra_r = _ra(runs['base']), _ra(runs['rts'])
@@ -394,7 +399,8 @@ def test_cmt55_rts_on_slump_month_root_removal(tmp_path):
     assert np.max(np.abs(res)) < 0.01, np.max(np.abs(res))
 
 
-FLOOR_ON = {'thermokarst_rh_cap': True, 'thermokarst_floor_export': True, 'thermokarst_floor_anox': True}
+FLOOR_ON = {'thermokarst_rh_cap': True, 'thermokarst_floor_export': True, 'thermokarst_floor_anox': True,
+            'thermokarst_floor_rmin': True}
 
 @pytest.mark.skipif(not os.path.exists(os.path.join(GYDAN70, 'two_stage_overrides.json')),
                     reason='Gydan CMT70 inputs not available')
@@ -413,3 +419,27 @@ def test_cmt70_floor_on_c_n_closure_and_rh_limit(tmp_path):
     lat = g('TKLATC')
     assert np.all(lat[m + 1:m + 13] > 0)                        # floor export after the slump month
     assert g('RHSOM')[m + 1:m + 13].sum() < 300.0               # was > 2000 g/m2 in v0.1 (thick ice v2)
+
+
+@pytest.mark.skipif(not os.path.exists(os.path.join(GYDAN70, 'two_stage_overrides.json')),
+                    reason='Gydan CMT70 inputs not available')
+@pytest.mark.parametrize('cmt', [5, 7])
+def test_floor_rmin_dry_upland(tmp_path, cmt):
+    """Floor minimum respiration (v0.2 default, rmin0 = 0.3): on dry CMT05/07 floors the first post-slump
+    year RH is >= rmin0 x the pre-slump RH of the same months (C from existing pools), with monthly C and N
+    closure < 0.01 g; with the switch off the floor RH is far lower."""
+    import netCDF4 as nc4
+    res, d = _gydan_cmt_two_stage(tmp_path / 'on', cmt, return_dir=True)
+    assert np.max(np.abs(res)) < 0.01, np.max(np.abs(res))
+    res0, d0 = _gydan_cmt_two_stage(tmp_path / 'off', cmt, extra={'thermokarst_floor_rmin': False}, return_dir=True)
+    def g(dd, vn):
+        x = nc4.Dataset(os.path.join(dd, '%s_monthly_sc.nc' % vn))
+        a = np.ma.filled(np.array(x[vn][:], dtype=float), np.nan); x.close()
+        return np.nan_to_num(a.reshape(a.shape[0], -1)[:, 0])
+    m = int(np.argmax(g(d, 'TKRESPC') > 0))
+    rh = g(d, 'RHSOM')
+    pre = np.mean([rh[m + 1 - 12 * k:m + 13 - 12 * k] for k in range(1, 6)], axis=0)  # 5-yr same-month mean
+    yr1 = rh[m + 1:m + 13]
+    assert np.all(yr1 >= 0.3 * pre - 1e-6)
+    assert 0.25 <= yr1.sum() / pre.sum() <= 0.55
+    assert g(d0, 'RHSOM')[m + 1:m + 13].sum() < yr1.sum()

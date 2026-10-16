@@ -798,11 +798,19 @@ void Cohort::updateMonthly_Bgc(const int & currmind) {
   soilbgc.prepareIntegration(md->get_nfeed(), md->get_avlnflg(),
                              md->get_baseline());
   soilbgc.clear_del_structs();
+  tk_cur_month = currmind;
   if (md->tk_floor.any()) { updateMonthly_RTSFloorPrep(); }
   solintegrator.tk_tolerate_neg_avln = (ground.tk_months_since_init >= 0);
   solintegrator.updateMonthlySbgc(MAX_SOI_LAY);
   soilbgc.afterIntegration();
   bdall->soil_endOfMonth(currmind);   // yearly data accumulation
+  if (md->tk_floor.rmin_on && ground.tk_months_since_init < 0 && currmind >= 0 && currmind < 12) {
+    // pre-slump RH climatology for the floor minimum respiration (diagnostic only before initiation)
+    const int ny = std::max(1, std::min(10, md->tk_floor.rmin_years));
+    tk_rh_hist[tk_rh_next[currmind] % ny][currmind] = bdall->m_soi2a.rhsom;
+    tk_rh_next[currmind] = (tk_rh_next[currmind] + 1) % ny;
+    tk_rh_nyr[currmind] = std::min(ny, tk_rh_nyr[currmind] + 1);
+  }
   bdall->land_endOfMonth();
 
   //sharing the 'ground' portion in 'bdall' with each pft 'bd'
@@ -1054,7 +1062,13 @@ void Cohort::updateMonthly_RTSMethane(const int & midx) {
 void Cohort::updateMonthly_RTSFloorPrep() {
   const int m = ground.tk_months_since_init;
   const RTSFloorParams & p = md->tk_floor;
-  soilbgc.tk_floor_on = (m >= 0) && (p.rh_cap || p.anox);
+  soilbgc.tk_rmin_target = -1.0;
+  if (p.rmin_on && m >= 0 && tk_rh_nyr[tk_cur_month] > 0) {
+    double s = 0.0;
+    for (int k = 0; k < tk_rh_nyr[tk_cur_month]; k++) { s += tk_rh_hist[k][tk_cur_month]; }
+    soilbgc.tk_rmin_target = RTSFloor::rminFactor(p, m) * s / tk_rh_nyr[tk_cur_month];
+  }
+  soilbgc.tk_floor_on = (m >= 0) && (p.rh_cap || p.anox || soilbgc.tk_rmin_target > 0.0);
   if (!soilbgc.tk_floor_on) { return; }
   soilbgc.tk_cap_on = p.rh_cap; soilbgc.tk_months = m; soilbgc.tk_floorpar = p;
   for (int il = 0; il < MAX_SOI_LAY; il++) { soilbgc.tk_rhmult[il] = 1.0; soilbgc.tk_capmask[il] = false; }
