@@ -25,10 +25,24 @@ old rts-ch4 diagnostic).
 
 ## RTS-specific terms
 - **Post-slump ponding:** `pond(m) = pond_sat0 * exp(-m/(12*pond_tau))`, m = months since initiation (0 before).
-  `pond_sat0 = 0.5` means that right after the slump half of the unsaturated part of the thawed column
-  (scar floor/ponded mud) is anoxic. `pond_tau = 10 yr`: the slump floor drains, stabilises and revegetates on
-  decadal time scales (Kokelj et al. 2013, J. Geophys. Res. Earth Surf.; Lantz & Kokelj 2008). These values are
-  PLACEHOLDERS to be constrained by slump-floor chamber data.
+  v0.2 defaults `pond_sat0 = 0.2`, `pond_tau = 5 yr`. The emission is insensitive to them: on CMT70/56
+  (Gydan, thick ice v2), sat0 between 0 and 0.2 changes the 2021-25 CH4 by <8%, because the thawed slump column
+  already sits below the model water table. Moderate values were chosen because young exposed slump floors are
+  mostly well drained, with CH4 uptake on the Tibetan Plateau (Nat. Commun. 2025, doi:10.1038/s41467-025-66869-4) and
+  CH4 near undisturbed 3-12 yr after thaw (Mu et al. 2018, doi:10.1021/acs.est.7b04979).
+- **Post-slump methanogen recovery:** `mg(m) = 1 - (1-mg0) exp(-m/(12*mg_tau))` (1 before initiation) scales
+  ch4_frac. Freshly exposed Pleistocene/mineral sediment lacks an active methanogen community (Knoblauch et al.
+  2021, doi:10.1029/2021JG006543: CH4 only 3.7-5.1 mg C/m2/d against CO2 0.24-2.6 g C/m2/d). CH4 rises again
+  over decades as the floor wets and revegetates (Mu et al. 2018: 3.5x undisturbed after 20 yr).
+  `mg0 = 0.05`, `mg_tau = 10 yr`, CALIBRATED so that the first-5-yr post-slump emission of CMT70/56 is ~4-5
+  gC/m2/yr. That is near the log-centre of the chamber range for slump floors: 0.4 (Lena, July 3.7-5.1 mg/d
+  x ~100 d) to ~16 gC/m2/yr (Baldwin Peninsula RTS 159 mg/d x ~100 d, EGU26-19294). The mg factor leaves CO2
+  physics unchanged: suppressed CH4 C stays in TKRHCO2.
+  Full data table: russia-inputs/ch4_compare/chamber_data.md/.csv.
+- **Known issue (flagged, not changed): post-slump RH.** v0.1 RHSOM on CMT70 reaches 908 gC/m2/month and
+  2213 gC/m2/yr in the slump year. Chamber and EC data give CO2 0.24-2.6 g C/m2/d and 160-184 gC/m2/yr (yr 1,
+  Lena; Knoblauch et al. 2021). Several studies report LOWER Reco on slump floors than on undisturbed tundra
+  (Cassidy et al. 2016; Abbott & Jones 2015; Tibet 2025). See the proposal in ch4_compare/chamber_data.md.
 - **Exposed thawed carbon:** no new term. The v0.1 slump thaws the deep column and RH from the newly thawed
   layers feeds CH4 production (a) or the SOM-based production (b).
 - **Lateral export split:** `TKLATCH4 = lat_ch4_frac * TKLATC` with `lat_ch4_frac = 0.02`, the part of the exported
@@ -52,7 +66,9 @@ old rts-ch4 diagnostic).
 | tau_sat / tau_unsat | - | 20 d / 1 d | escape time scales replacing the diffusion solver |
 | avail_frac | - | 0.05 /month | cap: production <= 5% of layer SOC per month |
 | bg_sat | 0 | 0 | background anoxic/inundated fraction of the cell (e.g. a BAWLD tundra-wetland fraction); 1 = WT at the surface (calibration case) |
-| pond_sat0, pond_tau, lat_ch4_frac | 0.5, 10 yr, 0.02 | same | see above (PLACEHOLDERS) |
+| pond_sat0, pond_tau | 0.2, 5 yr | 0.5, 10 yr (b unchanged) | chamber-constrained, weakly sensitive (see above) |
+| mg0, mg_tau | 0.05, 10 yr | - | calibrated to slump-floor chamber CH4 (see above) |
+| lat_ch4_frac | 0.02 | same | see above |
 
 **Calibration targets:**
 - FLUXNET-CH4 (Knox et al. 2019, BAMS; Delwiche et al. 2021, ESSD): most freshwater wetlands emit

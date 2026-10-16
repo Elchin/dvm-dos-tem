@@ -1039,7 +1039,9 @@ void Cohort::updateMonthly_RTSMethane(const int & midx) {
   }
   const double pond = RTSMethane::pondSaturation(md->tk_ch4par, ground.tk_months_since_init);
   const double sx = 1.0 - (1.0 - pond) * (1.0 - std::max(0.0, std::min(1.0, md->tk_ch4par.bg_sat)));
-  RTSMethaneFluxes f = RTSMethane::compute(col, md->tk_ch4par, edall->m_sois.watertab, sx, lai);
+  RTSMethaneParams p = md->tk_ch4par;
+  p.ch4_frac *= RTSMethane::methanogenFactor(p, ground.tk_months_since_init);
+  RTSMethaneFluxes f = RTSMethane::compute(col, p, edall->m_sois.watertab, sx, lai);
   soidiag_thermokarst & d = tk_ch4_month;  // copied into tkdata after the slump step
   d.ch4_prod = f.prod; d.ch4_oxid = f.oxid; d.ch4_emis = f.emis; d.ch4_plant = f.plant;
   d.ch4_pool = 0.0; d.pond_sat = pond;

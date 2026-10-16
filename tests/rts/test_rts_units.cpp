@@ -307,6 +307,12 @@ static void test_rts_ch4() {
   CHECK(RTSMethane::pondSaturation(p, -1) == 0.0);
   CHECK_NEAR(RTSMethane::pondSaturation(p, 0), p.pond_sat0, 1e-15);
   CHECK_NEAR(RTSMethane::pondSaturation(p, (int)(12 * p.pond_tau)), p.pond_sat0 / std::exp(1.0), 1e-12);
+  // methanogen recovery: 1 before initiation, mg0 at initiation, 1-(1-mg0)/e after mg_tau years, -> 1
+  CHECK(RTSMethane::methanogenFactor(p, -1) == 1.0);
+  CHECK_NEAR(RTSMethane::methanogenFactor(p, 0), p.mg0, 1e-15);
+  CHECK_NEAR(RTSMethane::methanogenFactor(p, (int)(12 * p.mg_tau)), 1.0 - (1.0 - p.mg0) / std::exp(1.0), 1e-12);
+  CHECK(RTSMethane::methanogenFactor(p, 12000) > 0.999999);
+  { RTSMethaneParams q = p; q.mg0 = 1.0; CHECK(RTSMethane::methanogenFactor(q, 5) == 1.0); }
   // production <= RH (also with an extreme scale factor) and emis + oxid = prod
   std::vector<RTSMethaneLayer> col(6);
   double rh = 0.0;

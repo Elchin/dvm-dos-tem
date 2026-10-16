@@ -17,6 +17,9 @@
  *            (0 before initiation). sat_l -> sat_l + (1 - sat_l) * pond and
  *            WTD_eff = WTD * (1 - pond): a saturated / ponded slump floor that
  *            drains and revegetates over ~pond_tau years.
+ *  mg(m)   = 1 - (1 - mg0) * exp(-m / (12 * mg_tau)) (1 before initiation): CH4
+ *            production on the fresh slump floor is suppressed (no methanogen
+ *            community in exposed permafrost) and recovers over ~mg_tau years.
  *  lat_ch4 = lat_ch4_frac * TKLATC: the part of the laterally exported C assumed
  *            to be mineralized as CH4 downstream (diagnostic split of TKLATC; the
  *            remainder is CO2/DOC/POC). It does not change the cell C balance.
@@ -37,8 +40,13 @@ struct RTSMethaneParams {
   double oxid_max = 0.95;   // deep WT
   double oxid_zscale = 0.1; // m
   // RTS additions (both schemes)
-  double pond_sat0 = 0.5;   // ponding saturation factor right after initiation (0-1)
-  double pond_tau = 10.0;   // e-folding time of ponding (yr)
+  double pond_sat0 = 0.2;   // ponding saturation factor right after initiation (0-1); chamber-constrained, see docs
+  double pond_tau = 5.0;    // e-folding time of ponding (yr)
+  // post-slump methanogen recovery (exposed Pleistocene/mineral floor lacks active
+  // methanogens, Knoblauch et al. 2021): prod is scaled by
+  // mg(m) = 1 - (1 - mg0) * exp(-m / (12 * mg_tau)) for m >= 0 months since initiation
+  double mg0 = 0.05;        // methanogen activity factor right after initiation (0-1); CALIBRATED (docs)
+  double mg_tau = 10.0;     // e-folding recovery time (yr)
   double lat_ch4_frac = 0.02; // part of laterally exported C mineralized as CH4 downstream
   // background anoxic/inundated fraction of the cell (0 = model water table only;
   // 1 = wet tundra with WT at the surface; e.g. from a wetland map such as BAWLD)
@@ -60,6 +68,7 @@ public:
   static double saturatedFraction(const double ztop, const double dz, const double wtd);
   static double oxidFraction(const RTSMethaneParams & p, const double wtd);
   static double pondSaturation(const RTSMethaneParams & p, const int months_since_init);
+  static double methanogenFactor(const RTSMethaneParams & p, const int months_since_init);
   static RTSMethaneFluxes compute(const std::vector<RTSMethaneLayer> & col,
                                   const RTSMethaneParams & p, const double wtd,
                                   const double pond, const double lai);
