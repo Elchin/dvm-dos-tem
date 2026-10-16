@@ -39,7 +39,7 @@ old rts-ch4 diagnostic).
   x ~100 d) to ~16 gC/m2/yr (Baldwin Peninsula RTS 159 mg/d x ~100 d, EGU26-19294). The mg factor leaves CO2
   physics unchanged: suppressed CH4 C stays in TKRHCO2.
   Full data table: russia-inputs/ch4_compare/chamber_data.md/.csv.
-- **Post-slump floor RH (v0.2, `include/RTSFloor.h`; three switches, all default false = bitwise v0.1).**
+- **Post-slump floor RH (v0.2, `include/RTSFloor.h`; three switches, all default ON since v0.2; all false (+ `thermokarst_ch4_mg0 = 0.05`) = bitwise v0.1, tested).**
   Without them, v0.1 RHSOM at CMT70 (Gydan, thick ice v2) reaches 908 gC/m2/month and ~3500 gC/m2 in the
   first post-slump year. Chamber data give 160-184 gC/m2/yr (Lena, yr 1) and floor Reco at or below undisturbed
   (ch4_compare/chamber_data.md).
@@ -59,9 +59,10 @@ old rts-ch4 diagnostic).
      sat_l is the saturated fraction below the water table, raised by the ponding factor. `anox_f = 0.3`:
      anaerobic C release is ~3.4x smaller than aerobic (Schädel et al. 2016, Nat. Clim. Change,
      doi:10.1038/nclimate3054).
-  Recommended v0.2 RTS settings: all three switches true plus `thermokarst_ch4_mg0 = 1.0`. With RH constrained,
+  v0.2 defaults (include/RTSFloor.h, include/RTSMethane.h, config/config.js): all three switches true plus
+  `thermokarst_ch4_mg0 = 1.0`. With RH constrained,
   the methanogen suppression is no longer needed: first-5-yr CH4 is 2.5 (CMT70) and 2.0 (CMT56) gC/m2/yr, inside
-  the chamber range of 0.4-16. With the floor switches off, keep `mg0 = 0.05` (the default).
+  the chamber range of 0.4-16. With the floor switches off, use `mg0 = 0.05` (the v0.1-era calibration).
   All terms apply only after initiation, so baseline runs are unchanged (tested). The C/N balance closes
   (< 0.01 g/month, tested).
 - **Exposed thawed carbon:** no new term. The v0.1 slump thaws the deep column and RH from the newly thawed
@@ -88,7 +89,7 @@ old rts-ch4 diagnostic).
 | avail_frac | - | 0.05 /month | cap: production <= 5% of layer SOC per month |
 | bg_sat | 0 | 0 | background anoxic/inundated fraction of the cell (e.g. a BAWLD tundra-wetland fraction); 1 = WT at the surface (calibration case) |
 | pond_sat0, pond_tau | 0.2, 5 yr | 0.5, 10 yr (b unchanged) | chamber-constrained, weakly sensitive (see above) |
-| mg0, mg_tau | 0.05, 10 yr | - | calibrated to slump-floor chamber CH4 (see above) |
+| mg0, mg_tau | 1.0 (v0.2 default; 0.05 with floor off), 10 yr | - | calibrated to slump-floor chamber CH4 (see above) |
 | lat_ch4_frac | 0.02 | same | see above |
 | rh_cap: cap0, cap_inf, cap_tau | 0.045 /yr, 0.002 /yr, 1.5 yr | same | calibrated (floor section) |
 | floor_export: lat0, lat_tau | 0.02 /yr, 5 yr | same | Abbott & Jones 2015; Kokelj et al. 2013 |

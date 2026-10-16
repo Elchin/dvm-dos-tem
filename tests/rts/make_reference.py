@@ -27,6 +27,9 @@ if __name__ == '__main__':
     ap.add_argument('--legacy-m2d', action='store_true',
                     help='write flag-off (legacy monthly->daily) refs to reference/legacy_m2d')
     ap.add_argument('--only', nargs='*', default=None, help='subset of: baseline rts rts_ice')
+    ap.add_argument('--v02', action='store_true',
+                    help='write v0.2-default (floor on) rts/rts_ice refs to reference/v02; without it the '
+                         'rts/rts_ice refs are the v0.1 ones (written with r.V01_OFF)')
     a = ap.parse_args()
     want = lambda n: a.only is None or n in a.only
     if a.legacy_m2d:
@@ -34,13 +37,16 @@ if __name__ == '__main__':
         r.ICE_PARAMS = {**r.LEGACY_ICE_PARAMS, **r.LEGACY_M2D}
         _run = r.run
         r.run = lambda b, w, on, **kw: _run(b, w, on, **{**kw, 'extra': {**(kw.get('extra') or {}), **r.LEGACY_M2D}})
-    if want('baseline'):
+    v01 = {} if a.v02 else r.V01_OFF
+    if a.v02:
+        REF = os.path.join(REF, 'v02')
+    if want('baseline') and not a.v02:
         keep(r.run(a.baseline_binary, a.work + '/baseline', False), os.path.join(REF, 'baseline'))
     if want('rts'):
-        keep(r.run(a.rts_binary, a.work + '/rts', True, outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS}),
+        keep(r.run(a.rts_binary, a.work + '/rts', True, outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS}, extra=v01),
              os.path.join(REF, 'rts'))
     if want('rts_ice'):
       keep(r.run(a.rts_binary, a.work + '/rts_ice', True,
-               outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS, **r.ICE_OUTPUTS}, extra=r.ICE_PARAMS),
+               outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS, **r.ICE_OUTPUTS}, extra={**r.ICE_PARAMS, **v01}),
          os.path.join(REF, 'rts_ice'))
     print('reference outputs written to', REF)

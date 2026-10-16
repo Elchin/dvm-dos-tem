@@ -13,9 +13,9 @@ GYDAN70 = os.environ.get('RTS_GYDAN70_DIR', '/workspace/russia-inputs/inputs/gyd
 CH4 = {'thermokarst_ch4': True}
 
 def test_ch4_switch_off_identical_to_v01(tmp_path):
-    """thermokarst_ch4=false given explicitly: RTS-on synthetic run == stored v0.1 reference, exact."""
+    """thermokarst_ch4=false given explicitly (v0.2 floor off): RTS-on synthetic run == stored v0.1 reference, exact."""
     o = r.run(BIN, str(tmp_path / 'off'), True, outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS},
-              extra={'thermokarst_ch4': False})
+              extra={**r.V01_OFF, 'thermokarst_ch4': False})
     assert r.compare_dirs(os.path.join(REF, 'rts'), o, 0.0, 0.0) == []
 
 def test_area_blend_zero_is_baseline():

@@ -343,8 +343,11 @@ static void test_rts_ch4() {
 
 static void test_rts_floor() {
   RTSFloorParams p;
-  // all switches off by default (bitwise v0.1)
-  CHECK(!p.rh_cap && !p.exp_on && !p.anox && !p.any());
+  // v0.2 defaults: all switches on, calibrated values; all off -> any() false (bitwise v0.1 path)
+  CHECK(p.rh_cap && p.exp_on && p.anox && p.any());
+  CHECK(p.cap0 == 0.045 && p.cap_inf == 0.002 && p.cap_tau == 1.5 && p.lat0 == 0.02 && p.lat_tau == 5.0 && p.anox_f == 0.3);
+  { RTSFloorParams q = p; q.rh_cap = q.exp_on = q.anox = false; CHECK(!q.any()); }
+  { RTSMethaneParams mp; CHECK(mp.mg0 == 1.0); CHECK(mp.ch4_frac == 0.135); }
   // cap rate: cap0 at initiation, cap_inf + (cap0-cap_inf)/e after cap_tau years
   CHECK_NEAR(RTSFloor::capRate(p, 0), p.cap0, 1e-15);
   CHECK_NEAR(RTSFloor::capRate(p, (int)(12 * p.cap_tau + 0.5)) , p.cap_inf + (p.cap0 - p.cap_inf) * std::exp(-std::floor(12 * p.cap_tau + 0.5) / (12 * p.cap_tau)), 1e-12);

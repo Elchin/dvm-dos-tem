@@ -10,6 +10,9 @@ import rtslib as r
 
 BIN = os.environ.get('DVMDOSTEM_BIN', os.path.join(r.REPO, 'dvmdostem'))
 REF = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reference')
+# reference/{baseline,rts,rts_ice,legacy_m2d}: rts-light-v0.1 outputs (floor off);
+# reference/v02/{rts,rts_ice}: v0.2 defaults (floor on, mg0 = 1), see make_reference.py
+REF02 = os.path.join(REF, 'v02')
 RTOL = float(os.environ.get('RTS_RTOL', '1e-9'))
 ATOL = float(os.environ.get('RTS_ATOL', '1e-9'))
 RTS_YEAR, RTS_MONTH = 10, 7          # synthetic forcing: tr year 10, jday 213 -> Aug
@@ -22,6 +25,12 @@ def runs(tmp_path_factory):
         'base': r.run(BIN, str(w / 'base'), False),
         'noop': r.run(BIN, str(w / 'noop'), True, tk_file='thermokarst-none.nc'),
         'rts':  r.run(BIN, str(w / 'rts'), True, outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS}),
+        # v0.2 floor switches off -> must be bitwise rts-light-v0.1
+        'rts_v01': r.run(BIN, str(w / 'rts_v01'), True, outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS},
+                         extra=r.V01_OFF),
+        'rts_ice_v01': r.run(BIN, str(w / 'rts_ice_v01'), True,
+                             outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS, **r.ICE_OUTPUTS},
+                             extra={**r.ICE_PARAMS, **r.V01_OFF}),
         # ice-rich cell, module on, no RTS: excess ice stays frozen -> baseline physics
         'ice_noop': r.run(BIN, str(w / 'ice_noop'), True, tk_file='thermokarst-none.nc',
                           outputs={**r.BASE_OUTPUTS, **r.ICE_OUTPUTS}, extra=r.ICE_PARAMS),
@@ -30,10 +39,10 @@ def runs(tmp_path_factory):
         # legacy monthly->daily (flag off) must reproduce the pre-m2d references exactly
         'leg_base': r.run(BIN, str(w / 'leg_base'), False, extra=r.LEGACY_M2D),
         'leg_rts': r.run(BIN, str(w / 'leg_rts'), True, outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS},
-                         extra=r.LEGACY_M2D),
+                         extra={**r.LEGACY_M2D, **r.V01_OFF}),
         'leg_rts_ice': r.run(BIN, str(w / 'leg_rts_ice'), True,
                              outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS, **r.ICE_OUTPUTS},
-                             extra={**r.LEGACY_ICE_PARAMS, **r.LEGACY_M2D}),
+                             extra={**r.LEGACY_ICE_PARAMS, **r.LEGACY_M2D, **r.V01_OFF}),
     }
 
 def test_unit_binary():
@@ -53,22 +62,33 @@ def test_noop_when_no_initiation(runs):
     assert r.compare_dirs(runs['base'], runs['noop'], 0.0, 0.0) == []
 
 def test_rts_matches_reference(runs):
-    assert r.compare_dirs(os.path.join(REF, 'rts'), runs['rts'], RTOL, ATOL) == []
+    """v0.2 defaults (floor on, mg0 = 1) vs the v0.2 reference."""
+    assert r.compare_dirs(os.path.join(REF02, 'rts'), runs['rts'], RTOL, ATOL) == []
+
+@pytest.mark.parametrize('case', ['rts', 'rts_ice'])
+def test_floor_off_bit_identical_to_v01(runs, case):
+    """All v0.2 floor switches off + mg0 = 0.05: bitwise identical to the rts-light-v0.1 references."""
+    assert r.compare_dirs(os.path.join(REF, case), runs[case + '_v01'], 0.0, 0.0) == []
 
 def test_unchanged_before_initiation(runs):
     for v in ['SOC', 'VEGC', 'GPP', 'TLAYER']:
         a, b = r.read(runs['base'], v), r.read(runs['rts'], v)
         assert np.array_equal(a[:M], b[:M]), v
 
-def test_organic_c_drop_and_lateral_export(runs):
-    o, f = runs['rts'], r.RTS_PARAMS['thermokarst_c_resp_frac']
+@pytest.mark.parametrize('run', ['rts_v01', 'rts'])
+def test_organic_c_drop_and_lateral_export(runs, run):
+    o, f = runs[run], r.RTS_PARAMS['thermokarst_c_resp_frac']
     soc, vegc = r.read(o, 'SOC').ravel(), r.read(o, 'VEGC').ravel()
     latc = r.read(o, 'TKLATC').ravel()
     shlw, deep = r.read(o, 'SHLWC').ravel(), r.read(o, 'DEEPC').ravel()
     assert soc[M] < 0.9 * soc[M - 1]                 # big organic C drop
     assert shlw[M] < 0.05 * shlw[M - 1]               # fibric layer mostly removed
     assert deep[M] < deep[M - 1]
-    assert latc[M] > 0 and np.all(latc[:M] == 0) and np.all(latc[M + 1:] == 0)
+    assert latc[M] > 0 and np.all(latc[:M] == 0)
+    if run == 'rts_v01':
+        assert np.all(latc[M + 1:] == 0)
+    else:                                              # v0.2 floor export after the slump month
+        assert np.all(latc[M + 1:] > 0) and np.all(latc[M + 1:] < latc[M])
     # removed (soil + veg) ~= lateral / (1 - resp_frac); monthly fluxes add small noise
     # VEGC and SOC both drop in month M (VEGC used to lag one month)
     removed = (soc[M - 1] - soc[M]) + (vegc[M - 1] - vegc[M])
@@ -90,7 +110,7 @@ def test_drainage_switch(runs):
 
 # ---------------- excess ice / subsidence (ported from thermokarst-prototype) -------------
 def test_rts_ice_matches_reference(runs):
-    assert r.compare_dirs(os.path.join(REF, 'rts_ice'), runs['rts_ice'], RTOL, ATOL) == []
+    assert r.compare_dirs(os.path.join(REF02, 'rts_ice'), runs['rts_ice'], RTOL, ATOL) == []
 
 def test_excess_ice_noop_without_melt(runs):
     """Ice-rich profile below the ALD, no RTS: no melt, no subsidence, and all

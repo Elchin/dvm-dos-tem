@@ -45,7 +45,8 @@ struct RTSMethaneParams {
   // post-slump methanogen recovery (exposed Pleistocene/mineral floor lacks active
   // methanogens, Knoblauch et al. 2021): prod is scaled by
   // mg(m) = 1 - (1 - mg0) * exp(-m / (12 * mg_tau)) for m >= 0 months since initiation
-  double mg0 = 0.05;        // methanogen activity factor right after initiation (0-1); CALIBRATED (docs)
+  double mg0 = 1.0;         // methanogen activity factor right after initiation (0-1); v0.2 default 1 (off);
+                            // 0.05 CALIBRATED for floor switches off (docs)
   double mg_tau = 10.0;     // e-folding recovery time (yr)
   double lat_ch4_frac = 0.02; // part of laterally exported C mineralized as CH4 downstream
   // background anoxic/inundated fraction of the cell (0 = model water table only;
