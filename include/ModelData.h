@@ -1,5 +1,6 @@
 #ifndef MODELDATA_H_
 #define MODELDATA_H_
+#include "RTSMethane.h"
 #include <string>
 #include <iostream>
 #include <fstream>
@@ -127,6 +128,9 @@ public:
   double tk_excess_top = 0.5;      // m below soil surface
   double tk_excess_bottom = 2.0;   // m below soil surface
   bool m2d_mean_preserving = true; // monthly->daily: true mean-preserving (Killworth); false legacy linear
+  // RTS CH4 (opt-in; off -> identical to rts-light-v0.1). See RTSMethane.h for parameters.
+  bool tk_ch4 = false;
+  RTSMethaneParams tk_ch4par;
   bool tk_initiation = true; // false: thermokarst module on (ice) but never initiate RTS (baseline)
 
   int cell_timelimit; //Time limit in seconds for cell computation time

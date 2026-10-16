@@ -140,7 +140,11 @@
     // Excess ground ice (PLACEHOLDER, TUNABLE): set once at start of tr in frozen mineral layers
     "thermokarst_excess_fraction": 0.0,  // excess-ice volume fraction, 0 <= f < 0.8 (0: off)
     "thermokarst_excess_top": 0.5,       // m
-    "thermokarst_excess_bottom": 2.0     // m
+    "thermokarst_excess_bottom": 2.0,    // m
+    // RTS CH4 (opt-in; false -> outputs identical to rts-light-v0.1). Runs in the
+    // thermokarst (dsb) step, i.e. stage 2b. Parameters: thermokarst_ch4_* keys,
+    // defaults and sources in include/RTSMethane.h and docs_src/rts_ch4.md.
+    "thermokarst_ch4": false
 //    //"dynamic_climate": 0,
 //    //"varied_co2": 0,
 //    //"fire_severity_as_input": 0,    // fire sev. as input or ??

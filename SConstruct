@@ -48,6 +48,7 @@ src_files = Split("""src/TEM.cpp
                      src/WildFire.cpp
                      src/Thermokarst.cpp
                      src/ThermokarstData.cpp
+                     src/RTSMethane.cpp
                      src/DoubleLinkedList.cpp
                      src/Ground.cpp
                      src/Vegetation.cpp

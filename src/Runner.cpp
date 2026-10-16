@@ -1396,6 +1396,14 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
   TK_SCALAR_OUTPUT("TKEXICE", tkexice_for_output, cohort.year_tkdata[im].thermokarst_soid.excess_ice, true)
   TK_SCALAR_OUTPUT("TKEXMELT", tkexmelt_for_output, cohort.year_tkdata[im].thermokarst_soid.excess_melted, false)
   TK_SCALAR_OUTPUT("TKRESPC", tkrespc_for_output, cohort.year_tkdata[im].thermokarst_soi2a.orgc + cohort.year_tkdata[im].thermokarst_v2a.orgc, false)
+  TK_SCALAR_OUTPUT("TKCH4PROD", tkch4prod_for_output, cohort.year_tkdata[im].thermokarst_soid.ch4_prod, false)
+  TK_SCALAR_OUTPUT("TKCH4OXID", tkch4oxid_for_output, cohort.year_tkdata[im].thermokarst_soid.ch4_oxid, false)
+  TK_SCALAR_OUTPUT("TKCH4EMIS", tkch4emis_for_output, cohort.year_tkdata[im].thermokarst_soid.ch4_emis, false)
+  TK_SCALAR_OUTPUT("TKCH4PLANT", tkch4plant_for_output, cohort.year_tkdata[im].thermokarst_soid.ch4_plant, false)
+  TK_SCALAR_OUTPUT("TKCH4POOL", tkch4pool_for_output, cohort.year_tkdata[im].thermokarst_soid.ch4_pool, true)
+  TK_SCALAR_OUTPUT("TKRHCO2", tkrhco2_for_output, cohort.year_tkdata[im].thermokarst_soid.rh_co2, false)
+  TK_SCALAR_OUTPUT("TKLATCH4", tklatch4_for_output, cohort.year_tkdata[im].thermokarst_soid.lat_ch4, false)
+  TK_SCALAR_OUTPUT("TKPONDSAT", tkpondsat_for_output, cohort.year_tkdata[im].thermokarst_soid.pond_sat, true)
 #undef TK_SCALAR_OUTPUT
   map_itr = netcdf_outputs.end();
 

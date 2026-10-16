@@ -80,7 +80,8 @@ SOURCES= 	src/TEM.o \
 		src/SnowLayer.o \
 		src/SoilLayer.o \
 		src/Thermokarst.o \
-		src/ThermokarstData.o 
+		src/ThermokarstData.o \
+		src/RTSMethane.o 
 
 OBJECTS =	ArgHandler.o \
 		TEMLogger.o \
@@ -127,7 +128,8 @@ OBJECTS =	ArgHandler.o \
 		SoilLayer.o \
 		TemperatureUpdator.o \
 		Thermokarst.o \
-		ThermokarstData.o
+		ThermokarstData.o \
+		RTSMethane.o
 
 
 # Set if not set from environment or command line...

@@ -905,6 +905,10 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
   tkdata->clear(); // zero monthly thermokarst fluxes/diagnostics
   tkdata->thermokarst_soid.drainage_type = cd.drainage_type;
 
+  // RTS CH4 (opt-in): computed on this month's soil state/RH before any slump
+  // restructuring, so layer indices match the integrated fluxes.
+  if (md->tk_ch4) { updateMonthly_RTSMethane(midx); }
+
   // Excess ground ice: one-time initialization, then monthly melt/subsidence
   if (md->tk_excess_fraction > 0.0 && !ground.tk_excess_initialized) {
     ground.initExcessIce(md->tk_excess_fraction, md->tk_excess_top, md->tk_excess_bottom);
@@ -1012,8 +1016,44 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
   if (ground.tk_months_since_init >= 0) { ground.tk_months_since_init++; }
   tkdata->thermokarst_soid.subsidence = ground.tk_subsidence;
   tkdata->thermokarst_soid.excess_ice = ground.totalExcessIce();
+  if (md->tk_ch4) { updateMonthly_RTSMethane_lateral(); }
   // Transfer monthly thermokarst data, regardless of initiation
   year_tkdata[midx] = *tkdata;
+}
+
+/** RTS CH4 scheme (a): reduced-form partition of this month's RH (RTSMethane.h).
+ *  No model state changes: C pools are identical with CH4 on or off. */
+void Cohort::updateMonthly_RTSMethane(const int & midx) {
+  std::vector<RTSMethaneLayer> col;
+  int il = 0;
+  for (Layer* l = ground.fstsoill; l != NULL && l->isSoil && il < cd.m_soil.numsl; l = l->nextl, il++) {
+    RTSMethaneLayer c;
+    c.ztop = l->z; c.dz = l->dz; c.tem = l->tem;
+    c.rh = bdall->m_soi2a.rhrawc[il] + bdall->m_soi2a.rhsoma[il]
+         + bdall->m_soi2a.rhsompr[il] + bdall->m_soi2a.rhsomcr[il];
+    col.push_back(c);
+  }
+  double lai = 0.0;
+  for (int ip = 0; ip < NUM_PFT; ip++) {
+    if (cd.m_veg.vegcov[ip] > 0.0 && cd.m_veg.lai[ip] > 0.0) { lai += cd.m_veg.lai[ip] * cd.m_veg.vegcov[ip]; }
+  }
+  const double pond = RTSMethane::pondSaturation(md->tk_ch4par, ground.tk_months_since_init);
+  const double sx = 1.0 - (1.0 - pond) * (1.0 - std::max(0.0, std::min(1.0, md->tk_ch4par.bg_sat)));
+  RTSMethaneFluxes f = RTSMethane::compute(col, md->tk_ch4par, edall->m_sois.watertab, sx, lai);
+  soidiag_thermokarst & d = tk_ch4_month;  // copied into tkdata after the slump step
+  d.ch4_prod = f.prod; d.ch4_oxid = f.oxid; d.ch4_emis = f.emis; d.ch4_plant = f.plant;
+  d.ch4_pool = 0.0; d.pond_sat = pond;
+  d.rh_co2 = bdall->m_soi2a.rhsom - f.prod + f.oxid;   // = RHSOM - emis
+}
+
+void Cohort::updateMonthly_RTSMethane_lateral() {
+  // the initiation step resets tkdata->thermokarst_soid: copy this month's CH4 now
+  soidiag_thermokarst & t = tkdata->thermokarst_soid;
+  t.ch4_prod = tk_ch4_month.ch4_prod; t.ch4_oxid = tk_ch4_month.ch4_oxid; t.ch4_emis = tk_ch4_month.ch4_emis;
+  t.ch4_plant = tk_ch4_month.ch4_plant; t.ch4_pool = tk_ch4_month.ch4_pool; t.rh_co2 = tk_ch4_month.rh_co2;
+  t.pond_sat = tk_ch4_month.pond_sat;
+  const double latc = tkdata->thermokarst_soi2lat.orgc + tkdata->thermokarst_soi2lat.vegc;
+  tkdata->thermokarst_soid.lat_ch4 = md->tk_ch4par.lat_ch4_frac * latc;
 }
 
 /** Dynamic Vegetation Module function. */
