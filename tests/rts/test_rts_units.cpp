@@ -405,7 +405,7 @@ static void test_rts_regrow() {
   // Xia et al. 2026: tau = 1.35 GPP^-1.68 (GPP kgC/m2/yr): 0.3 -> ~10.2 yr, s ~1.46
   CHECK_NEAR(RTSRegrow::tau(p, 0.3), 1.35 * std::pow(0.3, -1.68), 1e-12);
   CHECK(RTSRegrow::tau(p, 0.3) > 10.0 && RTSRegrow::tau(p, 0.3) < 10.5);
-  CHECK_NEAR(RTSRegrow::siteScale(p, 0.3), RTSRegrow::tau(p, 0.3) / 7.0, 1e-12);
+  CHECK_NEAR(RTSRegrow::tau(p, 0.3) / p.tau_ref, 10.2 / 7.0, 0.02);  // site scale s (diagnostic in v2)
   CHECK(RTSRegrow::tau(p, 0.0) == p.tau_max);              // no GPP -> slowest
   CHECK(RTSRegrow::tau(p, 100.0) == p.tau_min);            // clamped
   // PFT classes
@@ -416,13 +416,7 @@ static void test_rts_regrow() {
   // time axis: stabilization 12 months after initiation by default
   CHECK(RTSRegrow::stabMonth(p) == 12);
   CHECK_NEAR(RTSRegrow::tYears(p, 36), 2.0, 1e-12);
-  // target: hold while active, >= f_reseed after, logistic midpoint at s t50, monotone, -> 1
-  CHECK(RTSRegrow::targetFrac(p, RG_GRAM, -0.5, 1.0, 0.01) == 0.01);
-  CHECK(RTSRegrow::targetFrac(p, RG_SHRUB, 0.0, 1.0, 0.01) == p.f_reseed);
-  CHECK_NEAR(RTSRegrow::targetFrac(p, RG_GRAM, 2.0 * 4.0, 2.0, 0.01), 0.5, 1e-12);
-  double prev = 0.0; bool mono = true;
-  for (int i = 0; i < 400; i++) { const double v = RTSRegrow::targetFrac(p, RG_SHRUB, i * 0.5, 1.4, 0.01); mono &= v >= prev; prev = v; }
-  CHECK(mono && prev > 0.999);
+  // v2: no logistic growth ceiling exists (targetFrac/limitMult removed by design; flagged in commit).
   // shrub boost: B0 at t=0, decays with Tb, only for deciduous shrubs, none while active
   CHECK_NEAR(RTSRegrow::boost(p, RG_SHRUB, 0.0), p.boost0, 1e-12);
   CHECK_NEAR(RTSRegrow::boost(p, RG_SHRUB, p.boost_T), 1.0 + (p.boost0 - 1.0) * std::exp(-1.0), 1e-12);
@@ -434,9 +428,20 @@ static void test_rts_regrow() {
   CHECK_NEAR(12.0 * RTSRegrow::avlnSupplyMonth(p, 10.0) + 32.0 / 30.0, 2.2, 1e-12);
   CHECK_NEAR(12.0 * RTSRegrow::avlnSupplyMonth(p, 70.0) + 6.5 / 30.0, 0.4, 1e-12);
   RTSRegrowParams q; q.ol_cn = 5.0; CHECK(RTSRegrow::avlnSupplyMonth(q, 10.0) == 0.0);
-  // growth limit multiplier
-  CHECK(RTSRegrow::limitMult(50.0, 100.0) == 1.0 && RTSRegrow::limitMult(0.0, 1.0) == 1.0);
-  CHECK_NEAR(RTSRegrow::limitMult(200.0, 100.0), 0.5, 1e-12);
+  // v2 GPP-recovery taper: full supply when GPP collapsed, ~zero when recovered, monotone in between
+  CHECK(p.n_taper && p.n_taper_pow == 4.0);
+  CHECK(RTSRegrow::taperFactor(p, 0.0) == 1.0 && RTSRegrow::taperFactor(p, -1.0) == 1.0);
+  CHECK_NEAR(RTSRegrow::taperFactor(p, 0.5), 1.0 - 0.0625, 1e-12);   // plateau: near-full at half recovery
+  CHECK_NEAR(RTSRegrow::taperFactor(p, 0.9), 1.0 - 0.6561, 1e-12);
+  CHECK(RTSRegrow::taperFactor(p, 1.0) == 0.0 && RTSRegrow::taperFactor(p, 2.0) == 0.0);
+  { double prev = 2.0; bool mono = true;
+    for (int i = 0; i <= 100; i++) { const double v = RTSRegrow::taperFactor(p, i / 100.0); mono &= v <= prev; prev = v; }
+    CHECK(mono); }
+  { RTSRegrowParams q2; q2.n_taper_pow = 2.0; CHECK_NEAR(RTSRegrow::taperFactor(q2, 0.5), 0.75, 1e-12); }
+  { RTSRegrowParams q3; q3.n_taper = false; CHECK(RTSRegrow::taperFactor(q3, 0.99) == 1.0); }  // untapered v1 supply
+  // tapered avln supply scales linearly with the factor and is never negative
+  CHECK_NEAR(RTSRegrow::avlnSupplyMonth(p, 10.0, 0.5), 0.5 * RTSRegrow::avlnSupplyMonth(p, 10.0, 1.0), 1e-15);
+  CHECK(RTSRegrow::avlnSupplyMonth(p, 10.0, 0.0) == 0.0 && RTSRegrow::avlnSupplyMonth(p, 10.0, -1.0) == 0.0);
 }
 
 int main() {

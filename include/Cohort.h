@@ -152,9 +152,12 @@ private:
   double tk_rg_cpre[NUM_PFT][3] = {{0}}, tk_rg_npre[NUM_PFT][3] = {{0}};
   int tk_rg_type[NUM_PFT] = {0};
   double tk_rg_s = 1.0, tk_rg_gpp = 0.0, tk_rg_olpre = 0.0, tk_rg_olstab = 0.0, tk_rg_oladd = 0.0, tk_rg_ncarry = 0.0;
-  double tk_gpp_ring[60] = {0}; int tk_gpp_n = 0, tk_gpp_i = 0;
+  double tk_rg_gpp12[12] = {0}; int tk_rg_gpp12_n = 0, tk_rg_gpp12_i = 0;  // trailing-12-month GPP ring (N taper)
+  double tk_rg_ingpp = 0.0, tk_rg_ingpp12[12] = {0};  // pre-slump / trailing N-unlimited GPP (dynamic taper reference)
+  double tk_rg_taper = 1.0;           // current N-supply taper factor in [0,1] (1 until GPP recovers)
+  double tk_gpp_ring[60] = {0}, tk_ingpp_ring[60] = {0}; int tk_gpp_n = 0, tk_gpp_i = 0;
   double tk_rg_olc() const;           // organic (non-mineral) soil layer SOM C, g/m2
-  void updateMonthly_RTSRegrowVeg();  // cmax/nmax nudges before the veg integration
+  void updateMonthly_RTSRegrowVeg();  // shrub boost only (>=1) before the veg integration; no growth ceiling in v2
   void updateMonthly_RTSRegrow();     // reseed + organic-layer rebuild (thermokarst step)
   void rebuildBdallVeg();
   soidiag_thermokarst tk_ch4_month; // this month's CH4 (kept across the slump step, which resets tkdata)

@@ -811,8 +811,18 @@ void Cohort::updateMonthly_Bgc(const int & currmind) {
     for (int il = 0; il < std::min(cd.m_soil.numsl, MAX_SOI_LAY); il++) {
       if (bdall->m_v2soi.rtlfalfrac[il] > 0. || bdall->m_soi2v.nextract[il] > 0.) { soilbgc.tk_ninput_layer = il; break; }
     }
+    if (tk_rg_have && m >= 0) {  // v2 taper: trailing-12-month GPP vs dynamic pre-slump reference (RTSRegrow.h (4))
+      tk_rg_gpp12[tk_rg_gpp12_i] = std::max(0.0, bdall->m_a2v.gppall);
+      tk_rg_ingpp12[tk_rg_gpp12_i] = std::max(0.0, bdall->m_a2v.ingppall);
+      tk_rg_gpp12_i = (tk_rg_gpp12_i + 1) % 12; tk_rg_gpp12_n = std::min(12, tk_rg_gpp12_n + 1);
+      double gann = 0.0, iann = 0.0;
+      for (int k = 0; k < tk_rg_gpp12_n; k++) { gann += tk_rg_gpp12[k]; iann += tk_rg_ingpp12[k]; }
+      if (tk_rg_gpp12_n > 0 && tk_rg_gpp12_n < 12) { const double f = 12.0 / tk_rg_gpp12_n; gann *= f; iann *= f; }
+      const double gref = (tk_rg_ingpp > 0.0) ? tk_rg_gpp * iann / tk_rg_ingpp : tk_rg_gpp;
+      tk_rg_taper = RTSRegrow::taperFactor(md->tk_regrow, gref > 0.0 ? gann / gref : 0.0);
+    }
     bdall->m_a2soi.avlninput = (tk_rg_have && m >= 0) ?
-        RTSRegrow::avlnSupplyMonth(md->tk_regrow, RTSRegrow::tYears(md->tk_regrow, m)) : 0.0;
+        RTSRegrow::avlnSupplyMonth(md->tk_regrow, RTSRegrow::tYears(md->tk_regrow, m), tk_rg_taper) : 0.0;
     if (soilbgc.tk_ninput_layer < 0) {  // nothing rooted (AVLN not updated): carry the supply to the next rooted month
       soilbgc.tk_ninput_layer = 0; tk_rg_ncarry += bdall->m_a2soi.avlninput; bdall->m_a2soi.avlninput = 0.0;
     } else { bdall->m_a2soi.avlninput += tk_rg_ncarry; tk_rg_ncarry = 0.0; }
@@ -947,7 +957,8 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
   }
 
   if (md->tk_regrow.on && ground.tk_months_since_init < 0) {  // pre-slump GPP record (last 60 months)
-    tk_gpp_ring[tk_gpp_i] = bdall->m_a2v.gppall; tk_gpp_i = (tk_gpp_i + 1) % 60; tk_gpp_n = std::min(60, tk_gpp_n + 1);
+    tk_gpp_ring[tk_gpp_i] = bdall->m_a2v.gppall; tk_ingpp_ring[tk_gpp_i] = bdall->m_a2v.ingppall;
+    tk_gpp_i = (tk_gpp_i + 1) % 60; tk_gpp_n = std::min(60, tk_gpp_n + 1);
   }
   // see if it is an appropriate time to initiate
   if (md->tk_initiation && thermokarst.should_initiate(year, midx, stage)) {
@@ -971,9 +982,10 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
             tk_rg_npre[ip][i] = cd.m_veg.vegcov[ip] > 0. ? std::max(0.0, bd[ip].m_vegs.strn[i]) : 0.0;
           }
         }
-        double g = 0.0; for (int k = 0; k < tk_gpp_n; k++) { g += tk_gpp_ring[k]; }
+        double g = 0.0, gi = 0.0; for (int k = 0; k < tk_gpp_n; k++) { g += tk_gpp_ring[k]; gi += tk_ingpp_ring[k]; }
         tk_rg_gpp = tk_gpp_n > 0 ? 12.0 * g / tk_gpp_n : 0.0;   // gC/m2/yr
-        tk_rg_s = RTSRegrow::siteScale(md->tk_regrow, tk_rg_gpp / 1000.0);
+        tk_rg_ingpp = tk_gpp_n > 0 ? 12.0 * gi / tk_gpp_n : 0.0;
+        tk_rg_s = RTSRegrow::tau(md->tk_regrow, tk_rg_gpp / 1000.0) / std::max(1e-9, md->tk_regrow.tau_ref);
         tk_rg_olpre = tk_rg_olc(); tk_rg_oladd = 0.0; tk_rg_have = true;
         BOOST_LOG_SEV(glg, info) << "RTS regrow: GPP_pre " << tk_rg_gpp << " gC/m2/yr, tau "
                                  << RTSRegrow::tau(md->tk_regrow, tk_rg_gpp / 1000.0) << " yr, s " << tk_rg_s;
@@ -1903,22 +1915,16 @@ void Cohort::rebuildBdallVeg() {
   }
 }
 
-/** (0),(2),(3): per-PFT cmax/nmax multipliers for this month (parameters only; vegetation equations unchanged). */
+/** v2 (2): shrub boost only. B >= 1 for deciduous shrubs and 1 otherwise, so cmax/nmax are never scaled
+ *  below their natural (parameter-file) values; there is no growth ceiling in v2 (vegetation equations
+ *  unchanged, as in v1). */
 void Cohort::updateMonthly_RTSRegrowVeg() {
   const RTSRegrowParams & p = md->tk_regrow;
   const double t = RTSRegrow::tYears(p, ground.tk_months_since_init);
-  const double hold = std::max(0.0, 1.0 - md->tk_veg_remove_frac);
   for (int ip = 0; ip < NUM_PFT; ip++) {
     if (!(cd.m_veg.vegcov[ip] > 0.)) { continue; }
     const double B = RTSRegrow::boost(p, tk_rg_type[ip], t);
-    double mult = B;
-    const double L = RTSRegrow::targetFrac(p, tk_rg_type[ip], t, tk_rg_s, hold);
-    if (p.limit_on && L < p.release) {
-      const double cpre = tk_rg_cpre[ip][0] + tk_rg_cpre[ip][1] + tk_rg_cpre[ip][2];
-      const double cnow = bd[ip].m_vegs.c[I_leaf] + bd[ip].m_vegs.c[I_stem] + bd[ip].m_vegs.c[I_root];
-      mult *= RTSRegrow::limitMult(cnow, B * L * cpre);
-    }
-    vegbgc[ip].calpar.cmax = chtlu.cmax[ip] * mult;
+    vegbgc[ip].calpar.cmax = chtlu.cmax[ip] * B;
     vegbgc[ip].calpar.nmax = chtlu.nmax[ip] * B;
   }
 }

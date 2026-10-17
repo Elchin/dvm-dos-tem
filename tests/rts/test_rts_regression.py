@@ -481,14 +481,14 @@ def test_regrow_synthetic_closure_and_inputs(runs):
 
 @pytest.mark.skipif(not os.path.exists(os.path.join(GYDAN70, 'two_stage_overrides.json')),
                     reason='Gydan CMT70 inputs not available')
-@pytest.mark.parametrize('cmt,limit', [(70, True), (5, False), (7, False)])
-def test_regrow_gydan_closure_and_recovery(tmp_path, cmt, limit):
-    """Regrow on (v0.2 floor defaults): monthly N balance (NBAL_DIAG incl. floor N supply in avlninput and
-    reseed/OL N column) and C balance (TKREGROWC input) close < 0.01 g; post-slump GPP higher than v0.2.
-    CMT05/07 recover in v0.2 already: there the logistic growth limit (rts_regrow_limit) holds GPP below v0.2,
-    so they are tested with the limit off (regrowth_diag/regrow/README.md)."""
+@pytest.mark.parametrize('cmt', [70, 5, 7])
+def test_regrow_gydan_closure_and_recovery(tmp_path, cmt):
+    """Regrow v2 on (v0.2 floor defaults): monthly N balance (NBAL_DIAG incl. tapered floor N supply in
+    avlninput and reseed/OL N column) and C balance (TKREGROWC input) close < 0.01 g; post-slump GPP
+    higher than v0.2. v2 has no logistic growth limit (removed by design, flagged in commit), so
+    CMT05/07 -- which recover in v0.2 already and were harmed by the v1 limit -- use the same defaults."""
     import netCDF4 as nc4
-    res, d = _gydan_cmt_two_stage(tmp_path / 'rg', cmt, extra={**r.REGROW_ON, 'rts_regrow_limit': limit},
+    res, d = _gydan_cmt_two_stage(tmp_path / 'rg', cmt, extra={**r.REGROW_ON},
                                   return_dir=True, regrow=True)
     assert np.max(np.abs(res)) < 0.01, np.max(np.abs(res))
     res0, d0 = _gydan_cmt_two_stage(tmp_path / 'v02', cmt, return_dir=True)
