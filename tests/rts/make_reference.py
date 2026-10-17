@@ -30,6 +30,9 @@ if __name__ == '__main__':
     ap.add_argument('--v02', action='store_true',
                     help='write v0.2-default (floor on) rts/rts_ice refs to reference/v02; without it the '
                          'rts/rts_ice refs are the v0.1 ones (written with r.V01_OFF)')
+    ap.add_argument('--v03', action='store_true',
+                    help='write v0.3-default (floor + regrow on) rts/rts_ice refs to reference/v03; '
+                         'v01/v02 references are never written by this mode')
     a = ap.parse_args()
     want = lambda n: a.only is None or n in a.only
     if a.legacy_m2d:
@@ -37,10 +40,18 @@ if __name__ == '__main__':
         r.ICE_PARAMS = {**r.LEGACY_ICE_PARAMS, **r.LEGACY_M2D}
         _run = r.run
         r.run = lambda b, w, on, **kw: _run(b, w, on, **{**kw, 'extra': {**(kw.get('extra') or {}), **r.LEGACY_M2D}})
-    v01 = {} if a.v02 else r.V01_OFF
-    if a.v02:
+    if a.v02 and a.v03:
+        ap.error('--v02 and --v03 are mutually exclusive')
+    v01 = {} if (a.v02 or a.v03) else r.V01_OFF
+    if a.v03:
+        # v0.3 defaults (regrow on) are the code/config defaults: no extra overrides.
+        # The v02 mode historically also used no overrides; with regrow now default-on it must pin v0.2.
+        v01 = {}
+        REF = os.path.join(REF, 'v03')
+    elif a.v02:
+        v01 = r.V02_OFF
         REF = os.path.join(REF, 'v02')
-    if want('baseline') and not a.v02:
+    if want('baseline') and not (a.v02 or a.v03):
         keep(r.run(a.baseline_binary, a.work + '/baseline', False), os.path.join(REF, 'baseline'))
     if want('rts'):
         keep(r.run(a.rts_binary, a.work + '/rts', True, outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS}, extra=v01),

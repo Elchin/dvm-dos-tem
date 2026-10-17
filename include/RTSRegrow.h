@@ -1,6 +1,7 @@
 #ifndef RTSREGROW_H_
 #define RTSREGROW_H_
-/** RTS post-slump vegetation recovery v2 (reduced form; switch thermokarst_regrow, default OFF -> bitwise v0.2).
+/** RTS post-slump vegetation recovery v2 (reduced form; switch thermokarst_regrow, default ON since v0.3;
+ *  thermokarst_regrow=false -> bitwise v0.2).
  *  Spec: russia-inputs/rts_recovery_equations.md; docs: docs_src/rts_ch4.md ("Post-slump regrowth").
  *  t = years since stabilization = (months since initiation - 12 t_active) / 12.
  *  v1's per-PFT logistic growth ceiling (and its active-slump hold) is REMOVED in v2: it held GPP below the
@@ -35,7 +36,7 @@ namespace Json { class Value; }
 enum RTSRegrowType { RG_GRAM = 0, RG_SHRUB = 1, RG_MOSS = 2, RG_EVERGREEN = 3, RG_LICHEN = 4, RG_NTYPE = 5 };
 
 struct RTSRegrowParams {
-  bool on = false;
+  bool on = true;   // v0.3 default; false -> bitwise v0.2 (tested)
   double t_active = 1.0;     // yr from initiation to stabilization
   double f_reseed = 0.07;    // fraction of pre-slump PFT C at stabilization
   double tau_ref = 7.0, tau_min = 2.0, tau_max = 150.0;  // yr (diagnostic only in v2)

@@ -13,6 +13,8 @@ REF = os.path.join(os.path.dirname(os.path.abspath(__file__)), 'reference')
 # reference/{baseline,rts,rts_ice,legacy_m2d}: rts-light-v0.1 outputs (floor off);
 # reference/v02/{rts,rts_ice}: v0.2 defaults (floor on, mg0 = 1), see make_reference.py
 REF02 = os.path.join(REF, 'v02')
+# reference/v03/{rts,rts_ice}: v0.3 defaults (v0.2 + regrowth on)
+REF03 = os.path.join(REF, 'v03')
 RTOL = float(os.environ.get('RTS_RTOL', '1e-9'))
 ATOL = float(os.environ.get('RTS_ATOL', '1e-9'))
 RTS_YEAR, RTS_MONTH = 10, 7          # synthetic forcing: tr year 10, jday 213 -> Aug
@@ -51,6 +53,9 @@ def runs(tmp_path_factory):
                                extra={**r.ICE_PARAMS, 'thermokarst_regrow': False}),
         'rts_rg': r.run(BIN, str(w / 'rts_rg'), True, outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS, **r.REGROW_OUTPUTS},
                         extra=r.REGROW_ON),
+        # explicit regrow-on with the same output set as 'rts' (release defaults): proves default == explicit on
+        'rts_on': r.run(BIN, str(w / 'rts_on'), True, outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS},
+                        extra=r.REGROW_ON),
     }
 
 def test_unit_binary():
@@ -70,8 +75,8 @@ def test_noop_when_no_initiation(runs):
     assert r.compare_dirs(runs['base'], runs['noop'], 0.0, 0.0) == []
 
 def test_rts_matches_reference(runs):
-    """v0.2 defaults (floor on, mg0 = 1) vs the v0.2 reference."""
-    assert r.compare_dirs(os.path.join(REF02, 'rts'), runs['rts'], RTOL, ATOL) == []
+    """v0.3 defaults (floor on, mg0 = 1, regrowth on) vs the v0.3 reference."""
+    assert r.compare_dirs(os.path.join(REF03, 'rts'), runs['rts'], RTOL, ATOL) == []
 
 @pytest.mark.parametrize('case', ['rts', 'rts_ice'])
 def test_floor_off_bit_identical_to_v01(runs, case):
@@ -118,7 +123,7 @@ def test_drainage_switch(runs):
 
 # ---------------- excess ice / subsidence (ported from thermokarst-prototype) -------------
 def test_rts_ice_matches_reference(runs):
-    assert r.compare_dirs(os.path.join(REF02, 'rts_ice'), runs['rts_ice'], RTOL, ATOL) == []
+    assert r.compare_dirs(os.path.join(REF03, 'rts_ice'), runs['rts_ice'], RTOL, ATOL) == []
 
 def test_excess_ice_noop_without_melt(runs):
     """Ice-rich profile below the ALD, no RTS: no melt, no subsidence, and all
@@ -240,8 +245,9 @@ def test_carbon_balance_slump_month(runs):
 
 def test_carbon_balance_after_initiation(runs):
     """Post-RTS balance closes (was a ~25 gC/m2/yr Jul-Sep leak: soil integrator
-    'blackhole' fallback on negative mineral AVLN discarded litter input / RH)."""
-    o = runs['rts']; C, F = _total_c(o), _net_flux(o)
+    'blackhole' fallback on negative mineral AVLN discarded litter input / RH).
+    v0.3: run is regrow-on, so TKREGROWC is added as an external C input."""
+    o = runs['rts_rg']; C, F = _total_c(o), _net_flux(o) + _g(o, 'TKREGROWC')
     res = np.diff(C)[M + 1:] - F[M + 2:]
     assert np.max(np.abs(res)) < 0.01
     assert C[-1] - C[M + 1] == pytest.approx(F[M + 2:].sum(), abs=1.0)
@@ -337,6 +343,11 @@ def _gydan_cmt_two_stage(tmp_path, cmt, extra=None, return_dir=False, regrow=Fal
     ov['IO']['output_spec_file'] = sf
     ov['IO']['parameter_dir'] = os.path.join(r.REPO, 'parameters/')
     if extra: ov['model_settings'].update(extra)
+    if not regrow:
+        # v0.3 makes regrowth default-on; Gydan tests that are not about regrowth keep v0.2 physics exactly
+        ov['model_settings'].setdefault('thermokarst_regrow', False)
+        if extra and 'thermokarst_regrow' in extra:
+            ov['model_settings']['thermokarst_regrow'] = extra['thermokarst_regrow']
     json.dump(ov, open(os.path.join(w, 'ov.json'), 'w'))
     nbf = os.path.join(w, 'nbal.txt')
     wrap = os.path.join(w, 'nbwrap.sh')
@@ -458,16 +469,18 @@ def test_floor_rmin_dry_upland(tmp_path, cmt):
 # ---------------- post-slump vegetation regrowth (thermokarst_regrow) ----------------
 @pytest.mark.parametrize('case,run', [('rts', 'rts_rgoff'), ('rts_ice', 'rts_ice_rgoff')])
 def test_regrow_off_bit_identical_to_v02(runs, case, run):
-    """thermokarst_regrow = false (the default): bitwise identical to the v0.2 references."""
+    """Reproduce v0.2 exactly: thermokarst_regrow = false alone (v0.3 release switch-off):
+    bitwise identical to the v0.2 references (zero tolerance)."""
     assert r.compare_dirs(os.path.join(REF02, case), runs[run], 0.0, 0.0) == []
 
-def test_regrow_default_is_off(runs):
-    assert r.compare_dirs(runs['rts'], runs['rts_rgoff'], 0.0, 0.0) == []
+def test_regrow_default_is_on(runs):
+    """v0.3 release default: no regrow key given == explicit thermokarst_regrow = true, bitwise."""
+    assert r.compare_dirs(runs['rts'], runs['rts_on'], 0.0, 0.0) == []
 
 def test_regrow_synthetic_closure_and_inputs(runs):
     """Regrow on: identical before initiation; reseed + OL input in TKREGROWC only from stabilization
     (12 months after initiation); monthly C balance closes with TKREGROWC as an input."""
-    o, b = runs['rts_rg'], runs['rts']
+    o, b = runs['rts_rg'], runs['rts_rgoff']
     for v in ['SOC', 'VEGC', 'GPP']:
         assert np.array_equal(r.read(o, v)[:M], r.read(b, v)[:M]), v
     rc = _g(o, 'TKREGROWC'); rn = _g(o, 'TKREGROWN')

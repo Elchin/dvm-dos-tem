@@ -25,11 +25,14 @@ LEGACY_M2D = {'monthly2daily_mean_preserving': False}
 # v0.2 defaults have the RTS floor terms on and methanogen suppression off; these settings restore v0.1
 # (bitwise identical to rts-light-v0.1 with thermokarst_ch4 off; tested against the v0.1 references)
 V01_OFF = {'thermokarst_rh_cap': False, 'thermokarst_floor_export': False, 'thermokarst_floor_anox': False,
-           'thermokarst_floor_rmin': False, 'thermokarst_ch4_mg0': 0.05}
+           'thermokarst_floor_rmin': False, 'thermokarst_ch4_mg0': 0.05, 'thermokarst_regrow': False}
+# v0.3 default has regrowth on; this alone restores v0.2 exactly
+# (bitwise identical to reference/v02 with thermokarst_regrow off; tested)
+V02_OFF = {'thermokarst_regrow': False}
 # RTS CH4 outputs (rts-ch4-a / rts-ch4-b)
 CH4_OUTPUTS = {v: 'm' for v in ('TKCH4PROD', 'TKCH4OXID', 'TKCH4EMIS', 'TKCH4PLANT', 'TKCH4POOL',
                                  'TKRHCO2', 'TKLATCH4', 'TKPONDSAT')}
-# RTS post-slump regrowth (rts-regrow; thermokarst_regrow, default off)
+# RTS post-slump regrowth (rts-regrow; thermokarst_regrow, default ON since v0.3)
 REGROW_OUTPUTS = {'TKREGROWC': 'm', 'TKREGROWN': 'm', 'NINPUT': 'm', 'LAI': 'm'}
 REGROW_ON = {'thermokarst_regrow': True}
 ICE_OUTPUTS = {'TKSUBSID': 'm', 'TKEXICE': 'm', 'TKEXMELT': 'm', 'WATERTAB': 'm'}

@@ -153,7 +153,19 @@
     "thermokarst_floor_rmin": true,      // minimum floor RH >= r(age) x pre-slump RH (from existing pools)
     "rts_floor_rmin0": 0.3,              // r at initiation; r -> 1 with e-folding rts_floor_rmin_tau (yr)
     "rts_floor_rmin_tau": 10.0,
-    "thermokarst_ch4_mg0": 1.0           // methanogen suppression off (v0.2 default)
+    "thermokarst_ch4_mg0": 1.0,          // methanogen suppression off (v0.2 default)
+    // RTS v0.3 post-slump regrowth (include/RTSRegrow.h; docs_src/rts_ch4.md). Default ON;
+    // thermokarst_regrow false alone -> v0.2 exactly (bitwise v0.2, tested; reference/v02).
+    "thermokarst_regrow": true,          // post-slump vegetation recovery rule v2 (headline v0.3 feature)
+    "rts_regrow_f_reseed": 0.07,         // reseed fraction of pre-slump PFT C at stabilization
+    "rts_regrow_B0": 1.3,                // deciduous-shrub cmax/nmax boost at t=0 (>=1, raises only)
+    "rts_regrow_Tb": 80.0,               // shrub boost e-folding time (yr)
+    "rts_regrow_ol_rate1": 32.0,         // organic-layer rebuild rate, t <= rts_regrow_ol_T (gC/m2/yr)
+    "rts_regrow_ol_rate2": 6.5,          // organic-layer rebuild rate after that (gC/m2/yr)
+    "rts_regrow_n_rate1": 2.2,           // floor available-N supply, t <= rts_regrow_n_T (gN/m2/yr, before taper)
+    "rts_regrow_n_rate2": 0.4,           // floor available-N supply after that (gN/m2/yr, before taper)
+    "rts_regrow_n_taper": true,          // taper floor N supply by GPP recovery: factor 1 - r^n_taper_pow
+    "rts_regrow_n_taper_pow": 4.0        // taper exponent (1 - 0.5^4 = 0.94 at half recovery)
 //    //"dynamic_climate": 0,
 //    //"varied_co2": 0,
 //    //"fire_severity_as_input": 0,    // fire sev. as input or ??

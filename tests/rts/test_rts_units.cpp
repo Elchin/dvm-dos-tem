@@ -401,7 +401,7 @@ static void test_rts_floor() {
 
 static void test_rts_regrow() {
   RTSRegrowParams p;
-  CHECK(!p.on);                                            // default OFF
+  CHECK(p.on);                                             // default ON since v0.3 (false -> bitwise v0.2)
   // Xia et al. 2026: tau = 1.35 GPP^-1.68 (GPP kgC/m2/yr): 0.3 -> ~10.2 yr, s ~1.46
   CHECK_NEAR(RTSRegrow::tau(p, 0.3), 1.35 * std::pow(0.3, -1.68), 1e-12);
   CHECK(RTSRegrow::tau(p, 0.3) > 10.0 && RTSRegrow::tau(p, 0.3) < 10.5);

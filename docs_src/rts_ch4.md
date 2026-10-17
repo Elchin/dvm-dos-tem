@@ -1,3 +1,21 @@
+# RTS v0.3 (branch rts-regrow): v0.2 CH4/floor + post-slump regrowth default ON
+
+v0.3 = v0.2 (CH4 scheme a, floor fixes on by default incl. floor rmin) + regrowth v2 default ON
+(`thermokarst_regrow`). To reproduce v0.2 exactly set only `"thermokarst_regrow": false` — that is
+bitwise identical to the v0.2 references (`tests/rts/reference/v02`, zero tolerance, tested). To
+reproduce v0.1 additionally set the v0.2 floor switches false and `thermokarst_ch4_mg0 = 0.05`
+(`tests/rts/rtslib.py:V01_OFF`, bitwise `reference/`). v0.3 references live in `reference/v03`
+(v0.1/v0.2 references unchanged, tolerances unchanged).
+
+Known limitations (v0.3): regrow state is not saved in restart files, so a run restarted after
+initiation does no regrowth (stage-2b runs that start before initiation, as in the two-stage
+workflow, are unaffected); the rebuilt organic layer overshoots by 2100 (~0.10 m vs ~0.065 m
+undisturbed on spatial cells); soil N remains low after a slump (spatial soil-N delta -3.41 Tg at
+2100); `thermokarst_folr` is a run-level setting — the v0.3 spatial test used folr 0.5, whereas the
+v0.2 spatial run used 0.8, so the spatial comparison is not a pure regrow-only perturbation.
+
+---
+
 # RTS-light v0.2 CH4 prototypes (branches rts-ch4-a, rts-ch4-b)
 
 Both prototypes start from rts-light-v0.1 (23322af0). Switch: `model_settings.thermokarst_ch4`
@@ -121,9 +139,9 @@ old rts-ch4 diagnostic).
 We use 5 gC/m2/yr for fully saturated wet sedge tundra. The dry case (CMT07 heath, model WT) then gives
 ~0.1-0.2 gC/m2/yr. Neither scheme has CH4 uptake by upland soils (no atmospheric CH4 oxidation sink).
 
-## Post-slump vegetation regrowth (`thermokarst_regrow`, default off)
+## Post-slump vegetation regrowth (`thermokarst_regrow`, default ON since v0.3; default off in v0.2)
 
-This is a reduced-form recovery rule v2 (`include/RTSRegrow.h`). Spec: `russia-inputs/rts_recovery_equations.md`. Vegetation equations are unchanged. The rule acts only through parameters (cmax/nmax per PFT), tracked external inputs and the soil N input hook. With the switch off, outputs are bitwise identical to v0.2 (and to v0.1 when the floor switches are also off). **v2 change (by design): the v1 per-PFT logistic growth ceiling is removed entirely** — it held GPP below natural recovery for 12–36 yr and reduced CMT05/07 to 0.49/0.27 × RTS-off. No factor below 1 is ever applied to cmax/nmax. Legacy keys `rts_regrow_limit`, `rts_regrow_t50_*`, `rts_regrow_k_*`, `rts_regrow_release` are ignored.
+This is a reduced-form recovery rule v2 (`include/RTSRegrow.h`). Spec: `russia-inputs/rts_recovery_equations.md`. Vegetation equations are unchanged. The rule acts only through parameters (cmax/nmax per PFT), tracked external inputs and the soil N input hook. Since v0.3 the switch defaults ON (code default in `include/RTSRegrow.h` and explicit keys in `config/config.js`, mirroring how the v0.2 floor fixes were made default-on). With the switch off, outputs are bitwise identical to v0.2 (and to v0.1 when the floor switches are also off) — tested at zero tolerance against `reference/v02` (and `reference/`). Explicit v0.3 parameters in config: reseed 0.07, shrub boost 1.3 / 80 yr, OL rebuild 32 then 6.5 gC/m2/yr, floor N supply 2.2 (tapered by `1 - r^4`, `rts_regrow_n_taper_pow = 4.0`) then 0.4 gN/m2/yr. **v2 change (by design): the v1 per-PFT logistic growth ceiling is removed entirely** — it held GPP below natural recovery for 12–36 yr and reduced CMT05/07 to 0.49/0.27 × RTS-off. No factor below 1 is ever applied to cmax/nmax. Legacy keys `rts_regrow_limit`, `rts_regrow_t50_*`, `rts_regrow_k_*`, `rts_regrow_release` are ignored.
 
 t = years since stabilization = (months since initiation − 12·`rts_regrow_t_active`) / 12, with `rts_regrow_t_active` = 1 yr.
 
@@ -137,4 +155,4 @@ t = years since stabilization = (months since initiation − 12·`rts_regrow_t_a
 | floor N supply (tapered in v2) | base 2.2 (t ≤ 60) then 0.4 gN m−2 yr−1, minus the nominal OL N, into AVLN of the first rooted layer through `m_a2soi.avlninput` (an input like deposition). Months with no rooted layer carry it over. The AVLN part is scaled by `1 − r^pow` clamped to [0,1], with r = trailing-12-month GPP / GPP_ref(t) and GPP_ref(t) = GPP_pre · INGPP(t)/INGPP_pre (N-unlimited GPP, same trailing window), so the reference tracks the undisturbed climate/CO₂ trend: essentially full while GPP is well below the contemporary pre-slump level, then falling steeply to zero once it reaches it, preventing the v1 no-limit over-fertilisation (end GPP 1.07–1.25 × RTS-off). Static-reference tapers (against GPP_pre alone) were tested and rejected: they starved slow cells, which plateaued at the absolute pre-slump GPP while undisturbed GPP kept rising. | `rts_regrow_n_rate1/2`, `_n_T`, `rts_regrow_n_taper` (true), `rts_regrow_n_taper_pow` (4.0) | NINPUT; NBAL_DIAG avlninput |
 | RH-cap exemption | net N mineralization uses the RH before the floor cap (cap applies to CO2 only) | `rts_regrow_navln_exempt` (true) | internal transfer |
 
-NBAL_DIAG lines have one more column: TKREGROWN. A double integrator fallback now also adds the unintegrated part of `avlninput` (always 0 without regrow). Limitation: the regrow state (pre-slump C, GPP_pre) is not in the restart file. A run restarted after initiation does no regrowth. Single-cell results and recommended defaults: `russia-inputs/regrowth_diag/regrow/README.md`.
+NBAL_DIAG lines have one more column: TKREGROWN. A double integrator fallback now also adds the unintegrated part of `avlninput` (always 0 without regrow). Limitation: the regrow state (pre-slump C, GPP_pre) is not in the restart file. A run restarted after initiation does no regrowth (post-slump restarts therefore do not regrow). Further limitations: OL overshoot by 2100 and low soil N (see v0.3 header above); `folr` is run-level only. Single-cell results and recommended defaults: `russia-inputs/regrowth_diag/regrow/README.md`.

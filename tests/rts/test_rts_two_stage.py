@@ -23,6 +23,7 @@ def _overrides(w):
         if isinstance(v, str) and v.endswith('.nc'): ov['IO'][k] = os.path.join(r.DATA, v)
     ov['IO']['output_spec_file'] = spec
     ov['IO']['parameter_dir'] = os.path.join(r.REPO, 'parameters') + '/'
+    ov.setdefault('model_settings', {})['thermokarst_regrow'] = False  # v0.2 physics; regrowth tested in test_rts_regression.py
     p = os.path.join(w, 'overrides.json'); json.dump(ov, open(p, 'w')); return p
 
 def _drive(w, *extra):

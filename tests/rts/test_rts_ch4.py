@@ -35,7 +35,7 @@ def _two_stage(tmp_path, mode, stage1=None):
     for k, v in ov['IO'].items():
         if isinstance(v, str) and v.endswith('.nc'): ov['IO'][k] = os.path.join(GYDAN70, v)
     ov['IO']['output_spec_file'] = sf; ov['IO']['parameter_dir'] = os.path.join(r.REPO, 'parameters/')
-    ov['model_settings'].update(CH4)
+    ov['model_settings'].update({**CH4, **r.V02_OFF})  # v0.3: keep this CH4 workflow at v0.2 regrowth-off physics
     json.dump(ov, open(os.path.join(w, 'ov.json'), 'w'))
     cmd = [sys.executable, os.path.join(r.REPO, 'scripts', 'run_rts_two_stage.py'), '--binary', BIN,
            '--workdir', w, '--config-overrides', os.path.join(w, 'ov.json'), '--hist', '76', '--sc', '30',
@@ -97,7 +97,7 @@ def test_cmt70_blend_zero_is_baseline(c70):
 def test_floor_switches_off_identical_to_v01(tmp_path):
     """RTS floor switches given explicitly false: RTS-on synthetic run == stored v0.1 reference, exact."""
     off = {'thermokarst_rh_cap': False, 'thermokarst_floor_export': False, 'thermokarst_floor_anox': False,
-           'thermokarst_floor_rmin': False, 'thermokarst_ch4': False}
+           'thermokarst_floor_rmin': False, 'thermokarst_ch4': False, 'thermokarst_regrow': False}
     o = r.run(BIN, str(tmp_path / 'floor_off'), True, outputs={**r.BASE_OUTPUTS, **r.RTS_OUTPUTS}, extra=off)
     assert r.compare_dirs(os.path.join(REF, 'rts'), o, 0.0, 0.0) == []
 
