@@ -41,6 +41,22 @@ and `WTD_eff = WTD*(1-s)`.
 In (a) `TKRHCO2 + TKCH4EMIS = RHSOM`, so RHSOM must not be added to the CH4 flux (that was the double count in the
 old rts-ch4 diagnostic).
 
+**Combined total carbon loss `TKNETC`** (gC/m2/month, positive = carbon leaving the ecosystem; yearly = sum of
+the 12 monthly values):
+
+`TKNETC = NEE_month + TKLATC + TKRESPC - TKREGROWC`
+
+where `NEE_month` is the loss-positive monthly net ecosystem exchange used in the closures above
+(`RG + RM + soil + RHDWD - GPP`, the negative of the uptake-positive cal-json NEE) and `TKREGROWC` is subtracted
+only when `thermokarst_regrow` is on (it is zero otherwise; it is an external C input, so it reduces the net
+loss). The soil term is `RHSOM` when `thermokarst_ch4` is off and `TKRHCO2 + TKCH4EMIS` when it is on: since
+`TKRHCO2 = RHSOM - prod + oxid` and `TKCH4EMIS = prod - oxid`, that sum equals `RHSOM` with the CH4 carbon
+counted exactly once -- neither double-counted (`RHSOM + TKCH4EMIS`) nor dropped (`TKRHCO2` alone).
+`TKLATCH4` is only a diagnostic split of `TKLATC` and is never added; `TKCH4POOL` is a pool in ECOC, not a
+flux. With `ECOC = VEGC + SOC + DEADC + DWDC + TKCH4POOL`, `dECOC = -TKNETC` month by month
+(< 0.01 gC/m2/month in `tests/rts/test_rts_tknetc.py`), i.e. cumulative TKNETC equals `-(ECOC_end - ECOC_start)`;
+with no RTS fluxes TKNETC reduces exactly to `NEE_month`.
+
 ## RTS-specific terms
 - **Post-slump ponding:** `pond(m) = pond_sat0 * exp(-m/(12*pond_tau))`, m = months since initiation (0 before).
   v0.2 defaults `pond_sat0 = 0.2`, `pond_tau = 5 yr`. The emission is insensitive to them: on CMT70/56

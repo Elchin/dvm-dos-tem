@@ -19,7 +19,7 @@ BASE_OUTPUTS = {'SOC': 'm', 'SHLWC': 'm', 'DEEPC': 'm', 'MOSSDZ': 'y', 'SHLWDZ':
                 # extra C pools for the carbon-balance check
                 'DEADC': 'm', 'DWDC': 'm'}  # MOSSDEATHC is all-fill in this model version
 RTS_OUTPUTS = {'TKLATC': 'm', 'TKLATN': 'm', 'TKREMTHICK': 'm', 'TKICEMELT': 'm', 'DRAINTYPE': 'm',
-               'TKRESPC': 'm'}
+               'TKRESPC': 'm', 'TKNETC': 'm'}
 # monthly->daily legacy path (flag off): bit-identical to pre-m2d code
 LEGACY_M2D = {'monthly2daily_mean_preserving': False}
 # v0.2 defaults have the RTS floor terms on and methanogen suppression off; these settings restore v0.1
@@ -148,7 +148,14 @@ def compare_dirs(a, b, rtol=0.0, atol=0.0, skip=()):
     bad = []
     fa = sorted(f for f in os.listdir(a) if f.endswith('.nc') and not f.startswith('restart') and f != 'run_status.nc')
     fb = sorted(f for f in os.listdir(b) if f.endswith('.nc') and not f.startswith('restart') and f != 'run_status.nc')
-    if fa != fb: bad.append('file sets differ: %s' % (sorted(set(fa) ^ set(fb)),))
+    # TKNETC is a new diagnostic (post-v0.3): stored physics references predate
+    # it, so a TKNETC_*.nc present in only one dir is not a file-set mismatch.
+    # It is still value-compared below whenever both dirs have it (run-vs-run
+    # and reference-regeneration checks), and tests/rts/test_rts_tknetc.py
+    # checks its identity/closure directly. No reference files are regenerated.
+    extra = sorted(set(fa) ^ set(fb))
+    if extra and not all(f.startswith('TKNETC_') for f in extra):
+        bad.append('file sets differ: %s' % (extra,))
     for f in set(fa) & set(fb):
         if any(f.startswith(s) for s in skip): continue
         da, db = nc.Dataset(os.path.join(a, f)), nc.Dataset(os.path.join(b, f))

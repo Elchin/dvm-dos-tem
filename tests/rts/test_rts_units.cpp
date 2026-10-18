@@ -6,6 +6,7 @@
 #include "Thermokarst.h"
 #include "RTSMethane.h"
 #include "RTSRegrow.h"
+#include "TKNetC.h"
 #include "Ground.h"
 #include "Climate.h"
 #include "TEMUtilityFunctions.h"
@@ -444,7 +445,26 @@ static void test_rts_regrow() {
   CHECK(RTSRegrow::avlnSupplyMonth(p, 10.0, 0.0) == 0.0 && RTSRegrow::avlnSupplyMonth(p, 10.0, -1.0) == 0.0);
 }
 
+
+static void test_tknetc() {
+  // soil term: CH4 off -> RHSOM; on -> TKRHCO2+TKCH4EMIS (= RHSOM when
+  // TKRHCO2=RHSOM-prod+oxid and TKCH4EMIS=prod-oxid, so CH4 counted once)
+  CHECK_NEAR(TKNetC::soilCarbonLoss(false, 10.0, 0.0, 0.0), 10.0, 1e-12);
+  { const double rhsom=10.0, prod=3.0, oxid=1.0;
+    CHECK_NEAR(TKNetC::soilCarbonLoss(true, rhsom, rhsom-prod+oxid, prod-oxid), rhsom, 1e-12); }
+  // TKNETC = (RG+RM+soil+RHDWD-GPP) + TKLATC + TKRESPC - TKREGROWC(regrow on)
+  CHECK_NEAR(TKNetC::compute(false, true, 100, 10, 20, 30, 5, 0, 0, 7, 3, 2), (10+20+30+5-100)+7+3-2, 1e-12);
+  // regrow off: TKREGROWC term dropped even if a stray value is passed
+  CHECK_NEAR(TKNetC::compute(false, false, 100, 10, 20, 30, 5, 0, 0, 7, 3, 999), (10+20+30+5-100)+7+3, 1e-12);
+  // CH4 on with same RHSOM partition gives the same TKNETC as CH4 off (no double count / no drop)
+  CHECK_NEAR(TKNetC::compute(true, false, 100, 10, 20, 30, 5, 28, 2, 7, 3, 0),  // rh_co2+emis = 28+2 = RHSOM 30
+             TKNetC::compute(false, false, 100, 10, 20, 30, 5, 0, 0, 7, 3, 0), 1e-12);
+  // no TK fluxes: TKNETC == loss-positive NEE
+  CHECK_NEAR(TKNetC::compute(false, false, 50, 5, 5, 10, 0, 0, 0, 0, 0, 0), -30.0, 1e-12);
+}
+
 int main() {
+  test_tknetc();
   test_rts_regrow();
   test_rts_floor();
   test_rts_ch4();

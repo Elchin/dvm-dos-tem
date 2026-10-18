@@ -11,6 +11,7 @@
 #include "../include/Cohort.h"
 #include "../include/TEMUtilityFunctions.h"
 #include "../include/TEMLogger.h"
+#include "../include/TKNetC.h"
 #include "../include/tbc-debug-util.h"
 
 extern src::severity_logger< severity_level > glg;
@@ -1407,6 +1408,57 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
   TK_SCALAR_OUTPUT("TKREGROWC", tkregrowc_for_output, cohort.year_tkdata[im].thermokarst_soid.regrow_c, false)
   TK_SCALAR_OUTPUT("TKREGROWN", tkregrown_for_output, cohort.year_tkdata[im].thermokarst_soid.regrow_n, false)
 #undef TK_SCALAR_OUTPUT
+  // TKNETC: combined total C loss (gC/m2/month, positive = leaving ecosystem).
+  // TKNETC = NEE_month + TKLATC + TKRESPC - TKREGROWC (last term only when
+  // regrow is on; TKREGROWC is zero then anyway). NEE_month here is the
+  // loss-positive monthly NEE used by the RTS closures
+  // (RG+RM+soil+RHDWD-GPP), not the uptake-positive cal-json NEE.
+  // Soil term: RHSOM when thermokarst_ch4 is off; TKRHCO2+TKCH4EMIS when on.
+  // Since TKRHCO2 = RHSOM-prod+oxid and TKCH4EMIS = prod-oxid, that sum is
+  // RHSOM with CH4 C counted exactly once (see include/TKNetC.h). Monthly
+  // uses the m_* fluxes for this month; yearly uses the y_* annual sums for
+  // GPP/RG/RM/RHSOM/RHDWD and sums the TK/CH4 terms over year_tkdata, so the
+  // yearly value is the sum of the 12 monthly TKNETC values.
+  map_itr = netcdf_outputs.find("TKNETC");
+  if(map_itr != netcdf_outputs.end()){
+    curr_spec = map_itr->second;
+    _Pragma("omp critical(outputTK)")
+    {
+      if(curr_spec.monthly){
+        int im = month;
+        outhold.tknetc_for_output.push_back(TKNetC::compute(
+            cohort.md->tk_ch4, cohort.md->tk_regrow.on,
+            cohort.bdall->m_a2v.gppall, cohort.bdall->m_v2a.rgall, cohort.bdall->m_v2a.rmall,
+            cohort.bdall->m_soi2a.rhsom, cohort.bdall->m_soi2a.rhwdeb,
+            cohort.year_tkdata[im].thermokarst_soid.rh_co2, cohort.year_tkdata[im].thermokarst_soid.ch4_emis,
+            cohort.year_tkdata[im].thermokarst_soi2lat.orgc + cohort.year_tkdata[im].thermokarst_soi2lat.vegc,
+            cohort.year_tkdata[im].thermokarst_soi2a.orgc + cohort.year_tkdata[im].thermokarst_v2a.orgc,
+            cohort.year_tkdata[im].thermokarst_soid.regrow_c));
+        if(output_this_timestep){
+          output_nc_3dim(&curr_spec, file_stage_suffix, &outhold.tknetc_for_output[0], 1, month_start_idx, months_to_output);
+          outhold.tknetc_for_output.clear();
+        }
+      } else if(curr_spec.yearly){
+        double rh_co2 = 0., ch4_emis = 0., latc = 0., respc = 0., regrowc = 0.;
+        for(int im=0; im<12; im++){
+          rh_co2 += cohort.year_tkdata[im].thermokarst_soid.rh_co2;
+          ch4_emis += cohort.year_tkdata[im].thermokarst_soid.ch4_emis;
+          latc += cohort.year_tkdata[im].thermokarst_soi2lat.orgc + cohort.year_tkdata[im].thermokarst_soi2lat.vegc;
+          respc += cohort.year_tkdata[im].thermokarst_soi2a.orgc + cohort.year_tkdata[im].thermokarst_v2a.orgc;
+          regrowc += cohort.year_tkdata[im].thermokarst_soid.regrow_c;
+        }
+        outhold.tknetc_for_output.push_back(TKNetC::compute(
+            cohort.md->tk_ch4, cohort.md->tk_regrow.on,
+            cohort.bdall->y_a2v.gppall, cohort.bdall->y_v2a.rgall, cohort.bdall->y_v2a.rmall,
+            cohort.bdall->y_soi2a.rhsom, cohort.bdall->y_soi2a.rhwdeb,
+            rh_co2, ch4_emis, latc, respc, regrowc));
+        if(output_this_timestep){
+          output_nc_3dim(&curr_spec, file_stage_suffix, &outhold.tknetc_for_output[0], 1, year_start_idx, years_to_output);
+          outhold.tknetc_for_output.clear();
+        }
+      }
+    }
+  }
   map_itr = netcdf_outputs.end();
 
 

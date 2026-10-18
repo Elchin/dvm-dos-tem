@@ -150,3 +150,4 @@ TKLATCH4,Part of TKLATC mineralized downstream as CH4 (as C),g/m2/time,,,invalid
 TKPONDSAT,RTS post-slump ponding saturation factor,,,,invalid,invalid,invalid,invalid,double,
 TKREGROWC,RTS regrow external C input (reseed + organic-layer rebuild),g/m2/time,,,invalid,invalid,invalid,invalid,double,
 TKREGROWN,RTS regrow external N input to veg/organic layer (reseed + OL rebuild; avln supply is in NINPUT),g/m2/time,,,invalid,invalid,invalid,invalid,double,
+TKNETC,Combined total ecosystem C loss (NEE_month+TKLATC+TKRESPC-TKREGROWC; positive = C leaving ecosystem; see TKNetC.h),g/m2/time,,,invalid,invalid,invalid,invalid,double,
