@@ -230,9 +230,12 @@ std::vector<float> calculate_daily_prec(const int midx, const float mta, const f
   DURS=RS/R;
   float B=1.0, T=0.0, S=1.0, RB, DURB;
 
-  float RAINDUR[DINM[midx]];
-  float RAININTE[DINM[midx]];
-  for(int id = 0; id < DINM[midx]; id++) {
+  // The storm-generator loops below are 1-based (NN = 1..DINM, read back as [id+1]),
+  // so the arrays need DINM+1 elements; with DINM elements the last day was written
+  // past the end of the stack arrays (ASan/UBSan: index 31 out of bounds).
+  float RAINDUR[DINM[midx]+1];
+  float RAININTE[DINM[midx]+1];
+  for(int id = 0; id <= DINM[midx]; id++) {
     RAININTE[id] =0.;
     RAINDUR[id] = 0.;
   }

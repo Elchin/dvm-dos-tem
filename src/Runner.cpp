@@ -22,7 +22,11 @@ Runner::Runner(ModelData mdldata, bool cal_mode, int y, int x):
                            << "injected ModelData, and for explicit (y,x) "
                            << "position w/in the input data region.";
   this->md = mdldata;
-  this->cohort = Cohort(y, x, &mdldata); // explicitly constructed cohort...
+  // Point the cohort at the Runner-owned copy. mdldata is a by-value constructor
+  // parameter, so &mdldata dangled as soon as this constructor returned and every later
+  // cohort.md->get_*/set_* (stage switches, nfeed, dsl, dynamic LAI, ...) read/wrote dead
+  // stack memory (ASan: stack-use-after-scope in TEM.cpp advance_model / ModelData::set_*).
+  this->cohort = Cohort(y, x, &this->md); // explicitly constructed cohort...
 
   BOOST_LOG_SEV(glg, info) << "Calibration mode?: " << cal_mode;
   if ( cal_mode ) {
@@ -411,7 +415,7 @@ void Runner::output_caljson_monthly(int year, int month, std::string stage, boos
   }
 
 
-  // CAUTION: this->md and this->cohort.md are different instances!
+  // NOTE: this->cohort.md now points to this->md (same instance).
 
   Json::Value data;
   std::ofstream out_stream;
