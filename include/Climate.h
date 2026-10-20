@@ -92,6 +92,13 @@ public:
 
   void load_proj_climate(const std::string&, int, int);
   void load_proj_co2(const std::string&);
+  // Scenario stage: index CO2 by calendar year (see Climate.cpp).
+  void index_proj_co2_by_year(const std::string& proj_climate_fname,
+                              const std::string& proj_co2_fname,
+                              int sc_yrs);
+  float co2_for_year_index(int iy) const;
+  int co2_idx_offset = 0; // added to the model year index when reading co2
+
 
   void prep_avg_climate();
 

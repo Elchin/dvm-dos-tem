@@ -7,6 +7,8 @@
 #include <iostream>
 #include <sstream>
 #include <cstdlib>
+#include <cstdio>
+#include <netcdf.h>
 
 #include <boost/filesystem.hpp>
 
@@ -429,6 +431,7 @@ Climate::Climate(const std::string& fname, const std::string& co2fname, int y, i
   {
     this->co2 = temutil::get_timeseries(co2fname, "co2");
   }
+  this->co2_idx_offset = 0;
 }
 
 void Climate::load_from_file(const std::string& fname, int y, int x) {
@@ -653,6 +656,119 @@ void Climate::load_daily_from_file(const std::string& fname, int y, int x) {
 void Climate::load_proj_co2(const std::string& fname){
   BOOST_LOG_SEV(glg, info) << "CO2, loading projected data!";
   this->co2 = temutil::get_timeseries(fname, "co2");
+  this->co2_idx_offset = 0;
+}
+
+/** CO2 value for model year index iy of the current stage (applies the
+* calendar-year offset set by index_proj_co2_by_year(); offset is 0 for all
+* other stages). Fails loudly if out of range.
+*/
+float Climate::co2_for_year_index(int iy) const {
+  long idx = long(iy) + long(co2_idx_offset);
+  if (idx < 0 || idx >= long(co2.size())) {
+    BOOST_LOG_SEV(glg, fatal) << "CO2 index " << idx << " (year index " << iy
+                              << ", offset " << co2_idx_offset
+                              << ") outside co2 series of length " << co2.size();
+    std::cerr << "FATAL: CO2 index " << idx << " (year index " << iy
+              << ", offset " << co2_idx_offset << ") outside co2 series of length "
+              << co2.size() << std::endl;
+    exit(EXIT_FAILURE);
+  }
+  return co2.at(idx);
+}
+
+/** Scenario stage: make CO2 follow the calendar years of the projected
+* climate file instead of starting at index 0 of the co2 file.
+*
+* The first calendar year of the projected climate is computed from the
+* file's first time value ("days since YYYY-..." with a 365_day/noleap
+* calendar; note the units' reference year is NOT the first data year).
+* The co2 file's 'year' axis must be consecutive integers and must cover
+* first_year .. first_year+sc_yrs-1; otherwise the run stops with an error.
+*/
+void Climate::index_proj_co2_by_year(const std::string& clim_fname,
+                                     const std::string& co2_fname,
+                                     int sc_yrs) {
+  std::stringstream err;
+  int ncid, varid;
+
+  // --- first calendar year of the projected climate file
+  temutil::nc( nc_open(clim_fname.c_str(), NC_NOWRITE, &ncid), clim_fname );
+  temutil::nc( nc_inq_varid(ncid, "time", &varid) );
+  size_t ulen = 0, clen = 0;
+  temutil::nc( nc_inq_attlen(ncid, varid, "units", &ulen) );
+  std::string units(ulen, '\0');
+  temutil::nc( nc_get_att_text(ncid, varid, "units", &units[0]) );
+  std::string cal = "";
+  if (nc_inq_attlen(ncid, varid, "calendar", &clen) == NC_NOERR) {
+    cal.assign(clen, '\0');
+    temutil::nc( nc_get_att_text(ncid, varid, "calendar", &cal[0]) );
+  }
+  double t0 = 0.;
+  size_t start0[1] = {0};
+  temutil::nc( nc_get_var1_double(ncid, varid, start0, &t0) );
+  temutil::nc( nc_close(ncid) );
+  cal = cal.c_str(); units = units.c_str(); // strip any trailing NULs
+
+  int ref_y = 0, ref_m = 0, ref_d = 0;
+  if (units.find("days since") != 0
+      || sscanf(units.c_str() + 10, " %d-%d-%d", &ref_y, &ref_m, &ref_d) != 3
+      || !(cal == "365_day" || cal == "noleap")) {
+    err << "cannot determine calendar years of " << clim_fname
+        << " (time units '" << units << "', calendar '" << cal
+        << "'; need 'days since YYYY-MM-DD' with a 365_day/noleap calendar)";
+  }
+  int first_year = 0;
+  if (err.str().empty()) {
+    int cum[12] = {0,31,59,90,120,151,181,212,243,273,304,334};
+    double days_from_ref_jan1 = t0 + cum[(ref_m-1) % 12] + (ref_d - 1);
+    first_year = ref_y + int(floor(days_from_ref_jan1 / 365.0));
+  }
+
+  // --- co2 year axis
+  std::vector<float> yrs;
+  if (err.str().empty()) {
+    yrs = temutil::get_timeseries(co2_fname, "year");
+    if (yrs.size() != co2.size() || yrs.empty()) {
+      err << "'year' axis length " << yrs.size() << " != co2 length "
+          << co2.size() << " in " << co2_fname;
+    } else {
+      for (size_t i = 1; i < yrs.size(); i++) {
+        if (int(yrs[i]) != int(yrs[0]) + int(i)) {
+          err << "'year' axis of " << co2_fname << " is not consecutive at index "
+              << i << " (" << yrs[i-1] << " -> " << yrs[i] << ")";
+          break;
+        }
+      }
+    }
+  }
+  if (err.str().empty()) {
+    int y0 = int(yrs.front()), y1 = int(yrs.back());
+    int need_last = first_year + sc_yrs - 1;
+    if (first_year < y0 || need_last > y1) {
+      err << "scenario needs CO2 for years " << first_year << "-" << need_last
+          << " but " << co2_fname << " covers " << y0 << "-" << y1;
+    } else {
+      co2_idx_offset = first_year - y0;
+    }
+  }
+  if (!err.str().empty()) {
+    BOOST_LOG_SEV(glg, fatal) << "SC CO2 indexing: " << err.str();
+    std::cerr << "FATAL (SC CO2 indexing): " << err.str() << std::endl;
+    exit(EXIT_FAILURE);
+  }
+
+  std::cout << "SC CO2 indexed by calendar year: climate starts " << first_year
+            << ", co2 file years " << int(yrs.front()) << "-" << int(yrs.back())
+            << ", index offset " << co2_idx_offset << ".";
+  int show[3] = {0, 50, sc_yrs - 1};
+  for (int k = 0; k < 3; k++) {
+    if (show[k] >= 0 && show[k] < sc_yrs) {
+      std::cout << " CO2[" << first_year + show[k] << "]="
+                << co2_for_year_index(show[k]);
+    }
+  }
+  std::cout << std::endl;
 }
 
 std::vector<float> Climate::avg_over(const std::vector<float> & var, const int start_yr, const int end_yr) {
@@ -828,7 +944,8 @@ void Climate::prepare_daily_driving_data(int iy, const std::string& stage) {
 
     // Spin-up, Transient, Scenario
     // Uses the same value of CO2 every day of the year
-    co2_d = co2.at(iy);
+    // (calendar-year offset applies in the scenario stage only; 0 otherwise)
+    co2_d = co2_for_year_index(iy);
 
     // Create daily data by interpolating
     // straight up interpolated....
@@ -887,7 +1004,7 @@ void Climate::prepare_daily_driving_data_from_daily(int iy) {
   }
 
   // Same co2 handling as the monthly path (one value per model year).
-  co2_d = co2.at(iy);
+  co2_d = co2_for_year_index(iy);
 
   tair_d.assign(tair.begin() + start, tair.begin() + start + DINY);
   vapo_d.assign(vapo.begin() + start, vapo.begin() + start + DINY);

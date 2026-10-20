@@ -908,6 +908,10 @@ void advance_model(const int rowidx, const int colidx,
     // Loading projected data instead of historic. FIX?
     runner.cohort.load_proj_climate(modeldata.proj_climate_file);
     runner.cohort.load_proj_co2(modeldata.proj_co2_file);
+    // Index scenario CO2 by calendar year (fails loudly if not covered).
+    runner.cohort.climate.index_proj_co2_by_year(modeldata.proj_climate_file,
+                                                 modeldata.proj_co2_file,
+                                                 modeldata.sc_yrs);
 
     if (modeldata.daily_proj_climate) {
       // Daily climate mode: the file must hold at least sc_yrs full
