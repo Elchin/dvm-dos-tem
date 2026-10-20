@@ -45,6 +45,17 @@ void Stefan::updateFronts(const double & tdrv, const double &timestep) {
     freezing1 =1;
   }
 
+  // If the front deques are empty but the soil column is not uniformly
+  // frozen or unfrozen (e.g. after a front swept through the column and the
+  // swept layers were assigned states from their own temperatures), rebuild
+  // the missing fronts at the existing frozen/unfrozen interfaces. Otherwise
+  // a new front pushed onto the empty deque would be taken as the only
+  // interface in the column, and updateLayerFrozenState() would flip every
+  // layer below it to the opposite state (e.g. deep permafrost to unfrozen).
+  if (ground->frontsz.empty()) {
+    rebuildFrontsFromLayerStates();
+  }
+
   // find the new front
   double newfntz1 = 0.;
   Layer * currl=NULL;
@@ -652,6 +663,41 @@ void Stefan::combineExtraFronts() {
     frntnum = ground->frontsz.size();
   }
 };
+
+// Rebuild the front deques from the soil layers' current frozen states.
+// Called only when there are no fronts. A front is added at every boundary
+// between adjacent soil layers whose frozen state differs: a thawing front
+// (type -1) where unfrozen soil lies above frozen soil, a freezing front
+// (type 1) where frozen soil lies above unfrozen soil. Partially frozen
+// layers (frozen==0) are classified by their frozen fraction. The fronts are
+// placed exactly at the layer boundary, so updateLayerFrozenState() gives the
+// layers the same frozen fractions as before (no phase change occurs here).
+void Stefan::rebuildFrontsFromLayerStates() {
+  Layer * currl = ground->fstsoill;
+  if (currl == NULL) {
+    return;
+  }
+
+  int prevstate = 0;
+  bool first = true;
+  while (currl != NULL && currl->isSoil) {
+    int state = currl->frozen;
+    if (state == 0) {
+      state = (currl->frozenfrac >= 0.5) ? 1 : -1;
+    }
+    if (!first && state != prevstate) {
+      double fntz = currl->z; // top of this layer = bottom of the layer above
+      int fnttype = (prevstate == -1) ? -1 : 1; // unfrozen above: thawing front
+      ground->frontsz.push_back(fntz);
+      ground->frontstype.push_back(fnttype);
+    }
+    prevstate = state;
+    first = false;
+    currl = currl->nextl;
+  }
+
+  combineExtraFronts();
+}
 
 //update frozen status and the fraction of frozen portion (thickness) for
 //  each layer in a column, based on two fronts deques: 'ground->frontsz'

@@ -65,6 +65,7 @@ private:
                          const double & sumresabv, const double & dse);
 
   void combineExtraFronts();
+  void rebuildFrontsFromLayerStates();
   void updateLayerFrozenState(Layer* toplayer, const int freezing1);
   void updateWaterAfterFront(Layer* toplayer);
 
