@@ -1,6 +1,6 @@
 #include "../include/Snow_Env.h"
 
-Snow_Env::Snow_Env() {
+Snow_Env::Snow_Env(): rad_melt(0.) {
 };
 
 Snow_Env::~Snow_Env() {
@@ -18,6 +18,7 @@ void Snow_Env::updateDailyM(const double & tdrv) {
 
   //Note unit converstion: 1 mm H2O = 1 kgH2O/m2
   bool slchg1 = false;
+  rad_melt = 0.;
 
   if (!ground->toplayer->isSnow && ground->toplayer->tem>0.01) {
     //melting all snowfalling ('dsmass')
@@ -43,13 +44,17 @@ void Snow_Env::updateDailyM(const double & tdrv) {
     updateDailySurfFlux(ground->toplayer, tsurface);
     // melting below snow layers, if any
     ed->d_snw2soi.melt = meltSnowLayersAfterT(ground->toplayer);
+    // DRAFT: radiation-driven melt (computed in updateDailySurfFlux) goes to
+    // the soil (infiltration/runoff), not to the atmosphere.
+    ed->d_snw2soi.melt += rad_melt;
   }
 
   //here 'dsmass' is for snow-melting and sublimating
   // PROPOSAL: melt water was already taken out of the snow layers by meltSnowLayersAfterT()
   // (ice->liq in Stefan, then liq zeroed). Removing it again here double-counted the melt
   // (same issue as the sublimation duplicate noted in updateDailySurfFlux). Only sublimation remains.
-  dsmass = ed->d_snw2a.sublim;
+  // DRAFT: mass removed from the pack = true sublimation + radiation-driven melt.
+  dsmass = ed->d_snw2a.sublim + rad_melt;
   //Note unit converstion: 1 mm H2O = 1 kgH2O/m2
 
   //removal of melted snow layers
@@ -87,17 +92,23 @@ void Snow_Env::updateDailySurfFlux( Layer* toplayer, const double & tdrv) {
                    + ed->d_a2l.nirr *(1.- cd->m_vegd.fpcsum);
     ed->d_snw2a.swrefl = insw *0.5 * albnir + insw *0.5 * albvis;
     double rn = insw- ed->d_snw2a.swrefl;
-    double sublim = getSublimation(rn, ed->d_snws.swesum, tdrv); //mm SWE/day, or kgSW/day
+    double pradmelt = 0.;
+    double sublim = getSublimation(rn, ed->d_snws.swesum, tdrv, pradmelt); //mm SWE/day, or kgSW/day
     Layer * currl=toplayer;
     double actsub = 0.;
+    double actmelt = 0.;
 
     while (currl!=NULL) {
-      if (currl->isSnow && sublim>0.) {
-        double layicermv = fmin(sublim, currl->ice);
+      if (currl->isSnow && (sublim>0. || pradmelt>0.)) {
+        double avail = currl->ice;
+        double layicermv = fmin(sublim, avail);
         actsub += layicermv;
         sublim -= layicermv;
-        //layicermv used to be subtracted from currl->ice here, but
-        // that duplicates the removal in Ground::constructSnowLayers()
+        avail -= layicermv;
+        double laymelt = fmin(pradmelt, avail);
+        actmelt += laymelt;
+        pradmelt -= laymelt;
+        //ice is removed in Ground::constructSnowLayers() (see updateDailyM)
       } else {
         break;
       }
@@ -106,6 +117,7 @@ void Snow_Env::updateDailySurfFlux( Layer* toplayer, const double & tdrv) {
     }
 
     ed->d_snw2a.sublim = actsub;
+    rad_melt = actmelt;
   }
 
   /*  // the following will cause confusion OR duplicated snowmelting process
@@ -292,13 +304,14 @@ void Snow_Env::set_state_from_restartdata(const RestartData & rdata) {
 };
 
 double Snow_Env::getSublimation(double const & rn, double const & swe,
-                                double const & ta) {
+                                double const & ta, double & radmelt) {
   // rn: radiation. W/m2
   // swe: snow water equivalent. mm
   // LHVAP: latent heat of vaporization. J/kg
   // LHFUS: latent heat of fusion. J/kg
   // output sublimation. mm/day
   double sub = 0.;
+  radmelt = 0.;
   double sabsorb =0.6;     // radiation absorptivity of snow, Zhuang 0.6 ?
   double rabs = rn * sabsorb; //W/m2
 
@@ -311,13 +324,17 @@ double Snow_Env::getSublimation(double const & rn, double const & swe,
       sub = psub;
     }
   } else if(swe>0. && ta>=-1) {
+    // DRAFT (daily-structural): this is radiation-driven MELT, not sublimation.
+    // It used to be returned as 'sub' (removed to the atmosphere and added to
+    // EET). Return it via 'radmelt' so the caller routes it to melt water.
     double pmelt= rabs*86400/(LHFUS);
 
     if(pmelt>swe) {
-      sub = swe;
+      radmelt = swe;
     } else {
-      sub = pmelt;
+      radmelt = pmelt;
     }
+    sub = 0.;
   } else {
     sub = 0.;
   }

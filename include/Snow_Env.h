@@ -48,7 +48,12 @@ private:
   void updateDailySurfFlux( Layer* frontl, const double & tdrv);
 
   double getSublimation(double const & rn, double const & swe,
-                        double const & ta);
+                        double const & ta, double & radmelt);
+
+  // DRAFT (daily-structural): radiation-driven melt of the top snow layers on
+  // days with Tair >= -1 C (mm/day). Previously this was booked as sublimation
+  // (lost to the atmosphere and counted in EET); now it is routed to melt water.
+  double rad_melt;
 
   double getAlbedoVis(const double & tem); //get albedo of visible
                                            //  radiation of snow
