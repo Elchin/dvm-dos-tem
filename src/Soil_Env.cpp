@@ -626,7 +626,9 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
 
   //Soil water dynamics at daily time step
 
-  for (int i=0; i<MAX_SOI_LAY+1; i++) {
+  // root_water_up has MAX_SOI_LAY elements; the old bound (MAX_SOI_LAY+1) wrote one element
+  // past the end of the array (into the following member, richards.num_al).
+  for (int i=0; i<MAX_SOI_LAY; i++) {
     root_water_up[i] /= SEC_IN_DAY; // mm/day to mm/s
   }
 
