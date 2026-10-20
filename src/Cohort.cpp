@@ -258,6 +258,7 @@ void Cohort::initialize_state_parameters() {
 
   snowenv.initializeParameter();
   soilenv.initializeParameter();
+  soilenv.frozen_infil_eice = md->frozen_infil_eice; // DRAFT (daily-structural)
   soilbgc.initializeParameter();
 
   ground.initDimension();   // read-in snow/soil structure from 'chtlu', does not appear to touch Layer objects...?

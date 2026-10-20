@@ -38,6 +38,8 @@ Soil_Env::Soil_Env() {
   floor_added_mm = 0.0;
   evap_unapplied_mm = 0.0;
   ponding_max_mm = 4.0; //max ponding (surface water storage) (mm)
+  frozen_infil_eice = -1.0;
+  frozen_infil_mm = 0.0;
 };
 
 Soil_Env::~Soil_Env() {
@@ -667,6 +669,22 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
     //Soil evaporation is not removed from the soil in this branch; record it so the
     //reported evaporation can be limited to what was actually extracted.
     evap_unapplied_mm = evap * SEC_IN_DAY;
+    // DRAFT (daily-structural 2/4): optional infiltration into frozen soil,
+    // limited by ice impedance, pore space and refreezing (cold content).
+    frozen_infil_mm = 0.0;
+    if(frozen_infil_eice >= 0.0){
+      double in_mm = fmax(infil, 0.0) * SEC_IN_DAY;
+      double supply = in_mm + fmax(ed->d_soi2l.magic_puddle, 0.0);
+      if(supply > 0.0){
+        double fi = frozenInfiltration(fstsoill, supply);
+        double from_today = fmin(fi, in_mm);
+        ed->d_soi2l.magic_puddle = fmax(ed->d_soi2l.magic_puddle - (fi - from_today), 0.0);
+        if(infil > 0.0){
+          infil = (in_mm - from_today) / SEC_IN_DAY;
+        }
+        frozen_infil_mm = fi;
+      }
+    }
     if(infil > 0.0){
       infil *= SEC_IN_DAY;// -->mm/day
       //Add to ponding
@@ -676,6 +694,9 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
       infil -= add_to_puddle;
       ed->d_soi2l.qover += infil;
       ed->d_soi2l.qinfl = 0;
+    }
+    if(frozen_infil_eice >= 0.0){
+      ed->d_soi2l.qinfl = frozen_infil_mm; // mm/day, DRAFT
     }
     if(weighted_veg_tran > 0){
       //Subtract transpiration from each layer
@@ -852,6 +873,43 @@ double Soil_Env::getWaterTable(Layer* lstsoill) {
     }
   }
   return wtd;
+}
+
+// DRAFT (daily-structural 2/4): infiltration of surface water into frozen
+// soil layers (top shallow/moss layer frozen, Richards not run).
+// Each layer passes at most 10^(-E*F_ice)*hksat (CLM5 eq. 7.37 / Swenson et al.
+// 2012 impedance; min over the layers above). Water entering a layer below 0 C
+// refreezes (added as ice, layer warmed by the latent heat, capped at 0 C), so
+// absorption is limited by the layer's cold content and pore space; layers at or
+// above 0 C take it as liquid. Water not absorbed returns to the surface.
+// Returns mm infiltrated.
+double Soil_Env::frozenInfiltration(Layer* fstsoill, double supply_mm) {
+  double absorbed = 0.0;
+  double flux = supply_mm;   // mm/day reaching the current layer
+  double qmax = 1.0e30;      // impedance-limited flux (mm/day)
+  Layer* l = fstsoill;
+  while(l != NULL && l->isSoil && flux > 1.0e-9){
+    double fice = l->poro > 0. ? fmin(fmax(l->getVolIce() / l->poro, 0.0), 1.0) : 1.0;
+    qmax = fmin(qmax, pow(10.0, -frozen_infil_eice * fice) * l->hksat * SEC_IN_DAY);
+    flux = fmin(flux, qmax);
+    double space = fmax(l->poro - l->getVolIce() - l->getVolLiq(), 0.0) * DENLIQ * l->dz;
+    double take = fmin(flux, space);
+    if(l->tem < 0.0){
+      double hcap = l->getHeatCapacity() * l->dz; // J/m2/K
+      double cold = hcap * (-l->tem) / LHFUS;     // mm that can refreeze
+      take = fmin(take, cold);
+      if(take > 0.0){
+        l->ice += take;
+        l->tem = fmin(l->tem + take * LHFUS / hcap, 0.0);
+      }
+    } else if(take > 0.0){
+      l->liq += take;
+    }
+    absorbed += take;
+    flux -= take;
+    l = l->nextl;
+  }
+  return absorbed;
 }
 
 double Soil_Env::getRunoff(Layer* toplayer, Layer* drainl,

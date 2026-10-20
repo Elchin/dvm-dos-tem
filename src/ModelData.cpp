@@ -126,6 +126,7 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
   // Opt-in daily climate mode. Absent/empty key keeps original monthly
   // behavior. Any value other than "monthly" or "daily" is a hard error.
   climate_timestep = controldata["model_settings"]["climate_timestep"].asString();
+  frozen_infil_eice = controldata["model_settings"].get("frozen_infil_eice", -1.0).asDouble();
   if (climate_timestep.empty()) {
     climate_timestep = "monthly";
   }

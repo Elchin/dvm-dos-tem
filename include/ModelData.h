@@ -102,6 +102,12 @@ public:
   std::string climate_timestep;
   bool daily_proj_climate;
 
+  // DRAFT (daily-structural): infiltration into a frozen top soil layer.
+  // model_settings.frozen_infil_eice: < 0 (default, key absent) = off (legacy:
+  // no infiltration while the top shallow/moss layer is frozen); >= 0 = ice
+  // impedance exponent E in 10^(-E*F_ice) (CLM5/Swenson et al. 2012 use 6).
+  double frozen_infil_eice;
+
   // Maps holding data about variables to be output at specific timesteps
   // C++11 would allow the use of unordered_maps, which have a faster
   // by-key access time.

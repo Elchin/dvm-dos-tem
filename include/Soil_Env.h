@@ -35,6 +35,9 @@ public:
   // checkSoilLiquidWaterValidity(), and soil evaporation that was reported but never removed
   // from the soil (frozen-top branch). Cohort subtracts these from the reported ET.
   double floor_added_mm;
+  // DRAFT (daily-structural): see ModelData::frozen_infil_eice (<0 = off)
+  double frozen_infil_eice;
+  double frozen_infil_mm; // water infiltrated into frozen soil today (mm)
   double evap_unapplied_mm;
 
   void setGround(Ground* grndp);
@@ -66,7 +69,8 @@ private:
   EnvData * ed;
   CohortLookup* chtlu;
 
-  double ponding_max_mm;//max ponding (surface water storage) (mm)
+  double ponding_max_mm;
+  double frozenInfiltration(Layer* fstsoill, double supply_mm);//max ponding (surface water storage) (mm)
 
   void updateDailySurfFlux(Layer* frontl, const double & dayl);
   void updateDailySoilThermal4Growth(Layer* fstsoill, const double &tsurface);
