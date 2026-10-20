@@ -167,35 +167,8 @@ void Soil_Bgc::prepareIntegration(const bool &mdnfeedback,
 
   if (this->nfeed == 1) {
     // vegetation root N extraction
-    // Root N extraction per layer, limited to the inorganic N actually
-    // present in each layer, without changing the total extraction (which
-    // must match the vegetation N uptake to conserve N): extraction above a
-    // layer's available N is moved to other layers in proportion to their
-    // remaining available N. Only if the total extraction exceeds the total
-    // available N in the column is the total capped (all available N taken).
-    {
-      double totex = 0., totav = 0., excess = 0., headroom = 0.;
-      for (int i=0; i<cd->m_soil.numsl; i++) {
-        double ex = fmax(0., bd->m_soi2v.nextract[i]);
-        double av = fmax(0., bd->m_sois.avln[i]);
-        totex += ex;
-        totav += av;
-        rtnextract[i] = fmin(ex, av);
-        excess += ex - rtnextract[i];
-        headroom += av - rtnextract[i];
-      }
-      if (excess > 0.) {
-        if (totex <= totav && headroom > 0.) {
-          for (int i=0; i<cd->m_soil.numsl; i++) {
-            double av = fmax(0., bd->m_sois.avln[i]);
-            rtnextract[i] += excess * (av - rtnextract[i]) / headroom;
-          }
-        } else {
-          for (int i=0; i<cd->m_soil.numsl; i++) {
-            rtnextract[i] = fmax(0., bd->m_sois.avln[i]);
-          }
-        }
-      }
+    for (int i=0; i<cd->m_soil.numsl; i++) {
+      rtnextract[i] = bd->m_soi2v.nextract[i];
     }
 
     //soil liq. water controlling factor for soil N
@@ -731,11 +704,10 @@ void Soil_Bgc::deltan() {
 
     //m_soi2v.nuptake IS calculated in Vegetation_Bgc.cpp and
     //  integrated in 'Cohort.cpp'
-    // Use the capped root N extraction (see prepareIntegration()).
     totnextract = 0.;
 
-    for (int il=0; il<cd->m_soil.numsl; il++) {
-      totnextract += rtnextract[il];
+    for (int il=0; il<MAX_SOI_LAY; il++) {
+      totnextract += bd->m_soi2v.nextract[il];
     }
 
     if (this->avlnflg == 1) { // open-N (inorganic) swithed on - note here ONLY 'lost' considered, while 'input' shall be from outside if any
