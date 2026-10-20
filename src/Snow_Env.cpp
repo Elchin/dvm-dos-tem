@@ -9,8 +9,11 @@ Snow_Env::~Snow_Env() {
 void Snow_Env::updateDailyM(const double & tdrv) {
   //update tsurface with nfactor
   double tsurface;
-//  tsurface = tdrv *ed->d_soid.nfactor;
-  tsurface = tdrv; // TESTING - try using tsurface for snow (snow nfactor = 1)
+  // DRAFT (daily-structural 3/4): restore the n-factor on the snow surface
+  // (was 'tsurface = tdrv; // TESTING ... snow nfactor = 1'). With
+  // nfactor(w) = 1 this only matters on days where the summer n-factor is in
+  // effect (n-factor is chosen from the previous day's Tair, Cohort.cpp ~503).
+  tsurface = tdrv *ed->d_soid.nfactor;
   //dsmass is the total snowfall during one timestep:
   double dsmass = ed->d_v2g.sthfl + ed->d_v2g.sdrip //these 2 items has already
                                                     //  been adjusted by FPC
