@@ -35,6 +35,8 @@
 extern src::severity_logger< severity_level > glg;
 
 Soil_Env::Soil_Env() {
+  floor_added_mm = 0.0;
+  evap_unapplied_mm = 0.0;
   ponding_max_mm = 4.0; //max ponding (surface water storage) (mm)
 };
 
@@ -526,6 +528,8 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   Layer * drainl = ground->drainl;
   double draindepth = ground->draindepth;
   int topind = fstsoill->solind;
+  floor_added_mm = 0.0;
+  evap_unapplied_mm = 0.0;
 
   // First, data connection
   //trans[MAX_SOI_LAY] = {0};
@@ -660,6 +664,9 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   }
   else{
     //No percolation. Add any infil back to ponding/qover
+    //Soil evaporation is not removed from the soil in this branch; record it so the
+    //reported evaporation can be limited to what was actually extracted.
+    evap_unapplied_mm = evap * SEC_IN_DAY;
     if(infil > 0.0){
       infil *= SEC_IN_DAY;// -->mm/day
       //Add to ponding
@@ -1153,6 +1160,7 @@ void Soil_Env::checkSoilLiquidWaterValidity(Layer *topsoill, int topind){
           BOOST_LOG_SEV(glg, warn) << "Layer " << currl->indl << " liquid forced up to minimum: difference "
                                   << effminliq[ind] - currl->liq << " mm";
         }
+        floor_added_mm += effminliq[ind] - currl->liq; // demand that could not be supplied
         currl->liq =effminliq[ind];
       }
       else{

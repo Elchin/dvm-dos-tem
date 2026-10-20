@@ -31,6 +31,12 @@ public:
   Stefan stefan;
   TemperatureUpdator tempupdator;
 
+  // Supply-limited ET bookkeeping (per day, mm): water the minimum-liquid floor had to add in
+  // checkSoilLiquidWaterValidity(), and soil evaporation that was reported but never removed
+  // from the soil (frozen-top branch). Cohort subtracts these from the reported ET.
+  double floor_added_mm;
+  double evap_unapplied_mm;
+
   void setGround(Ground* grndp);
   void setCohortData(CohortData* cdp);
   void setEnvData(EnvData* edp);

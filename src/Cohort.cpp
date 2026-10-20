@@ -639,6 +639,28 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
     //get the new bottom drainage layer and its depth
     ground.setDrainL();
     soilenv.updateDailySM(weighted_veg_tran);  //soil moisture
+    // Supply-limited ET: the reported soil evaporation / transpiration must equal what was
+    // actually removed from the soil. (a) evaporation never applied (frozen top) is dropped;
+    // (b) water the minimum-liquid floor had to create is treated as unmet ET demand and taken
+    // off the reported evaporation and transpiration in proportion to their size.
+    {
+      double tot_tran = 0.0;
+      for (int ip=0; ip<NUM_PFT; ip++) { if (cd.d_veg.vegcov[ip] > 0.0) tot_tran += ed[ip].d_v2a.tran; }
+      double evap_rep = edall->d_soi2a.evap;
+      evap_rep -= fmin(soilenv.evap_unapplied_mm, evap_rep);
+      double def = soilenv.floor_added_mm;
+      if (def > 0.0 && (evap_rep + tot_tran) > 0.0) {
+        double de = fmin(def * evap_rep / (evap_rep + tot_tran), evap_rep);
+        double dt = fmin(def - de, tot_tran);
+        evap_rep -= de;
+        if (tot_tran > 0.0 && dt > 0.0) {
+          double f = (tot_tran - dt) / tot_tran;
+          for (int ip=0; ip<NUM_PFT; ip++) { if (cd.d_veg.vegcov[ip] > 0.0) ed[ip].d_v2a.tran *= f; }
+          edall->d_v2a.tran *= f;
+        }
+      }
+      edall->d_soi2a.evap = evap_rep;
+    }
     //Copy daily water uptake values to storage array for output
     for(int il=0; il<MAX_SOI_LAY; il++){
       edall->daily_root_water_uptake[id][il] = soilenv.root_water_up[il];
