@@ -890,7 +890,11 @@ void Ground::updateSoilHorizons() {
 //update the snowlayer z, which is the distance between soil surface and
 //  top of a snow layer
 void Ground::updateSnowHorizon() {
+  // Preserve sub-layer snow mass across reset(): Snow::reset() zeroes
+  // extramass, which deleted thin new snow (< one min-thickness layer) daily.
+  double keep_extramass = snow.extramass;
   snow.reset();
+  snow.extramass = keep_extramass;
   Layer* curr = fstsoill;
   int snowind = 0;
   double oldz = 0.;
