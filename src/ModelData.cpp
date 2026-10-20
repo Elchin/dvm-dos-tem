@@ -4,6 +4,7 @@
 #include <json/value.h>
 #include <boost/filesystem.hpp>
 #include "../include/ModelData.h"
+#include "../include/timeconst.h"
 
 #include "../include/TEMLogger.h"
 #include "../include/TEMUtilityFunctions.h"
@@ -754,7 +755,22 @@ void ModelData::create_netCDF_output_files(int ysize, int xsize,
         start[0] = 0;
         count[0] = runyrs * 12;
 
-        temutil::nc( nc_put_vara_int(ncid, tcV, start, count, &full_time_coord[0]) );
+        if (stage == "sc" && this->daily_proj_climate) {
+          // Daily climate mode: the projected climate file has one time value
+          // per day (365_day calendar), so label each monthly output step with
+          // the file's time value for the first day of that month.
+          std::vector<int> month_time_coord(runyrs * 12, 0);
+          for (int iy = 0; iy < runyrs; iy++) {
+            int doy = 0;
+            for (int im = 0; im < 12; im++) {
+              month_time_coord.at(iy * 12 + im) = full_time_coord.at(iy * 365 + doy);
+              doy += DINM[im];
+            }
+          }
+          temutil::nc( nc_put_vara_int(ncid, tcV, start, count, &month_time_coord[0]) );
+        } else {
+          temutil::nc( nc_put_vara_int(ncid, tcV, start, count, &full_time_coord[0]) );
+        }
 
       }
 
