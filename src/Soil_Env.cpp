@@ -450,20 +450,50 @@ void Soil_Env::retrieveDailyFronts() {
     ed->d_sois.frontstype[il]= ground->frontstype[il];
   }
 
-  // determine the depth of daily active layer depth (seasonal or permafrost)
-  ed->d_soid.ald = MISSING_D;
+  // legacy daily active layer depth from the deepest thawing front
+  //   (seasonal or permafrost); kept as 'aldflag' (output ALD_FLAG)
+  ed->d_soid.aldflag = MISSING_D;
 
   for (int il=0; il<MAX_NUM_FNT; il++) {
     if (il==0 && ed->d_soid.unfrzcolumn<=0.) {
-      ed->d_soid.ald = 0.;
+      ed->d_soid.aldflag = 0.;
       break;
     } else if (il==0 && ed->d_soid.unfrzcolumn>=cd->d_soil.totthick) {
-      ed->d_soid.ald = cd->d_soil.totthick;
+      ed->d_soid.aldflag = cd->d_soil.totthick;
       break;
     } else if(ed->d_sois.frontsz[il]>0. && ed->d_sois.frontstype[il]==-1) {
-      if(ed->d_soid.ald < ed->d_sois.frontsz[il]) { //assuming the deepest
+      if(ed->d_soid.aldflag < ed->d_sois.frontsz[il]) { //assuming the deepest
                                                     //  thawing front
-        ed->d_soid.ald = ed->d_sois.frontsz[il];
+        ed->d_soid.aldflag = ed->d_sois.frontsz[il];
+      }
+    }
+  }
+
+  // daily active layer depth from the 0 degC isotherm: the deepest depth
+  //   at which soil temperature is above 0 degC, with the 0 degC crossing
+  //   interpolated linearly between the midpoints of the deepest
+  //   above-zero soil layer and the soil layer below it. 0 if no soil layer
+  //   is above 0 degC; the full soil column thickness if the deepest soil
+  //   layer is above 0 degC.
+  ed->d_soid.ald = 0.;
+  {
+    Layer* lastwarm = NULL;
+    for (Layer* l = ground->fstsoill; l != NULL && l->isSoil; l = l->nextl) {
+      if (l->tem > 0.) {
+        lastwarm = l;
+      }
+    }
+    if (lastwarm != NULL) {
+      Layer* below = lastwarm->nextl;
+      if (below == NULL || !below->isSoil) {
+        ed->d_soid.ald = lastwarm->z + lastwarm->dz;
+      } else {
+        double zm1 = lastwarm->z + 0.5*lastwarm->dz;
+        double zm2 = below->z + 0.5*below->dz;
+        double t1 = lastwarm->tem;
+        double t2 = below->tem; // <= 0 by construction
+        double frac = (t1 - t2) > 0. ? t1/(t1 - t2) : 1.;
+        ed->d_soid.ald = zm1 + frac*(zm2 - zm1);
       }
     }
   }

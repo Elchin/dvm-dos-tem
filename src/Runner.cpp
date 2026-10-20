@@ -1167,6 +1167,26 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
   }//end ALD
   map_itr = netcdf_outputs.end();
 
+  //ALD_FLAG: legacy thawing-front based ALD (permafrost-gated)
+  map_itr = netcdf_outputs.find("ALD_FLAG");
+  if(map_itr != netcdf_outputs.end()){
+    BOOST_LOG_SEV(glg, debug)<<"NetCDF output: ALD_FLAG";
+    curr_spec = map_itr->second;
+
+    //Store data intended for output
+    outhold.aldflag_for_output.push_back(cohort.edall->y_soid.aldflag);
+
+    //If set to output this timestep, do so
+    if(output_this_timestep){
+      #pragma omp critical(outputALDFLAG)
+      {
+        output_nc_3dim(&curr_spec, file_stage_suffix, &outhold.aldflag_for_output[0], 1, year_start_idx, years_to_output);
+        outhold.aldflag_for_output.clear();
+      }//end critical(outputALDFLAG)
+    }
+  }//end ALD_FLAG
+  map_itr = netcdf_outputs.end();
+
 
   //AVLN
   map_itr = netcdf_outputs.find("AVLN");

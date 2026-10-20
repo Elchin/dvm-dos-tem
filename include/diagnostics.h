@@ -105,8 +105,10 @@ struct soidiag_env {
   double unfrzcolumn; // unfrozen soil column length (m)
   double alc; //active layer cap (m), i.e. the top of active layer -
               //  seasonal frezing front
-  double ald; //active layer depth (m), i.e., the bottom of active layer -
-              //  seasonal or permafrost
+  double ald; //active layer depth (m): max depth of the 0 degC isotherm
+              //  (daily value; monthly/yearly = max of daily values)
+  double aldflag; //legacy active layer depth (m) from the deepest thawing
+                  //  front, permafrost-gated (old 'ald'; output ALD_FLAG)
 
   //variables used for estimating growing season and growth timing
   double rtdpts; //soil temperature over the active root zone depth 'rtdp4gdd'

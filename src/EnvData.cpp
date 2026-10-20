@@ -197,6 +197,7 @@ void EnvData::grnd_beginOfYear() {
   y_soid.unfrzcolumn = 0;
   y_soid.alc = 0.;
   y_soid.ald = MISSING_D;
+  y_soid.aldflag = MISSING_D;
   y_soid.frasat = 0.;
   y_soid.rtdpthawpct  = 0.;
   y_soid.rtdpts   = 0.;
@@ -335,6 +336,7 @@ void EnvData::grnd_beginOfMonth() {
   m_soid.unfrzcolumn = 0.;
   m_soid.alc = 0.;
   m_soid.ald = MISSING_D;
+  m_soid.aldflag = MISSING_D;
   m_soid.rtdpthawpct= 0.;
   m_soid.rtdpts     = 0.;
   //
@@ -594,16 +596,21 @@ void EnvData::grnd_endOfDay(const int & dinm, const int & doy) {
 
   // determine the active layer depth for monthly
   //   (daily value is in 'Soil_Env.cpp')
+  //   new 'ald' (0 degC isotherm): max of daily values, not permafrost-gated
+  if (m_soid.ald < d_soid.ald) {
+    m_soid.ald = d_soid.ald;
+  }
+  //   legacy 'aldflag' (thawing-front based, permafrost-gated)
   if (m_soid.permafrost ==1) {
-    if (m_soid.ald < d_soid.ald) { // assuming the max. daily value
-      m_soid.ald = d_soid.ald;
+    if (m_soid.aldflag < d_soid.aldflag) { // assuming the max. daily value
+      m_soid.aldflag = d_soid.aldflag;
     }
 
     if (m_soid.alc < d_soid.alc) { // assuming the max. daily value
       m_soid.alc = d_soid.alc;
     }
   } else {
-    m_soid.ald = cd->m_soil.totthick;// NOTE: monthly 'ald' is for permafrost
+    m_soid.aldflag = cd->m_soil.totthick;// NOTE: monthly 'ald' is for permafrost
                                      //   ONLY, but daily 'ald' for both
                                      //   seasonal and permafrost
     m_soid.alc = 0.; // NOTE: monthly 'alc' is for permafrost ONLY, but
@@ -830,16 +837,21 @@ void EnvData::grnd_endOfMonth() {
   y_soid.permafrost = m_soid.permafrost;
 
   // determine the active layer depth for daily/monthly
+  //   new 'ald' (0 degC isotherm): max of monthly values, not gated
+  if (y_soid.ald < m_soid.ald) {
+    y_soid.ald = m_soid.ald;
+  }
+  //   legacy 'aldflag' (thawing-front based, permafrost-gated)
   if (y_soid.permafrost ==1) {
-    if (y_soid.ald < m_soid.ald) { // assuming the max. daily value
-      y_soid.ald = m_soid.ald;
+    if (y_soid.aldflag < m_soid.aldflag) { // assuming the max. daily value
+      y_soid.aldflag = m_soid.aldflag;
     }
 
     if (y_soid.alc < m_soid.alc) { // assuming the max. daily value
       y_soid.alc = m_soid.alc;
     }
   } else {
-    y_soid.ald = cd->m_soil.totthick;
+    y_soid.aldflag = cd->m_soil.totthick;
     y_soid.alc = 0.;
   }
 
