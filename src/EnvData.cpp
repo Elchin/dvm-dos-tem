@@ -3,6 +3,10 @@
 #include "../include/TEMUtilityFunctions.h"
 #include "../include/TEMLogger.h"
 
+// Minimum daily rainfall (mm/day) that counts as a wetting rain and resets
+// the days-since-rain counter (d_atms.dsr) used for soil evaporation.
+static const double DSR_RESET_MIN_RAIN_MM = 2.0;
+
 extern src::severity_logger< severity_level > glg;
 
 EnvData::EnvData() {
@@ -882,8 +886,16 @@ void EnvData::update_from_climate(const Climate& clm, const int midx, const int 
   this->d_atmd.svp = clm.svp_d[doy_idx];
   this->d_atmd.vpd = clm.vpd_d[doy_idx];
 
-  // Adjust days-since-rain
-  if(this->d_a2l.prec > 0.0) {
+  // Adjust days-since-rain (used by Soil_Env::getEvaporation(), where the
+  // realized fraction of potential soil evaporation is 0.3/dsr^2, floored at
+  // evapmin). The counter is reset only by a day with at least
+  // DSR_RESET_MIN_RAIN_MM of rain. Previously any precipitation (> 0, incl.
+  // snow) reset it. With observed/bias-corrected DAILY forcing (many small
+  // drizzle days, ~3 mm on ~30 summer days) that kept soil evaporation near
+  // its maximum and dried the soil column, whereas monthly mode generates
+  // few large events (~21 mm). Requiring a wetting rain makes the
+  // formulation behave consistently for both. Applies in all modes.
+  if(this->d_a2l.rnfl >= DSR_RESET_MIN_RAIN_MM) {
     this->d_atms.dsr = 0;
   } else {
     this->d_atms.dsr++;
