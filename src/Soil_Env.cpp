@@ -40,6 +40,7 @@ Soil_Env::Soil_Env() {
   ponding_max_mm = 4.0; //max ponding (surface water storage) (mm)
   frozen_infil_eice = -1.0;
   frozen_infil_mm = 0.0;
+  soil_evap_beta = 0;
 };
 
 Soil_Env::~Soil_Env() {
@@ -357,6 +358,19 @@ void Soil_Env::updateDailySurfFlux(Layer* toplayer, const double & dayl) {
 
   if(availliq>0 && toplayer->frozen==-1 && toplayer->isSoil) {
     evap = getEvaporation(dayl, rad);
+    // DRAFT (daily-structural 4/4): optional soil-moisture limitation of soil
+    // evaporation (dry-surface resistance), using the first shallow organic
+    // layer (moss layers are excluded from hydrology and copy its water).
+    if(soil_evap_beta > 0 && ground->fstshlwl != NULL) {
+      SoilLayer* sl = dynamic_cast<SoilLayer*>(ground->fstshlwl);
+      if(sl != NULL && sl->poro > 0. && sl->bsw > 0. && sl->psisat < 0.) {
+        double thfc = sl->poro * pow(-3400.0 / sl->psisat, -1.0 / sl->bsw);
+        double thl = sl->getVolLiq();
+        double x = fmin(1.0, fmax(thl, 0.0) / fmax(thfc, 1.0e-6));
+        double beta = 0.25 * pow(1.0 - cos(M_PI * x), 2.0);
+        evap *= beta;
+      }
+    }
     ed->d_soi2a.evap = fmin(availliq,evap);
   } else {
     ed->d_soi2a.evap = 0.;

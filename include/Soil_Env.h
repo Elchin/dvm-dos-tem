@@ -38,6 +38,7 @@ public:
   // DRAFT (daily-structural): see ModelData::frozen_infil_eice (<0 = off)
   double frozen_infil_eice;
   double frozen_infil_mm; // water infiltrated into frozen soil today (mm)
+  int soil_evap_beta;     // DRAFT: see ModelData::soil_evap_beta (0 = off)
   double evap_unapplied_mm;
 
   void setGround(Ground* grndp);
