@@ -167,11 +167,35 @@ void Soil_Bgc::prepareIntegration(const bool &mdnfeedback,
 
   if (this->nfeed == 1) {
     // vegetation root N extraction
-    // Cap each layer's root N extraction at the inorganic N actually
-    // present in that layer, so extraction can never exceed available N.
-    for (int i=0; i<cd->m_soil.numsl; i++) {
-      rtnextract[i] = fmin(fmax(0., bd->m_soi2v.nextract[i]),
-                           fmax(0., bd->m_sois.avln[i]));
+    // Root N extraction per layer, limited to the inorganic N actually
+    // present in each layer, without changing the total extraction (which
+    // must match the vegetation N uptake to conserve N): extraction above a
+    // layer's available N is moved to other layers in proportion to their
+    // remaining available N. Only if the total extraction exceeds the total
+    // available N in the column is the total capped (all available N taken).
+    {
+      double totex = 0., totav = 0., excess = 0., headroom = 0.;
+      for (int i=0; i<cd->m_soil.numsl; i++) {
+        double ex = fmax(0., bd->m_soi2v.nextract[i]);
+        double av = fmax(0., bd->m_sois.avln[i]);
+        totex += ex;
+        totav += av;
+        rtnextract[i] = fmin(ex, av);
+        excess += ex - rtnextract[i];
+        headroom += av - rtnextract[i];
+      }
+      if (excess > 0.) {
+        if (totex <= totav && headroom > 0.) {
+          for (int i=0; i<cd->m_soil.numsl; i++) {
+            double av = fmax(0., bd->m_sois.avln[i]);
+            rtnextract[i] += excess * (av - rtnextract[i]) / headroom;
+          }
+        } else {
+          for (int i=0; i<cd->m_soil.numsl; i++) {
+            rtnextract[i] = fmax(0., bd->m_sois.avln[i]);
+          }
+        }
+      }
     }
 
     //soil liq. water controlling factor for soil N
