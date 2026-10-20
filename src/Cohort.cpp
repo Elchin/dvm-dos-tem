@@ -564,6 +564,9 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
         // calculate vegetation light/water dynamics at daily timestep
         vegenv[ip].updateRadiation(cd.m_veg.lai[ip], cd.m_veg.fpc[ip]);
         vegenv[ip].updateWaterBalance(daylength, cd.m_veg.lai[ip], cd.m_veg.fpc[ip]);
+        // ALT fix 1: transpiration's VPD term uses single-leaf conductance (not fpc-scaled);
+        // scale to ground area here so reported EET and soil uptake share the tran*fpc basis.
+        ed[ip].d_v2a.tran *= cd.d_veg.fpc[ip];
       }
     }
 
@@ -577,8 +580,14 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
       eq782_den[il] = 0.;
       for(int ip=0; ip<NUM_PFT; ip++){
 
-        eq782_num[il] += ed[ip].d_soid.r_e_ij[il] * ed[ip].d_v2a.tran * cd.d_veg.fpc[ip];
-        eq782_den[il] += ed[ip].d_v2a.tran * cd.d_veg.fpc[ip];
+        // Per-PFT transpiration (Vegetation_Env::updateWaterBalance) is already on a ground-area
+        // basis: its forcing is FPC-scaled there (rnfl/snfl, swdown, par * foliar_projected_cover),
+        // and getEd4allveg_daily()/getEd4land_daily() report EET as the plain sum over PFTs.
+        // Weighting by fpc again here double-applied FPC; use the same basis as the reported EET.
+        if (cd.d_veg.vegcov[ip] > 0.0) {
+          eq782_num[il] += ed[ip].d_soid.r_e_ij[il] * ed[ip].d_v2a.tran;
+          eq782_den[il] += ed[ip].d_v2a.tran;
+        }
 
       }
 
@@ -598,7 +607,10 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
     //CLM3 Equation 7.81
     double weighted_veg_tran = 0.;
     for(int ip=0; ip<NUM_PFT; ip++){
-      weighted_veg_tran += ed[ip].d_v2a.tran * cd.d_veg.fpc[ip];
+      // Same basis as reported EET (edall->d_v2a.tran = sum over PFTs with vegcov>0); see above.
+      if (cd.d_veg.vegcov[ip] > 0.0) {
+        weighted_veg_tran += ed[ip].d_v2a.tran;
+      }
     }
     if(weighted_veg_tran != weighted_veg_tran){
       BOOST_LOG_SEV(glg, warn) << "weighted_veg_tran is NaN";
