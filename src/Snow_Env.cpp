@@ -21,7 +21,8 @@ void Snow_Env::updateDailyM(const double & tdrv) {
 
   if (!ground->toplayer->isSnow && ground->toplayer->tem>0.01) {
     //melting all snowfalling ('dsmass')
-    ed->d_snw2soi.melt = dsmass;
+    // PROPOSAL: pending sub-layer snow ('extramass') melts too; it was discarded before.
+    ed->d_snw2soi.melt = dsmass + fmax(ground->snow.extramass, 0.);
     ground->snow.extramass = 0.;
   } else { // otherwise, construct a new snow layer, if any
     //add a new snow layer as the new toplayer
@@ -45,7 +46,10 @@ void Snow_Env::updateDailyM(const double & tdrv) {
   }
 
   //here 'dsmass' is for snow-melting and sublimating
-  dsmass = ed->d_snw2a.sublim + ed->d_snw2soi.melt;
+  // PROPOSAL: melt water was already taken out of the snow layers by meltSnowLayersAfterT()
+  // (ice->liq in Stefan, then liq zeroed). Removing it again here double-counted the melt
+  // (same issue as the sublimation duplicate noted in updateDailySurfFlux). Only sublimation remains.
+  dsmass = ed->d_snw2a.sublim;
   //Note unit converstion: 1 mm H2O = 1 kgH2O/m2
 
   //removal of melted snow layers
