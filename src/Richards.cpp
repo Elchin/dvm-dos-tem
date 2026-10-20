@@ -5,6 +5,8 @@
 // The order of this include with respect to boost 
 // seems to matter for certain installs!
 #include <lapacke.h>
+#include <sstream>
+#include <stdexcept>
 
 extern src::severity_logger< severity_level > glg;
 
@@ -62,6 +64,20 @@ void Richards::update(Layer *fstsoill, Layer* bdrainl,
   int topind = fstsoill->indl;
   int drainind = drainl->indl;
 
+  // GUARD (fail-fast): the Richards work arrays hold MAX_SOI_LAY+1 elements but are indexed by
+  // Layer::indl, which also counts snow layers. When snow layers are present and the drainage
+  // layer is deep (e.g. the bottom soil layer when ststate == -1), drainind can exceed
+  // MAX_SOI_LAY and the loops below write past the arrays into the following members
+  // (max_tridiag_error, delta_t, ...). A corrupted delta_t makes the substep loop never end.
+  if (topind < 1 || drainind > MAX_SOI_LAY) {
+    std::ostringstream msg;
+    msg << "Richards::update: layer index out of range (topind=" << topind
+        << ", drainind=" << drainind << ", MAX_SOI_LAY=" << MAX_SOI_LAY
+        << "); snow layers present: " << (fstsoill->prevl != NULL && fstsoill->prevl->isSnow ? "yes" : "check");
+    BOOST_LOG_SEV(glg, fatal) << msg.str();
+    throw std::runtime_error(msg.str());
+  }
+
   //Clear arrays before use
   clearRichardsArrays();
 
@@ -104,6 +120,15 @@ void Richards::update(Layer *fstsoill, Layer* bdrainl,
 
   while(continue_iterate == true){
     n_substep += 1;
+
+    // GUARD (fail-fast): never loop forever on a non-finite or non-positive substep.
+    if (!std::isfinite(dtsub) || !std::isfinite(dtdone) || dtsub <= 0.0 || n_substep > 1.e6) {
+      std::ostringstream msg;
+      msg << "Richards::update: substep loop cannot finish (dtsub=" << dtsub << ", dtdone=" << dtdone
+          << ", delta_t=" << delta_t << ", n_substep=" << n_substep << ")";
+      BOOST_LOG_SEV(glg, fatal) << msg.str();
+      throw std::runtime_error(msg.str());
+    }
 
     //(Re)calculate dt_dz and vol_liq
     for(int ind = topind; ind <=drainind+1; ind++){
