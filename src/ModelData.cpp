@@ -1,4 +1,6 @@
 #include <exception>
+#include <iostream>
+#include <cstdlib>
 #include <json/value.h>
 #include <boost/filesystem.hpp>
 #include "../include/ModelData.h"
@@ -119,6 +121,24 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
   dynamic_LAI       = controldata["model_settings"]["dynamic_lai"].asInt(); // checked in Cohort::updateMonthly_DIMVeg
   baseline_start = controldata["model_settings"]["baseline_start"].asInt();
   baseline_end   = controldata["model_settings"]["baseline_end"].asInt();
+
+  // Opt-in daily climate mode. Absent/empty key keeps original monthly
+  // behavior. Any value other than "monthly" or "daily" is a hard error.
+  climate_timestep = controldata["model_settings"]["climate_timestep"].asString();
+  if (climate_timestep.empty()) {
+    climate_timestep = "monthly";
+  }
+  if (climate_timestep == "monthly") {
+    daily_proj_climate = false;
+  } else if (climate_timestep == "daily") {
+    daily_proj_climate = true;
+  } else {
+    BOOST_LOG_SEV(glg, fatal) << "Invalid model_settings.climate_timestep: '"
+                              << climate_timestep << "' (must be 'monthly' or 'daily')";
+    std::cerr << "FATAL: Invalid model_settings.climate_timestep: '"
+              << climate_timestep << "' (must be 'monthly' or 'daily')" << std::endl;
+    exit(EXIT_FAILURE);
+  }
 
   // These must be directories. If user forgets to add the trailing slash, 
   // do it here. Might be better to do something with boost::filesystem for 

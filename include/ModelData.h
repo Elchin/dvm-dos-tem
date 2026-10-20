@@ -93,6 +93,15 @@ public:
   int baseline_start;//Start year for baseline EQ climate
   int baseline_end;//End year for baseline EQ climate
 
+  // Opt-in daily climate mode (model_settings.climate_timestep).
+  // "monthly" (default, key absent) -> original behavior.
+  // "daily" -> the projected climate file (used by the SC stage) is a
+  //            daily series (365_day calendar, 365 steps per model year)
+  //            that is consumed directly, without monthly->daily
+  //            interpolation or the stochastic precipitation split.
+  std::string climate_timestep;
+  bool daily_proj_climate;
+
   // Maps holding data about variables to be output at specific timesteps
   // C++11 would allow the use of unordered_maps, which have a faster
   // by-key access time.

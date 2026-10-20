@@ -3,6 +3,10 @@
 #include <algorithm>
 
 #include <assert.h> // for assert? need C++ library?
+#include <cmath>
+#include <iostream>
+#include <sstream>
+#include <cstdlib>
 
 #include <boost/filesystem.hpp>
 
@@ -164,6 +168,48 @@ float calculate_girr(const float lat, const int im) {
   gross /= (float)DINM[im];
   gross *= 0.484; // convert from cal/cm2day to W/m^2
   return gross;
+}
+
+/** Daily GIRR (W/m^2) for each day of a 365-day year (daily climate mode).
+*
+*  Identical algorithm to calculate_girr(), but returns the value for each
+*  individual day instead of the monthly mean of the daily values, i.e.
+*  calculate_girr(lat, im) == mean of the DINM[im] entries for month im.
+*/
+std::vector<float> calculate_girr_daily(const float lat) {
+  const float pi = 3.141592654;
+  const float sp = 1368.0 * 3600.0 / 41860.0;  // solar constant
+  float lambda = lat * pi / 180.0;
+  std::vector<float> result;
+  result.reserve(DINY);
+
+  for (int im = 0; im < 12; ++im) {
+    for ( int day = 0; day < DINM[im]; ++day ) {
+      float jd = 0.0;
+      jd = (275 * (im+1)/9) - 30 + (day+1);
+      if( (im+1) < 3 ) {
+        jd = jd + 2;
+      }
+      int julianday = int(jd);
+
+      float sumd = 0;
+      float sig = -23.4856*cos(2 * pi * (julianday + 10.0)/365.25);
+      sig *= pi / 180.0;
+
+      for ( int hour = 0; hour < 24; hour++ ) {
+        float eta = (float) ((hour+1) - 12) * pi / 12.0;
+        float sinbeta = sin(lambda)*sin(sig) + cos(lambda)*cos(sig)*cos(eta);
+        float sotd = 1 - (0.016729 * cos(0.9856 * (julianday - 4.0)
+                                   * pi / 180.0));
+        float sb = sp * sinbeta / pow((double)sotd,2.0);
+        if (sb >= 0.0) {
+          sumd += sb;
+        }
+      }
+      result.push_back(sumd * 0.484); // convert from cal/cm2day to W/m^2
+    }
+  }
+  return result;
 }
 
 std::vector<float> calculate_daily_prec(const int midx, const float mta, const float mprec) {
@@ -515,7 +561,94 @@ void Climate::prep_avg_climate(){
 void Climate::load_proj_climate(const std::string& fname, int y, int x){
   BOOST_LOG_SEV(glg, info) << "Climate, loading projected data";
 
-  this->load_from_file(fname, y, x);
+  if (this->daily_proj) {
+    this->load_daily_from_file(fname, y, x);
+  } else {
+    this->load_from_file(fname, y, x);
+  }
+}
+
+/** Daily climate mode: load a DAILY climate series (365_day calendar,
+* 365 timesteps per model year, precip in mm/day).
+*
+* Fills tair/prec/nirr/vapo with the full daily series, computes per-day
+* cloudiness and PAR (using per-day GIRR instead of the monthly i%12 GIRR),
+* and validates the series. Fails loudly (exit) on any inconsistency.
+*/
+void Climate::load_daily_from_file(const std::string& fname, int y, int x) {
+
+  if(!boost::filesystem::exists(fname)){
+    BOOST_LOG_SEV(glg, fatal) << "Input file "<<fname<<" does not exist";
+    std::cerr << "FATAL (daily climate mode): input file " << fname
+              << " does not exist" << std::endl;
+    exit(EXIT_FAILURE);
+  }
+
+  #pragma omp critical(load_input)
+  {
+    BOOST_LOG_SEV(glg, info) << "Loading DAILY climate from file: " << fname;
+    tair = temutil::get_timeseries<float>(fname, "tair", y, x);
+    vapo = temutil::get_timeseries<float>(fname, "vapor_press", y, x);
+    prec = temutil::get_timeseries<float>(fname, "precip", y, x);
+    nirr = temutil::get_timeseries<float>(fname, "nirr", y, x);
+
+    tseries_start_year = temutil::get_timeseries_start_year(fname);
+    tseries_end_year = temutil::get_timeseries_end_year(fname);
+  }
+
+  std::stringstream err;
+  if ( !(tair.size() == prec.size() && tair.size() == vapo.size() &&
+         tair.size() == nirr.size()) ) {
+    err << "daily climate variables differ in length (tair, vapor_press, "
+        << "precip, nirr): (" << tair.size() << ", " << vapo.size() << ", "
+        << prec.size() << ", " << nirr.size() << ")";
+  } else if ( tair.size() == 0 || (tair.size() % DINY) != 0 ) {
+    err << "daily climate file length " << tair.size()
+        << " is not a positive multiple of " << DINY
+        << " (365_day calendar required in daily climate mode)";
+  } else {
+    for (size_t i = 0; i < tair.size(); ++i) {
+      if ( !std::isfinite(tair[i]) || !std::isfinite(prec[i]) ||
+           !std::isfinite(nirr[i]) || !std::isfinite(vapo[i]) ||
+           tair[i] <= -998.0 || prec[i] < 0.0 || nirr[i] < 0.0 ||
+           vapo[i] < 0.0 ) {
+        err << "invalid/missing daily climate value at timestep " << i
+            << ": tair=" << tair[i] << " precip=" << prec[i]
+            << " nirr=" << nirr[i] << " vapor_press=" << vapo[i];
+        break;
+      }
+    }
+  }
+  if ( !err.str().empty() ) {
+    BOOST_LOG_SEV(glg, fatal) << "Daily climate mode, " << fname << ": " << err.str();
+    std::cerr << "FATAL (daily climate mode): " << fname << ": "
+              << err.str() << std::endl;
+    exit(EXIT_FAILURE);
+  }
+
+  BOOST_LOG_SEV(glg, info) << "  -->daily series length: " << tair.size()
+                           << " (" << tair.size()/DINY << " years)";
+
+  std::pair<float, float> latlon = temutil::get_latlon(fname, y, x);
+
+  // Monthly girr is retained (12 values) for completeness; per-day girr is
+  // what is actually used in daily mode.
+  girr = std::vector<float>(12, 0);
+  for (int im = 0; im < 12; ++im) {
+    girr[im] = calculate_girr(latlon.first, im);
+  }
+  girr_daily = calculate_girr_daily(latlon.first);
+  assert(girr_daily.size() == DINY && "girr_daily must have 365 entries");
+
+  // Per-day cloudiness and PAR (replaces the monthly i%12 indexing).
+  cld = std::vector<float>(nirr.size(), 0);
+  par = std::vector<float>(nirr.size(), 0);
+  for (size_t i = 0; i < nirr.size(); ++i) {
+    cld[i] = calculate_clouds(girr_daily[i % DINY], nirr[i]);
+    par[i] = calculate_par(cld[i], nirr[i]);
+  }
+
+  this->daily_series_loaded = true;
 }
 void Climate::load_proj_co2(const std::string& fname){
   BOOST_LOG_SEV(glg, info) << "CO2, loading projected data!";
@@ -661,6 +794,21 @@ std::vector<float> Climate::interpolation_range(const std::vector<float>& data, 
 */
 void Climate::prepare_daily_driving_data(int iy, const std::string& stage) {
 
+  // Daily climate mode: once a daily projected series is loaded, the SC
+  // stage takes values directly from it. Any other stage after loading a
+  // daily series would misread it, so fail loudly.
+  if (this->daily_series_loaded) {
+    if (stage.find("sc") != std::string::npos) {
+      this->prepare_daily_driving_data_from_daily(iy);
+      return;
+    }
+    BOOST_LOG_SEV(glg, fatal) << "Daily climate series loaded but stage '"
+                              << stage << "' requested daily driving data.";
+    std::cerr << "FATAL (daily climate mode): daily series loaded but stage '"
+              << stage << "' requested driving data." << std::endl;
+    exit(EXIT_FAILURE);
+  }
+
   if( (stage.find("pre") != std::string::npos)
       || (stage.find("eq") != std::string::npos) ){
 
@@ -719,6 +867,48 @@ void Climate::prepare_daily_driving_data(int iy, const std::string& stage) {
 
     prec_d.insert( prec_d.end(), v.begin(), v.end() );
   }
+
+  this->derive_daily_secondary_vars();
+}
+
+/** Daily climate mode: year iy (run index) of daily driving data, taken
+* directly from the loaded daily series: file[iy*365 : (iy+1)*365].
+* Precip is used as mm/day directly (no stochastic monthly split).
+*/
+void Climate::prepare_daily_driving_data_from_daily(int iy) {
+
+  const size_t start = size_t(iy) * DINY;
+  if ( iy < 0 || tair.size() < start + DINY ) {
+    BOOST_LOG_SEV(glg, fatal) << "Daily climate mode: year index " << iy
+                              << " exceeds daily series length " << tair.size();
+    std::cerr << "FATAL (daily climate mode): year index " << iy
+              << " exceeds daily series length " << tair.size() << std::endl;
+    exit(EXIT_FAILURE);
+  }
+
+  // Same co2 handling as the monthly path (one value per model year).
+  co2_d = co2.at(iy);
+
+  tair_d.assign(tair.begin() + start, tair.begin() + start + DINY);
+  vapo_d.assign(vapo.begin() + start, vapo.begin() + start + DINY);
+  nirr_d.assign(nirr.begin() + start, nirr.begin() + start + DINY);
+  par_d.assign(par.begin() + start, par.begin() + start + DINY);
+  prec_d.assign(prec.begin() + start, prec.begin() + start + DINY);
+  girr_d = girr_daily;
+
+  // No-ops for valid input (validated >= 0 at load), kept for parity with
+  // the monthly path.
+  std::for_each(nirr_d.begin(), nirr_d.end(), temutil::force_negative2zero);
+  std::for_each(girr_d.begin(), girr_d.end(), temutil::force_negative2zero);
+
+  this->derive_daily_secondary_vars();
+}
+
+/** Derive rain/snow, svp, vpd and cloudiness from the primary daily
+* containers (tair_d, prec_d, vapo_d, girr_d, nirr_d). Shared by the monthly
+* (interpolated) and daily (direct) paths; code unchanged from original.
+*/
+void Climate::derive_daily_secondary_vars() {
 
   // derive rain and snow from precip...
   // Look into boost::zip_iterator

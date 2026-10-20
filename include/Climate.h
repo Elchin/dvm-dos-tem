@@ -21,6 +21,18 @@ public:
   int tseries_start_year;
   int tseries_end_year;
 
+  // Opt-in daily climate mode (see ModelData::climate_timestep).
+  // daily_proj: set from config; when true, load_proj_climate() expects a
+  //   daily (365 steps/yr) file.
+  // daily_series_loaded: true once a daily series has actually been loaded
+  //   into tair/prec/nirr/vapo (and cld/par); only then does
+  //   prepare_daily_driving_data() take the direct daily path.
+  bool daily_proj = false;
+  bool daily_series_loaded = false;
+
+  // Daily (365) extraterrestrial radiation, used in daily mode only.
+  std::vector<float> girr_daily;
+
   // driving variables
   std::vector<float> co2;
   std::vector<float> tair;
@@ -86,6 +98,9 @@ public:
 private:
 
   void load_from_file(const std::string& fname, int y, int x);
+  void load_daily_from_file(const std::string& fname, int y, int x);
+  void prepare_daily_driving_data_from_daily(int iy);
+  void derive_daily_secondary_vars();
 
   void split_precip();
 

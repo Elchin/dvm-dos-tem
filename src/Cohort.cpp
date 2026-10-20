@@ -71,6 +71,8 @@ Cohort::Cohort(int y, int x, ModelData* modeldatapointer):
 
   this->climate.baseline_start = modeldatapointer->baseline_start;
   this->climate.baseline_end = modeldatapointer->baseline_end;
+  // Opt-in daily climate mode: projected climate file is daily.
+  this->climate.daily_proj = modeldatapointer->daily_proj_climate;
   //Prepare averaged input set for EQ stage
   this->climate.prep_avg_climate();
 

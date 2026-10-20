@@ -908,6 +908,32 @@ void advance_model(const int rowidx, const int colidx,
     // Loading projected data instead of historic. FIX?
     runner.cohort.load_proj_climate(modeldata.proj_climate_file);
     runner.cohort.load_proj_co2(modeldata.proj_co2_file);
+
+    if (modeldata.daily_proj_climate) {
+      // Daily climate mode: the file must hold at least sc_yrs full
+      // 365-day years (multiple-of-365 already checked when loading).
+      size_t ndays = runner.cohort.climate.tair.size();
+      if ( (ndays % DINY) != 0 || ndays < size_t(modeldata.sc_yrs) * DINY ) {
+        BOOST_LOG_SEV(glg, fatal) << "Daily climate mode: projected climate has "
+                                  << ndays << " days; need a multiple of " << DINY
+                                  << " and >= sc_yrs*" << DINY << " = "
+                                  << modeldata.sc_yrs * DINY;
+        std::cerr << "FATAL (daily climate mode): projected climate has " << ndays
+                  << " days; need a multiple of " << DINY << " and >= sc_yrs*"
+                  << DINY << " = " << modeldata.sc_yrs * DINY << std::endl;
+        exit(EXIT_FAILURE);
+      }
+      std::cout << "Daily climate mode: SC uses " << modeldata.proj_climate_file
+                << " (" << ndays << " days = " << ndays / DINY << " years; "
+                << "running " << modeldata.sc_yrs << "); SC nfeed="
+                << runner.cohort.md->get_nfeed() << std::endl;
+    } else if ( (runner.cohort.climate.tair.size() % 12) != 0 ) {
+      // Warning only; monthly behavior is unchanged.
+      std::cerr << "WARNING: monthly climate mode but projected climate length "
+                << runner.cohort.climate.tair.size() << " is not a multiple of 12."
+                << " Is this a daily file? (set model_settings.climate_timestep"
+                << " = \"daily\")" << std::endl;
+    }
     runner.cohort.load_proj_explicit_fire(modeldata.proj_exp_fire_file);
 
     BOOST_LOG_SEV(glg, warn) << "MAKE SURE YOUR FIRE INPUTS ARE SETUP CORRECTLY!";
