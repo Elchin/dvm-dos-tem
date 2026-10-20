@@ -1,3 +1,4 @@
+#include <cmath>
 /*
  * Soil_Bgc.cpp
  *
@@ -166,8 +167,11 @@ void Soil_Bgc::prepareIntegration(const bool &mdnfeedback,
 
   if (this->nfeed == 1) {
     // vegetation root N extraction
+    // Cap each layer's root N extraction at the inorganic N actually
+    // present in that layer, so extraction can never exceed available N.
     for (int i=0; i<cd->m_soil.numsl; i++) {
-      rtnextract[i] = bd->m_soi2v.nextract[i];
+      rtnextract[i] = fmin(fmax(0., bd->m_soi2v.nextract[i]),
+                           fmax(0., bd->m_sois.avln[i]));
     }
 
     //soil liq. water controlling factor for soil N
@@ -703,10 +707,11 @@ void Soil_Bgc::deltan() {
 
     //m_soi2v.nuptake IS calculated in Vegetation_Bgc.cpp and
     //  integrated in 'Cohort.cpp'
+    // Use the capped root N extraction (see prepareIntegration()).
     totnextract = 0.;
 
-    for (int il=0; il<MAX_SOI_LAY; il++) {
-      totnextract += bd->m_soi2v.nextract[il];
+    for (int il=0; il<cd->m_soil.numsl; il++) {
+      totnextract += rtnextract[il];
     }
 
     if (this->avlnflg == 1) { // open-N (inorganic) swithed on - note here ONLY 'lost' considered, while 'input' shall be from outside if any
@@ -733,8 +738,17 @@ void Soil_Bgc::deltan() {
         double nminadj = del_soi2l.avlnlost +
                          totnextract - bd->m_a2soi.avlninput - totdzavln;
 
-        for(int i=0; i<cd->m_soil.numsl; i++) {
-          del_soi2soi.netnmin[i] *=nminadj/totnetnmin;
+        // Rescale net N mineralization to close the inorganic N budget.
+        // Skip it when total net mineralization is zero (nothing to scale;
+        // dividing would give Inf, and 0*Inf = NaN) or the factor is not
+        // finite, otherwise NaN propagates into the N pools.
+        if (totnetnmin != 0.0) {
+          double nscale = nminadj/totnetnmin;
+          if (std::isfinite(nscale)) {
+            for(int i=0; i<cd->m_soil.numsl; i++) {
+              del_soi2soi.netnmin[i] *= nscale;
+            }
+          }
         }
       }
     } else { // End (this->avlnflg == 1)
