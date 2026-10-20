@@ -21,6 +21,7 @@
 using namespace std;
 
 class Soil_Bgc {
+  friend class Integrator; // soil safety net reads the monthly inputs
 public:
   Soil_Bgc();
   ~Soil_Bgc();

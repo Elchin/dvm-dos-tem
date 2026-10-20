@@ -110,7 +110,21 @@ public :
 
   void report_array(float array[]);
 
+  // Integrator safety net (soil): when adapt() gives up ("blackhole": the
+  // state is reset to the start of the run of tiny steps at fraction t0 of the
+  // month), the soil inputs for the rest of the month (litterfall C/N, woody
+  // debris C/N, N deposition) are still delivered so that C is conserved.
+  int blackhole_count;    // cumulative number of adapt() give-ups
+  int safetynet_count;    // cumulative number of soil safety-net deliveries
+  bool safetynet_fired;   // set by the last updateMonthlySbgc()
+  float safetynet_t0;     // month fraction already integrated when it gave up
+  double safetynet_c;     // C delivered by the last safety net (g/m2)
+  double safetynet_n;     // N delivered by the last safety net (g/m2)
+
 private:
+
+  void applySoilSafetyNet();
+  float bh_t0;            // time at which adapt() saved oldstate
 
   int numsl;  // actual number of soil layers
 

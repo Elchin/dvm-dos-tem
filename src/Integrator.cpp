@@ -58,6 +58,14 @@ Integrator::Integrator() {
   maxit = 20;
   maxitmon = 100;
   syint = 1;
+  blackhol = 0;
+  bh_t0 = 0.0;
+  blackhole_count = 0;
+  safetynet_count = 0;
+  safetynet_fired = false;
+  safetynet_t0 = 0.0;
+  safetynet_c = 0.0;
+  safetynet_n = 0.0;
 
   //vegetation C & N state variables
   for(int i =0; i<NUM_PFT_PART; i++) { //Yuan: here is the reason that the "temconst.h" is needed
@@ -224,12 +232,71 @@ void Integrator::updateMonthlySbgc(const int & numsoillayer) {
   c2ystate_soi(y);
   // integration
   report_array(y);
+  safetynet_fired = false;
   adapt(y, NUMEQ_SOI);
+  if (blackhol) {
+    applySoilSafetyNet();
+  }
   report_array(y);
   // after integration , save results back to 'bd';
   y2cstate_soi(y);
   y2cflux_soi(y);
 };
+
+/** Soil integrator safety net. adapt() gave up and reset the soil state to
+*   the one at month fraction bh_t0, so the soil inputs for the remaining
+*   (1 - bh_t0) of the month were never added, although the vegetation has
+*   already removed the whole month's litterfall (C was lost). Add those inputs
+*   here, using the same per-layer inputs as Soil_Bgc::deltastate():
+*   litterfall C to RAWC and litterfall N to ORGN of non-moss layers, woody
+*   debris C/N, and (nfeed) organic/inorganic N deposition to the top layer.
+*   Decomposition and N transformations for the remainder are not done, and
+*   the remaining root N extraction is not applied (it would drive AVLN
+*   negative, which is what made the integrator give up). */
+void Integrator::applySoilSafetyNet() {
+  float frac = 1.0f - bh_t0;
+  if (!(frac > 0.0f) || frac > 1.0f) {
+    return;
+  }
+  double dc = 0.0, dn = 0.0;
+  const bool nf = (ssl->nfeed == 1);
+  for (int il = 0; il < ssl->cd->m_soil.numsl && il < MAX_SOI_LAY; il++) {
+    if (ssl->cd->m_soil.type[il] > 0) {
+      double c = frac * ssl->ltrflc[il];
+      y[I_L_RAWC+il] += c;
+      dc += c;
+      if (nf) {
+        double n = frac * ssl->ltrfln[il];
+        y[I_L_ORGN+il] += n;
+        dn += n;
+      }
+    }
+  }
+  double wc = frac * ssl->d2wdebrisc;
+  y[I_WDEBRISC] += wc;
+  dc += wc;
+  if (nf) {
+    double wn = frac * ssl->d2wdebrisn;
+    y[I_WDEBRISN] += wn;
+    dn += wn;
+    double on = frac * bd->m_a2soi.orgninput;
+    y[I_L_ORGN] += on;
+    dn += on;
+    if (bd->m_v2soi.rtlfalfrac[0] > 0.) {
+      double an = frac * bd->m_a2soi.avlninput;
+      y[I_L_AVLN] += an;
+      dn += an;
+    }
+  }
+  safetynet_fired = true;
+  safetynet_t0 = bh_t0;
+  safetynet_c = dc;
+  safetynet_n = dn;
+  ++safetynet_count;
+  BOOST_LOG_SEV(glg, warn) << "Soil integrator safety net: gave up at month fraction "
+                           << bh_t0 << "; delivered remaining inputs C=" << dc
+                           << " N=" << dn << " (g/m2)";
+}
 
 void Integrator::c2ystate_veg(float y[]) {
   for (int i=0; i<NUM_PFT_PART; i++) {
@@ -294,6 +361,7 @@ int Integrator::adapt(float pstate[], const int & numeq) {
             for( i = 0; i < numeq; i++ ) {
               oldstate[i] = pstate[i];
             }
+            bh_t0 = time;
           }
 
           ++nintmon;
@@ -320,6 +388,7 @@ int Integrator::adapt(float pstate[], const int & numeq) {
         if ( nintmon == maxitmon ) {
           time = 1.0;
           blackhol = 1;
+          ++blackhole_count;
 
           for( i = 0; i < numeq; i++ ) {
             pstate[i] = oldstate[i];

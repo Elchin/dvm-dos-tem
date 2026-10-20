@@ -56,6 +56,7 @@ public:
 
 
   void run_years(int year_start, int year_end, const std::string& stage);
+  void report_safetynet(const int year, const int month, const std::string& stage);
   void modeldata_module_settings_from_args(const ArgHandler &args);
   void output_caljson_yearly(int year, std::string, boost::filesystem::path p);
   void output_caljson_monthly(int year, int month, std::string, boost::filesystem::path p);

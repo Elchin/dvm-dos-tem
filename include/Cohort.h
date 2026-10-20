@@ -117,6 +117,14 @@ public :
   void load_proj_co2(const std::string& proj_co2_file);
   // Overwrites/fills explicit fire data containers with data from the projected fire input file.
   void load_proj_explicit_fire(const std::string& proj_exp_fire_file);
+
+  // Integrator safety-net / give-up counters (read-only access for reporting)
+  const Integrator& get_solintegrator() const { return solintegrator; }
+  int get_veg_blackhole_count() const {
+    int n = 0;
+    for (int ip = 0; ip < NUM_PFT; ip++) { n += vegintegrator[ip].blackhole_count; }
+    return n;
+  }
 private:
 
   Integrator vegintegrator[NUM_PFT];

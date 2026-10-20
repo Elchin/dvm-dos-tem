@@ -1,5 +1,7 @@
 #include <string>
 #include <algorithm>
+#include <fstream>
+#include <iostream>
 #include <json/writer.h>
 
 
@@ -52,6 +54,10 @@ Runner::~Runner() {};
 
 void Runner::run_years(int start_year, int end_year, const std::string& stage) {
 
+  // Integrator safety-net counters at the start of this stage
+  const int sn_start = this->cohort.get_solintegrator().safetynet_count;
+  const int vbh_start = this->cohort.get_veg_blackhole_count();
+
   /** YEAR TIMESTEP LOOP */
   BOOST_LOG_NAMED_SCOPE("Y") {
   for (int iy = start_year; iy < end_year; ++iy) {
@@ -96,6 +102,10 @@ void Runner::run_years(int start_year, int end_year, const std::string& stage) {
 
         this->cohort.updateMonthly(iy, im, DINM[im], stage);
 
+        if (this->cohort.get_solintegrator().safetynet_fired) {
+          this->report_safetynet(iy, im, stage);
+        }
+
         this->monthly_output(iy, im, stage, end_year);
 
         // Prevent cells from running for an exceptionally long time,
@@ -118,6 +128,36 @@ void Runner::run_years(int start_year, int end_year, const std::string& stage) {
     BOOST_LOG_SEV(glg, info) << "Completed year " << iy << " for cohort/cell (row,col): (" << this->y << "," << this->x << ")";
 
   }} // end year loop (and named scope
+
+  const int sn_n = this->cohort.get_solintegrator().safetynet_count - sn_start;
+  const int vbh_n = this->cohort.get_veg_blackhole_count() - vbh_start;
+  std::cerr << "Integrator safety net summary: stage=" << stage
+            << " cell(y,x)=(" << this->y << "," << this->x << ")"
+            << " soil_safetynet_events=" << sn_n
+            << " veg_integrator_giveups=" << vbh_n << std::endl;
+}
+
+/** One soil integrator safety-net event: warning on stderr and a row in
+*   <output_dir>/integrator_safety_net.csv. */
+void Runner::report_safetynet(const int year, const int month, const std::string& stage) {
+  const Integrator& si = this->cohort.get_solintegrator();
+  std::cerr << "WARNING: soil integrator safety net: stage=" << stage
+            << " cell(y,x)=(" << this->y << "," << this->x << ")"
+            << " year_index=" << year << " month=" << month
+            << " t0=" << si.safetynet_t0
+            << " C_delivered=" << si.safetynet_c
+            << " N_delivered=" << si.safetynet_n << std::endl;
+  boost::filesystem::path f = boost::filesystem::path(md.output_dir) / "integrator_safety_net.csv";
+  bool isnew = !boost::filesystem::exists(f);
+  std::ofstream out(f.string().c_str(), std::ios::app);
+  if (out) {
+    if (isnew) {
+      out << "stage,y,x,year_index,month,t0,C_delivered_gm2,N_delivered_gm2\n";
+    }
+    out << stage << "," << this->y << "," << this->x << "," << year << ","
+        << month << "," << si.safetynet_t0 << "," << si.safetynet_c << ","
+        << si.safetynet_n << "\n";
+  }
 }
 
 void Runner::monthly_output(const int year, const int month, const std::string& runstage, int endyr) {
