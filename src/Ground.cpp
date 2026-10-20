@@ -995,6 +995,16 @@ bool Ground::constructSnowLayers(const double & dsmass, const double & tdrv) {
     }
   }
 
+  // Hang fix: drop snow layers that melting has emptied (no ice, no liquid left).
+  // Before water fix 2/4 the melt was subtracted a second time through extramass, so the
+  // ablation branch above always ran on melt days and removed such layers. Now that only
+  // sublimation is passed in, on a day with full melt and zero sublimation the emptied layers
+  // stayed in the column (dz -> 0) and shifted the soil layer indices.
+  while(toplayer != NULL && toplayer->isSnow && toplayer->ice <= 0. && toplayer->liq <= 0.) {
+    removeFront();
+    layerchanged = true;
+  }
+
   return layerchanged;
 };
 
