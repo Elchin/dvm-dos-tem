@@ -755,6 +755,13 @@ void ModelData::create_netCDF_output_files(int ysize, int xsize,
         start[0] = 0;
         count[0] = runyrs * 12;
 
+        if (stage == "sc" && this->daily_proj_climate
+            && full_time_coord.size() < size_t(runyrs) * 365) {
+          std::cerr << "FATAL (daily climate mode): projected climate file has "
+                    << full_time_coord.size() << " daily time values; " << runyrs
+                    << " scenario years need " << runyrs * 365 << std::endl;
+          exit(EXIT_FAILURE);
+        }
         if (stage == "sc" && this->daily_proj_climate) {
           // Daily climate mode: the projected climate file has one time value
           // per day (365_day calendar), so label each monthly output step with
