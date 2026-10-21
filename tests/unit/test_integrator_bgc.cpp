@@ -5,9 +5,11 @@
 
 namespace {
 struct BgcFixture {
-  CohortData cd; BgcData bd; EnvData ed; Soil_Bgc sb; Integrator in;
+  CohortData cd; BgcData bd; EnvData ed; FirData fd; Soil_Bgc sb; Integrator in;
   explicit BgcFixture(int numsl) {
-    sb.setCohortData(&cd); sb.setBgcData(&bd); sb.setEnvData(&ed);
+    sb.setCohortData(&cd); sb.setBgcData(&bd); sb.setEnvData(&ed); sb.setFirData(&fd);
+    cd.yrsdist = 1000; cd.fri = 100;     // no fire re-deposition branch in prepareIntegration
+    fd.fire_a2soi.orgn = 0.0;
     in.setBgcData(&bd); in.setSoil_Bgc(&sb);
     cd.m_soil.numsl = numsl;
     for (int i = 0; i < MAX_SOI_LAY; ++i) {
