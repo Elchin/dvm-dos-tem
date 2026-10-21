@@ -36,5 +36,26 @@ public:
   //     Ke = log10(Sr) + 1 (Ke = 0 only for Sr <= 0.1).
   static int kersten_form;
 
+  // Option 1 (v5h, OFF by default): moisture-dependent thermal
+  // conductivity of moss and organic (fibric/humic) layers following
+  // Cote & Konrad (2005) as used in CLASS/CLASSIC (Verseghy 2017; Melton et
+  // al. 2019; Elshamy et al. 2020), with Sr relative to the peat retention
+  // capacity theta_re (Letts et al. 2000). With kappa = 1 and
+  // theta_re = porosity this is the linear dry-saturated interpolation of the
+  // JULES moss layer (Chadburn et al. 2015).
+  //   k  = Ke*k_sat + (1-Ke)*k_dry,  Ke = kappa*Sr / (1 + (kappa-1)*Sr)
+  //   Sr = min(1, (theta_liq + theta_ice) / theta_re)
+  //   k_dry = org_tc_dry if > 0, else 0.30*exp(-2.0*porosity) (CLASS organic)
+  //   k_sat = existing tcsatunf / tcsatfrz (geometric mean, unchanged)
+  // Applies only to moss/organic layers whose top is shallower than
+  // org_tc_depth (m). model_settings keys (defaults):
+  //   org_tc_scheme 0 (off) | 1 (on); org_tc_kunf 0.6; org_tc_kfrz 0.25;
+  //   org_tc_dry -1; org_tc_thre_f 0.275 (moss + fibric); org_tc_thre_h 0.62
+  //   (humic); org_tc_depth 10.0
+  static int    org_tc_scheme;
+  static double org_tc_kunf, org_tc_kfrz, org_tc_dry, org_tc_thre_f,
+                org_tc_thre_h, org_tc_depth;
+  double getOrgThermCond(const bool frozen_case); // < 0 if not applicable
+
 };
 #endif /*SOILLAYER_H_*/

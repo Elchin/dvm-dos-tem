@@ -4,6 +4,14 @@
 #include "../include/SoilLayer.h"
 
 int SoilLayer::kersten_form = 0; // DRAFT (tvc-summer), set from model_settings.kersten_form
+// Option 1 (v5h): see SoilLayer.h; set from model_settings in Cohort.
+int    SoilLayer::org_tc_scheme = 0;
+double SoilLayer::org_tc_kunf   = 0.6;
+double SoilLayer::org_tc_kfrz   = 0.25;
+double SoilLayer::org_tc_dry    = -1.0;
+double SoilLayer::org_tc_thre_f = 0.275;
+double SoilLayer::org_tc_thre_h = 0.62;
+double SoilLayer::org_tc_depth  = 10.0;
 
 #include "../include/TEMLogger.h"
 extern src::severity_logger< severity_level > glg;
@@ -33,8 +41,30 @@ double SoilLayer::getMixVolHeatCapa() {
   return vhc;
 };
 
+// Option 1 (v5h): Cote & Konrad (2005) / CLASS organic and moss
+// thermal conductivity. Returns a negative value if the option is off or the
+// layer is not a moss/organic layer within org_tc_depth.
+double SoilLayer::getOrgThermCond(const bool frozen_case) {
+  if (org_tc_scheme != 1) { return -1.0; }
+  if (!(isMoss || isOrganic)) { return -1.0; }
+  if (z >= org_tc_depth) { return -1.0; }
+  double thre = isHumic ? org_tc_thre_h : org_tc_thre_f;
+  if (thre <= 0.0 || thre > poro) { thre = poro; }
+  double sr = (getVolIce() + getVolLiq()) / thre;
+  sr = fmin(fmax(sr, 0.0), 1.0);
+  double kap = frozen_case ? org_tc_kfrz : org_tc_kunf;
+  double ke = kap * sr / (1.0 + (kap - 1.0) * sr);
+  double kdry = (org_tc_dry > 0.0) ? org_tc_dry : 0.30 * exp(-2.0 * poro);
+  double ksat = frozen_case ? tcsatfrz : tcsatunf;
+  return ke * ksat + (1.0 - ke) * kdry;
+}
+
 // get frozen layer thermal conductivity
 double SoilLayer::getFrzThermCond() {
+  if (org_tc_scheme == 1) { // Option 1 (v5h)
+    double tco = getOrgThermCond(true);
+    if (tco >= 0.0) { return tco; }
+  }
   double tc;
   double vice = getVolIce();
   double vliq = getVolLiq();
@@ -53,6 +83,10 @@ double SoilLayer::getFrzThermCond() {
 
 // get unfrozen layer thermal conductivity
 double SoilLayer::getUnfThermCond() {
+  if (org_tc_scheme == 1) { // Option 1 (v5h)
+    double tco = getOrgThermCond(false);
+    if (tco >= 0.0) { return tco; }
+  }
   double tc;
   double vice = getVolIce();
   double vliq = getVolLiq();

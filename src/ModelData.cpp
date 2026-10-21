@@ -129,6 +129,14 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
   frozen_infil_eice = controldata["model_settings"].get("frozen_infil_eice", -1.0).asDouble();
   kersten_form = controldata["model_settings"].get("kersten_form", 0).asInt();
   soil_evap_beta = controldata["model_settings"].get("soil_evap_beta", 0).asInt();
+  // Option 1 (v5h), defaults = off / CLASS organic values
+  org_tc_scheme = controldata["model_settings"].get("org_tc_scheme", 0).asInt();
+  org_tc_kunf   = controldata["model_settings"].get("org_tc_kunf", 0.6).asDouble();
+  org_tc_kfrz   = controldata["model_settings"].get("org_tc_kfrz", 0.25).asDouble();
+  org_tc_dry    = controldata["model_settings"].get("org_tc_dry", -1.0).asDouble();
+  org_tc_thre_f = controldata["model_settings"].get("org_tc_thre_f", 0.275).asDouble();
+  org_tc_thre_h = controldata["model_settings"].get("org_tc_thre_h", 0.62).asDouble();
+  org_tc_depth  = controldata["model_settings"].get("org_tc_depth", 10.0).asDouble();
   if (climate_timestep.empty()) {
     climate_timestep = "monthly";
   }

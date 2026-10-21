@@ -117,6 +117,12 @@ public:
   // first shallow organic layer (Lee & Pielke 1992; CLM4.0), theta_fc at -3.4 m.
   int soil_evap_beta;
 
+  // Option 1 (v5h): moss/organic thermal conductivity
+  // (Cote & Konrad 2005 / CLASS); see SoilLayer.h. org_tc_scheme 0 = off.
+  int org_tc_scheme;
+  double org_tc_kunf, org_tc_kfrz, org_tc_dry, org_tc_thre_f, org_tc_thre_h,
+         org_tc_depth;
+
   // Maps holding data about variables to be output at specific timesteps
   // C++11 would allow the use of unordered_maps, which have a faster
   // by-key access time.

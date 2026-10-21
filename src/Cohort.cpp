@@ -260,6 +260,13 @@ void Cohort::initialize_state_parameters() {
   soilenv.initializeParameter();
   soilenv.frozen_infil_eice = md->frozen_infil_eice; // DRAFT (daily-structural)
   SoilLayer::kersten_form = md->kersten_form; // DRAFT (tvc-summer)
+  SoilLayer::org_tc_scheme = md->org_tc_scheme; // Option 1 (v5h)
+  SoilLayer::org_tc_kunf   = md->org_tc_kunf;
+  SoilLayer::org_tc_kfrz   = md->org_tc_kfrz;
+  SoilLayer::org_tc_dry    = md->org_tc_dry;
+  SoilLayer::org_tc_thre_f = md->org_tc_thre_f;
+  SoilLayer::org_tc_thre_h = md->org_tc_thre_h;
+  SoilLayer::org_tc_depth  = md->org_tc_depth;
   soilenv.soil_evap_beta = md->soil_evap_beta;       // DRAFT (daily-structural)
   soilbgc.initializeParameter();
 
