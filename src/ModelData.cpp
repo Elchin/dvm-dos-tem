@@ -127,6 +127,7 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
   // behavior. Any value other than "monthly" or "daily" is a hard error.
   climate_timestep = controldata["model_settings"]["climate_timestep"].asString();
   frozen_infil_eice = controldata["model_settings"].get("frozen_infil_eice", -1.0).asDouble();
+  kersten_form = controldata["model_settings"].get("kersten_form", 0).asInt();
   soil_evap_beta = controldata["model_settings"].get("soil_evap_beta", 0).asInt();
   if (climate_timestep.empty()) {
     climate_timestep = "monthly";

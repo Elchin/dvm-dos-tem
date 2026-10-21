@@ -107,6 +107,10 @@ public:
   // no infiltration while the top shallow/moss layer is frozen); >= 0 = ice
   // impedance exponent E in 10^(-E*F_ice) (CLM5/Swenson et al. 2012 use 6).
   double frozen_infil_eice;
+
+  // DRAFT (tvc-summer): model_settings.kersten_form, 0 = legacy ln(Sr)+1
+  // (default), 1 = log10(Sr)+1 for unfrozen soil thermal conductivity.
+  int kersten_form;
   // DRAFT (daily-structural 4/4): model_settings.soil_evap_beta: 0 (default) =
   // off (legacy, no soil-moisture limit on soil evaporation); 1 = scale soil
   // evaporation by beta = 0.25*(1-cos(pi*min(1,theta_liq/theta_fc)))^2 of the

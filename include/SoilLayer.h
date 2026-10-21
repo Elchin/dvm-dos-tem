@@ -30,5 +30,11 @@ public:
   double getMatricPotential();
   double getHydraulicCond();
 
+  // DRAFT (tvc-summer): Kersten number form for unfrozen soil.
+  // 0 (default) = legacy Ke = ln(Sr) + 1 (Ke = 0 for Sr <= 1/e = 0.37);
+  // 1 = Johansen (1975) fine-grained / CLM / Lawrence & Slater (2008) form
+  //     Ke = log10(Sr) + 1 (Ke = 0 only for Sr <= 0.1).
+  static int kersten_form;
+
 };
 #endif /*SOILLAYER_H_*/

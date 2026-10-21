@@ -3,6 +3,8 @@
  */
 #include "../include/SoilLayer.h"
 
+int SoilLayer::kersten_form = 0; // DRAFT (tvc-summer), set from model_settings.kersten_form
+
 #include "../include/TEMLogger.h"
 extern src::severity_logger< severity_level > glg;
 
@@ -56,7 +58,7 @@ double SoilLayer::getUnfThermCond() {
   double vliq = getVolLiq();
   double s = (vice + vliq)/poro;
   s = min(s, 1.0);
-  double ke= log(s) +1; // for unfrozen case
+  double ke= (kersten_form == 1) ? log10(s) + 1 : log(s) +1; // for unfrozen case (DRAFT option: log10, Johansen fine / CLM)
   ke = fmax(ke, 0.);
 
   if(s < 1.e-7) {

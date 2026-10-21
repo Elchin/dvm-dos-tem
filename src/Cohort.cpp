@@ -259,6 +259,7 @@ void Cohort::initialize_state_parameters() {
   snowenv.initializeParameter();
   soilenv.initializeParameter();
   soilenv.frozen_infil_eice = md->frozen_infil_eice; // DRAFT (daily-structural)
+  SoilLayer::kersten_form = md->kersten_form; // DRAFT (tvc-summer)
   soilenv.soil_evap_beta = md->soil_evap_beta;       // DRAFT (daily-structural)
   soilbgc.initializeParameter();
 
