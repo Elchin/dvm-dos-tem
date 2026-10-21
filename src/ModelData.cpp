@@ -142,6 +142,10 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
   org_drain_thre_f = controldata["model_settings"].get("org_drain_thre_f", 0.275).asDouble();
   org_drain_thre_h = controldata["model_settings"].get("org_drain_thre_h", 0.62).asDouble();
   org_drain_depth  = controldata["model_settings"].get("org_drain_depth", 0.3).asDouble();
+  // Option 3 (v5h), defaults = legacy
+  mineral_tcsolid    = controldata["model_settings"].get("mineral_tcsolid", -1.0).asDouble();
+  mineral_vhcsolid   = controldata["model_settings"].get("mineral_vhcsolid", -1.0).asDouble();
+  mineral_tcdry_form = controldata["model_settings"].get("mineral_tcdry_form", 0).asInt();
   if (climate_timestep.empty()) {
     climate_timestep = "monthly";
   }

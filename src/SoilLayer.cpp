@@ -12,6 +12,10 @@ double SoilLayer::org_tc_dry    = -1.0;
 double SoilLayer::org_tc_thre_f = 0.275;
 double SoilLayer::org_tc_thre_h = 0.62;
 double SoilLayer::org_tc_depth  = 10.0;
+// Option 3 (v5h): see SoilLayer.h
+double SoilLayer::mineral_tcsolid    = -1.0;
+double SoilLayer::mineral_vhcsolid   = -1.0;
+int    SoilLayer::mineral_tcdry_form = 0;
 
 #include "../include/TEMLogger.h"
 extern src::severity_logger< severity_level > glg;
@@ -168,5 +172,10 @@ void SoilLayer::derivePhysicalProperty() {
   tcsatfrz= pow((double)tcsolid , (double)1- poro) * pow((double)TCICE, (double)poro);
   tcdry   = pow((double)tcsolid , (double)1- poro) * pow((double)TCAIR, (double)poro);
   tcmin   = tcdry;
+  // Option 3 (v5h): Johansen (1975) dry conductivity for mineral
+  if (isMineral && mineral_tcdry_form == 1) {
+    tcdry = (0.135 * bulkden + 64.7) / (2700. - 0.947 * bulkden);
+    tcmin = tcdry;
+  }
 };
 

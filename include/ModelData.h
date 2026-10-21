@@ -135,6 +135,12 @@ public:
   // org_drain_thre_h 0.62, org_drain_depth 0.3 [m].
   double org_drain_rate, org_drain_thre_f, org_drain_thre_h, org_drain_depth;
 
+  // Option 3 (v5h): settable mineral thermal properties; see
+  // SoilLayer.h. Keys: mineral_tcsolid (-1 = texture), mineral_vhcsolid
+  // (-1 = texture), mineral_tcdry_form (0 = legacy geometric mean).
+  double mineral_tcsolid, mineral_vhcsolid;
+  int mineral_tcdry_form;
+
   // Maps holding data about variables to be output at specific timesteps
   // C++11 would allow the use of unordered_maps, which have a faster
   // by-key access time.

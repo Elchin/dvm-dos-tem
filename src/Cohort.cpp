@@ -271,6 +271,9 @@ void Cohort::initialize_state_parameters() {
   soilenv.org_drain_thre_f = md->org_drain_thre_f;
   soilenv.org_drain_thre_h = md->org_drain_thre_h;
   soilenv.org_drain_depth  = md->org_drain_depth;
+  SoilLayer::mineral_tcsolid    = md->mineral_tcsolid;    // Option 3 (v5h)
+  SoilLayer::mineral_vhcsolid   = md->mineral_vhcsolid;
+  SoilLayer::mineral_tcdry_form = md->mineral_tcdry_form;
   soilenv.soil_evap_beta = md->soil_evap_beta;       // DRAFT (daily-structural)
   soilbgc.initializeParameter();
 

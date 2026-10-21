@@ -64,6 +64,16 @@ void MineralLayer::updateProperty5Lookup() {
   vhcsolid = (2.128 * this->pctsand + 2.385 * this->pctclay) /
              (this->pctsand + this->pctclay) * 1.0e6;
 
+  // Option 3 (v5h): optional settable mineral thermal properties
+  if (mineral_tcsolid > 0.0) {
+    tcsolid = mineral_tcsolid;
+    tcsatunf = pow(tcsolid , 1.0 - poro) * pow((double)TCLIQ, poro);
+    tcsatfrz = pow(tcsolid , 1.0 - poro) * pow((double)TCICE, poro);
+  }
+  if (mineral_vhcsolid > 0.0) {
+    vhcsolid = mineral_vhcsolid;
+  }
+
   albsatvis = 0.09;
   albsatnir = 0.18;
   albdryvis = 0.18;

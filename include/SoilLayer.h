@@ -57,5 +57,20 @@ public:
                 org_tc_thre_h, org_tc_depth;
   double getOrgThermCond(const bool frozen_case); // < 0 if not applicable
 
+  // Option 3 (v5h, OFF by default): mineral-layer thermal
+  // properties as settable values instead of texture-derived/hard-coded ones.
+  //   mineral_tcsolid  > 0: solid conductivity (W/m/K) replaces the
+  //       (8.8*sand + 2.92*clay)/(sand+clay) texture formula (CLM4.5/5).
+  //   mineral_vhcsolid > 0: solid volumetric heat capacity (J/m3/K) replaces
+  //       (2.128*sand + 2.385*clay)/(sand+clay)*1e6 (CLM4.5/5).
+  //   mineral_tcdry_form 1: dry conductivity from Johansen (1975)
+  //       (0.135*rho_b + 64.7)/(2700 - 0.947*rho_b) (Farouki 1981; CLM;
+  //       Lawrence & Slater 2008) instead of the legacy geometric mean
+  //       tcsolid^(1-poro)*k_air^poro that overwrites it in
+  //       derivePhysicalProperty.
+  // Defaults (key absent): -1, -1, 0 = legacy behaviour.
+  static double mineral_tcsolid, mineral_vhcsolid;
+  static int    mineral_tcdry_form;
+
 };
 #endif /*SOILLAYER_H_*/
