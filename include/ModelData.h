@@ -158,6 +158,37 @@ public:
   //   is below 0.01 C (same criterion as vascular roots); uptake that could not
   //   be applied is removed from the reported transpiration (as for evaporation).
   int nonvasc_trans_withdraw;
+  // Option 4 (v5j), OFF by default: daily surface energy balance (SEB) top
+  // boundary (ported from the seb-explore exploration branch).
+  // model_settings.seb_scheme: 0 = off (n-factor top boundary, unchanged);
+  //   2 = SEB over snow only (calibration option): on days with snow on the
+  //       ground the snow-surface temperature, melt and sublimation come from a
+  //       daily skin energy balance (SW, forcing LW, H, sublimation, G); on
+  //       snow-free days the n-factor boundary (nfactor(s)/nfactor(w)) is used
+  //       as before (nfactor(w) then only acts on snow-free days with
+  //       Tair <= 0, e.g. shoulder seasons; tested with the site values).
+  //   1 = EXPERIMENTAL (exploration only, not recommended): SEB on all days,
+  //       n-factors unused; snow-free LE = the model's own ET.
+  //   Daily climate mode only. LW down: forcing variable 'lwdown' (W m-2) in the
+  //   daily projected-climate file, wind: 'wind' (m s-1); see seb_lw_source.
+  // Other keys (defaults): seb_z0_snow 0.001 m, seb_z0_soil 0.01 m (momentum
+  //   roughness; z0h = z0/10), seb_zwind 10 m, seb_ztemp 2 m (forcing heights),
+  //   seb_emis_snow 0.99, seb_emis_soil 0.97, seb_wind -1 (<0 = use forcing
+  //   'wind', else constant m/s; 3.0 if no forcing), seb_minwind 0.5 m/s,
+  //   seb_stab_b 10 (stable: CH *= 1/(1+b*Ri); 0 = neutral), seb_tran_frac 1
+  //   (fraction of transpiration latent heat taken from the ground skin),
+  //   seb_pres 100000 Pa, seb_lw_source 0 (0 = forcing 'lwdown' if present,
+  //   1 = always parameterized: Prata 1996 clear sky + Crawford & Duchon 1999
+  //   cloud from the model's SW cloudiness), seb_diag 0 (1 = write
+  //   output_dir/seb_daily.csv).
+  int seb_scheme;
+  double seb_z0_snow, seb_z0_soil, seb_zwind, seb_ztemp, seb_emis_snow,
+         seb_emis_soil, seb_wind, seb_minwind, seb_stab_b, seb_tran_frac,
+         seb_pres;
+  int seb_lw_source, seb_diag;
+  // seb_snow_tc: 0 = legacy Goodrich 1982 snow conductivity (default); 1 = Sturm et al. 1997
+  //   k(rho) for rho <= 600 kg m-3 (floor 0.023). Independent of seb_scheme.
+  int seb_snow_tc;
 
   // Maps holding data about variables to be output at specific timesteps
   // C++11 would allow the use of unordered_maps, which have a faster

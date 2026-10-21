@@ -33,6 +33,7 @@ public:
 
   void updateDailyM(const double & tdrv);
   void checkSnowLayersT(Layer* frontl);
+  friend class Soil_Env; // Option 4 (v5j) SEB: snow albedo in Soil_Env::solveSEB
 
 private:
 

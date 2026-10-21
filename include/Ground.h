@@ -38,6 +38,13 @@ public :
   Ground();
   Ground(MineralInfo mi);
 
+  // Option 4 (v5j) SEB: today's SEB result, set by
+  // Soil_Env::updateDailyGroundT and used by Snow_Env::updateDailyM.
+  bool seb_on = false;     // SEB set today's top boundary
+  double seb_ts = 0.0;     // skin temperature (C)
+  double seb_melt = 0.0;   // snow melt from the SEB energy surplus (mm/day)
+  double seb_sublim = 0.0; // snow sublimation (mm/day)
+
   ~Ground();
 
   std::string layer_report_string();

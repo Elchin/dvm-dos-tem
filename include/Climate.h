@@ -43,6 +43,21 @@ public:
   // Daily (365) extraterrestrial radiation, used in daily mode only.
   std::vector<float> girr_daily;
 
+  // Option 4 (v5j) SEB: only filled when seb_extra is true.
+  // lwdown (W/m2) and wind (m/s): full daily series (optional variables
+  // 'lwdown' / 'wind' in the daily projected-climate file; LW parameterized
+  // when absent or seb_lw_param == 1; wind = seb_wind_const when absent).
+  bool seb_extra = false;
+  int seb_lw_param = 0;
+  float seb_wind_const = 3.0;
+  bool seb_lw_from_file = false;
+  bool seb_wind_from_file = false;
+  std::vector<float> lwdown;
+  std::vector<float> wind;
+  std::vector<float> lwdown_d;
+  std::vector<float> wind_d;
+  void seb_load_extra(const std::string& fname, int y, int x);
+
   // driving variables
   std::vector<float> co2;
   std::vector<float> tair;

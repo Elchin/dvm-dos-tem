@@ -21,6 +21,10 @@ public:
   void updateThick();
   void updateDensity(snwpar_dim *snwpar);
 
+  // Option 4 (v5j) SEB: model_settings.seb_snow_tc, 0 = Goodrich
+  // 1982 k = 2.9e-6 rho^2 (legacy, default); 1 = Sturm et al. 1997 (k(rho),
+  // 156-600 kg/m3; 0.023+0.234 rho below).
+  static int snow_tc_form;
   virtual double getFrzThermCond();//get frozen layer thermal conductivity
   virtual double getUnfThermCond();//get unfrozen layer thermal conductivity
 

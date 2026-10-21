@@ -17,6 +17,7 @@
 
 #include <string>
 #include <map>
+#include <fstream>
 
 #include <boost/assign/list_of.hpp> // for 'list_of()'
 
@@ -77,6 +78,10 @@ Cohort::Cohort(int y, int x, ModelData* modeldatapointer):
   this->climate.baseline_end = modeldatapointer->baseline_end;
   // Opt-in daily climate mode: projected climate file is daily.
   this->climate.daily_proj = modeldatapointer->daily_proj_climate;
+  // Option 4 (v5j) SEB: extra LW/wind forcing only when on.
+  this->climate.seb_extra = (modeldatapointer->seb_scheme > 0);
+  this->climate.seb_lw_param = modeldatapointer->seb_lw_source;
+  if (modeldatapointer->seb_wind >= 0.0) { this->climate.seb_wind_const = modeldatapointer->seb_wind; }
   //Prepare averaged input set for EQ stage
   this->climate.prep_avg_climate();
 
@@ -279,6 +284,20 @@ void Cohort::initialize_state_parameters() {
   SoilLayer::mineral_vhcsolid   = md->mineral_vhcsolid;
   SoilLayer::mineral_tcdry_form = md->mineral_tcdry_form;
   soilenv.soil_evap_beta = md->soil_evap_beta;       // DRAFT (daily-structural)
+  soilenv.seb_scheme    = md->seb_scheme;           // Option 4 (v5j) SEB
+  soilenv.seb_z0_snow   = md->seb_z0_snow;
+  soilenv.seb_z0_soil   = md->seb_z0_soil;
+  soilenv.seb_zwind     = md->seb_zwind;
+  soilenv.seb_ztemp     = md->seb_ztemp;
+  soilenv.seb_emis_snow = md->seb_emis_snow;
+  soilenv.seb_emis_soil = md->seb_emis_soil;
+  soilenv.seb_wind      = md->seb_wind;
+  soilenv.seb_minwind   = md->seb_minwind;
+  soilenv.seb_stab_b    = md->seb_stab_b;
+  soilenv.seb_tran_frac = md->seb_tran_frac;
+  soilenv.seb_pres      = md->seb_pres;
+  SnowLayer::snow_tc_form = md->seb_snow_tc;
+  soilenv.snowenvp      = &snowenv;
   soilbgc.initializeParameter();
 
   ground.initDimension();   // read-in snow/soil structure from 'chtlu', does not appear to touch Layer objects...?
@@ -705,6 +724,24 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
     //snow-soil temperature, including snow-melting and
     //  soil water phase changing
     soilenv.updateDailyGroundT(tdrv, daylength);
+    if (md->seb_diag > 0) { // Option 4 (v5j) SEB: daily diagnostics (output only)
+      static long seb_day = 0;
+      std::ofstream sf((md->output_dir + "seb_daily.csv").c_str(), std::ios::app);
+      if (seb_day == 0) {
+        sf << "day,doy,ta,tsurf,nfactor,used,snow,swin,alb,lwsky,lwin,lwout,h,le,g,qmelt,wind,fc,lam,t1,iters\n";
+      }
+      const SebDiag& s = soilenv.sebdiag;
+      sf << seb_day << "," << doy << "," << tdrv << "," << (s.used ? s.ts : tdrv * edall->d_soid.nfactor) << ","
+         << edall->d_soid.nfactor << "," << s.used << "," << (ground.toplayer->isSnow ? 1 : 0);
+      if (s.used) {
+        sf << "," << s.swin << "," << s.alb << "," << s.lwsky << "," << s.lwin << "," << s.lwout << "," << s.h << ","
+           << s.le << "," << s.g << "," << s.qmelt << "," << s.wind << "," << s.fc << "," << s.lam << "," << s.t1 << "," << s.iters;
+      } else {
+        sf << ",,,,,,,,,,,,,,";
+      }
+      sf << "\n";
+      seb_day++;
+    }
     //snow water/thickness changing - must be done after 'T' because of melting
     snowenv.updateDailyM(tdrv);
     //Capture daily snow water equivalent and thickness for NetCDF output

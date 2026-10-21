@@ -17,6 +17,14 @@
 
 #include "Ground.h"
 
+class Snow_Env;
+
+// Option 4 (v5j) SEB: diagnostics of the last daily SEB solve.
+struct SebDiag {
+  double ta, ts, swin, alb, lwsky, lwin, lwout, h, le, g, qmelt, wind, fc, lam, t1;
+  int snow, iters, used;
+};
+
 class Soil_Env {
 public:
 
@@ -48,6 +56,16 @@ public:
   // organic layers towards the peat retention capacity; see ModelData.h.
   double org_drain_rate, org_drain_thre_f, org_drain_thre_h, org_drain_depth;
   double orgLateralDrain(); // returns mm drained today
+
+  // Option 4 (v5j) SEB (see ModelData::seb_scheme). 0 = off.
+  int seb_scheme;
+  double seb_z0_snow, seb_z0_soil, seb_zwind, seb_ztemp, seb_emis_snow,
+         seb_emis_soil, seb_wind, seb_minwind, seb_stab_b, seb_tran_frac,
+         seb_pres;
+  double seb_fc_last; // last canopy LW-obscured fraction (from SW transmission)
+  Snow_Env* snowenvp; // for the snow albedo
+  SebDiag sebdiag;
+  double solveSEB(const double & tdrv);
 
   void setGround(Ground* grndp);
   void setCohortData(CohortData* cdp);

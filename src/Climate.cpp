@@ -657,6 +657,76 @@ void Climate::load_daily_from_file(const std::string& fname, int y, int x) {
   }
 
   this->daily_series_loaded = true;
+
+  if (this->seb_extra) {
+    this->seb_load_extra(fname, y, x);
+  }
+}
+
+/** Option 4 (v5j) SEB: optional daily 'lwdown' (W m-2) and 'wind'
+* (m s-1) from the same daily file. If 'lwdown' is absent (or seb_lw_param),
+* LW is parameterized from tair, vapor_press and the model's SW cloudiness:
+* Prata (1996) clear-sky emissivity, Crawford & Duchon (1999) cloud
+* correction eps = c + (1-c)*eps_clr. On dark days (girr < 30 W m-2) the
+* cloud fraction is the series mean of the lit days of the same month.
+*/
+void Climate::seb_load_extra(const std::string& fname, int y, int x) {
+  int ncid, vid;
+  bool has_lw = false, has_wind = false;
+  #pragma omp critical(load_input)
+  {
+    if (nc_open(fname.c_str(), NC_NOWRITE, &ncid) == NC_NOERR) {
+      has_lw = (nc_inq_varid(ncid, "lwdown", &vid) == NC_NOERR);
+      has_wind = (nc_inq_varid(ncid, "wind", &vid) == NC_NOERR);
+      nc_close(ncid);
+    }
+    if (has_lw && this->seb_lw_param == 0) {
+      lwdown = temutil::get_timeseries<float>(fname, "lwdown", y, x);
+    }
+    if (has_wind) {
+      wind = temutil::get_timeseries<float>(fname, "wind", y, x);
+    }
+  }
+  seb_lw_from_file = (has_lw && this->seb_lw_param == 0);
+  seb_wind_from_file = has_wind;
+  const size_t n = tair.size();
+  if (!seb_lw_from_file) {
+    // monthly mean cloud fraction of lit days
+    double csum[12] = {0}, cn[12] = {0};
+    for (size_t i = 0; i < n; ++i) {
+      int doy = i % DINY; int m = 0, acc = 0;
+      while (m < 11 && doy >= acc + DINM[m]) { acc += DINM[m]; m++; }
+      if (girr_daily[doy] >= 30.0) { csum[m] += cld[i] / 100.0; cn[m] += 1.0; }
+    }
+    lwdown.assign(n, 0.0);
+    for (size_t i = 0; i < n; ++i) {
+      int doy = i % DINY; int m = 0, acc = 0;
+      while (m < 11 && doy >= acc + DINM[m]) { acc += DINM[m]; m++; }
+      double c = (girr_daily[doy] >= 30.0) ? cld[i] / 100.0
+                 : (cn[m] > 50 ? csum[m] / cn[m] : 0.6);
+      c = fmin(1.0, fmax(0.0, c));
+      double T = tair[i] + 273.15;
+      double xi = 46.5 * vapo[i] / T; // vapo in hPa
+      double eclr = 1.0 - (1.0 + xi) * exp(-sqrt(1.2 + 3.0 * xi));
+      double eps = c + (1.0 - c) * eclr;
+      lwdown[i] = eps * 5.67e-8 * pow(T, 4.0);
+    }
+  }
+  if (!seb_wind_from_file) {
+    wind.assign(n, seb_wind_const);
+  }
+  if (lwdown.size() != n || wind.size() != n) {
+    std::cerr << "FATAL (seb): lwdown/wind length differs from tair in " << fname << std::endl;
+    exit(EXIT_FAILURE);
+  }
+  for (size_t i = 0; i < n; ++i) {
+    if (!std::isfinite(lwdown[i]) || lwdown[i] <= 0.0 || !std::isfinite(wind[i]) || wind[i] < 0.0) {
+      std::cerr << "FATAL (seb): invalid lwdown/wind at timestep " << i << std::endl;
+      exit(EXIT_FAILURE);
+    }
+  }
+  BOOST_LOG_SEV(glg, info) << "SEB extra forcing: lwdown " << (seb_lw_from_file ? "from file" : "parameterized")
+                           << ", wind " << (seb_wind_from_file ? "from file" : "constant");
 }
 void Climate::load_proj_co2(const std::string& fname){
   BOOST_LOG_SEV(glg, info) << "CO2, loading projected data!";
@@ -1017,6 +1087,10 @@ void Climate::prepare_daily_driving_data_from_daily(int iy) {
   par_d.assign(par.begin() + start, par.begin() + start + DINY);
   prec_d.assign(prec.begin() + start, prec.begin() + start + DINY);
   girr_d = girr_daily;
+  if (this->seb_extra) {
+    lwdown_d.assign(lwdown.begin() + start, lwdown.begin() + start + DINY);
+    wind_d.assign(wind.begin() + start, wind.begin() + start + DINY);
+  }
 
   // No-ops for valid input (validated >= 0 at load), kept for parity with
   // the monthly path.
