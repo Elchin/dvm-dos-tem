@@ -150,3 +150,10 @@ CFLAGS += -DGIT_SHA=\"$(GIT_SHA)\"
 clean:
 	rm -f $(OBJECTS) $(APPNAME) TEM.o libTEM.so* *~ obj/*
 
+
+# Unit tests (tests/unit, doctest). Builds the model objects, then the test
+# binary (all model objects except obj/TEM.o) and runs it.
+unittest: $(SOURCES)
+	$(MAKE) -C tests/unit CC="$(CC)" INCLUDES="$(INCLUDES)" LIBDIR="$(LIBDIR)" run
+
+.PHONY: unittest
