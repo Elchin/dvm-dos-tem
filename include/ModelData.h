@@ -147,6 +147,17 @@ public:
   // Fix (b) (v5i): n-factor selection day, see Cohort::updateMonthly_Env.
   // nfactor_sameday 0 (default) = legacy previous-day Tair; 1 = same-day Tair.
   int nfactor_sameday;
+  // Fix (c) (v5j), OFF by default: model_settings.nonvasc_trans_withdraw.
+  // 0 (default) = legacy: non-vascular (moss/lichen) transpiration is reported
+  //   in EET but never removed from soil water (no r_e_ij for those PFTs), and
+  //   root uptake that the soil-water step cannot apply (frozen top branch,
+  //   layers outside the Richards domain) is silently dropped.
+  // 1 = non-vascular transpiration is withdrawn from the first shallow organic
+  //   layer (the layer the hydrologically excluded moss layer is slaved to),
+  //   capped by that layer's liquid above its minimum, and zero when that layer
+  //   is below 0.01 C (same criterion as vascular roots); uptake that could not
+  //   be applied is removed from the reported transpiration (as for evaporation).
+  int nonvasc_trans_withdraw;
 
   // Maps holding data about variables to be output at specific timesteps
   // C++11 would allow the use of unordered_maps, which have a faster

@@ -595,6 +595,17 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
           } else {
             ed[ip].d_vegd.btran = 0.0;
           }
+          if (md->nonvasc_trans_withdraw == 1) {
+            // Fix (c) (v5j): water source = first shallow organic layer
+            // (index 0 of r_e_ij / root_water_up); none if it is not thawed.
+            for (int il=0; il<MAX_SOI_LAY; il++) { ed[ip].d_soid.r_e_ij[il] = 0.0; }
+            Layer* nvl = ground.fstshlwl;
+            if (nvl != NULL && nvl->isSoil && nvl->tem >= 0.01) {
+              ed[ip].d_soid.r_e_ij[0] = 1.0;
+            } else {
+              ed[ip].d_vegd.btran = 0.0;
+            }
+          }
         }
 
         // calculate vegetation light/water dynamics at daily timestep
@@ -603,6 +614,22 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
         // ALT fix 1: transpiration's VPD term uses single-leaf conductance (not fpc-scaled);
         // scale to ground area here so reported EET and soil uptake share the tran*fpc basis.
         ed[ip].d_v2a.tran *= cd.d_veg.fpc[ip];
+      }
+    }
+    if (md->nonvasc_trans_withdraw == 1) {
+      // Fix (c) (v5j): non-vascular transpiration cannot exceed the liquid
+      // water of its source layer above the layer minimum (shared by all
+      // non-vascular PFTs, in PFT order).
+      Layer* nvl = ground.fstshlwl;
+      double nv_avail = 0.0;
+      if (nvl != NULL && nvl->isSoil) {
+        nv_avail = fmax(0.0, nvl->liq - nvl->minliq * (1.0 - nvl->frozenfrac));
+      }
+      for (int ip=0; ip<NUM_PFT; ip++) {
+        if (cd.d_veg.vegcov[ip] > 0.0 && cd.d_veg.nonvascular[ip] > 0) {
+          ed[ip].d_v2a.tran = fmax(0.0, fmin(ed[ip].d_v2a.tran, nv_avail));
+          nv_avail -= ed[ip].d_v2a.tran;
+        }
       }
     }
 
@@ -687,6 +714,25 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
     //get the new bottom drainage layer and its depth
     ground.setDrainL();
     soilenv.updateDailySM(weighted_veg_tran);  //soil moisture
+    if (md->nonvasc_trans_withdraw == 1) {
+      // Fix (c) (v5j): transpiration whose uptake updateDailySM did not apply
+      // (frozen-top branch skips frozen layers; Richards ignores layers below
+      // the drainage layer) is removed from each PFT's reported transpiration.
+      double removed = 0.0;
+      for (int ip=0; ip<NUM_PFT; ip++) {
+        if (cd.d_veg.vegcov[ip] > 0.0 && ed[ip].d_v2a.tran > 0.0) {
+          double fr = 0.0, fa = 0.0;
+          for (int il=0; il<MAX_SOI_LAY; il++) {
+            fr += ed[ip].d_soid.r_e_ij[il];
+            fa += ed[ip].d_soid.r_e_ij[il] * soilenv.uptake_applied[il];
+          }
+          double keep = (fr > 0.0) ? fa / fr : 0.0;
+          removed += ed[ip].d_v2a.tran * (1.0 - keep);
+          ed[ip].d_v2a.tran *= keep;
+        }
+      }
+      edall->d_v2a.tran = fmax(0.0, edall->d_v2a.tran - removed);
+    }
     // Supply-limited ET: the reported soil evaporation / transpiration must equal what was
     // actually removed from the soil. (a) evaporation never applied (frozen top) is dropped;
     // (b) water the minimum-liquid floor had to create is treated as unmet ET demand and taken

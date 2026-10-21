@@ -37,6 +37,7 @@ extern src::severity_logger< severity_level > glg;
 Soil_Env::Soil_Env() {
   floor_added_mm = 0.0;
   evap_unapplied_mm = 0.0;
+  for (int i=0; i<MAX_SOI_LAY; i++) { uptake_applied[i] = 0.0; } // Fix (c) (v5j)
   ponding_max_mm = 4.0; //max ponding (surface water storage) (mm)
   frozen_infil_eice = -1.0;
   frozen_infil_mm = 0.0;
@@ -550,6 +551,7 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   int topind = fstsoill->solind;
   floor_added_mm = 0.0;
   evap_unapplied_mm = 0.0;
+  for (int il=0; il<MAX_SOI_LAY; il++) { uptake_applied[il] = 0.0; } // Fix (c) (v5j), bookkeeping only
 
   // First, data connection
   //trans[MAX_SOI_LAY] = {0};
@@ -680,6 +682,14 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
                     ed->d_sois.watertab, root_water_up, evap,
                     infil, cd->cell_slope);
     ed->d_soi2l.qdrain += richards.qdrain;
+    { // Fix (c) (v5j), bookkeeping only: Richards applies uptake to fstsoill..drainl
+      Layer* ul = fstsoill;
+      while (ul != NULL && ul->isSoil && drainl != NULL && ul->indl <= drainl->indl) {
+        int k = ul->solind - topind;
+        if (k >= 0 && k < MAX_SOI_LAY) { uptake_applied[k] = 1.0; }
+        ul = ul->nextl;
+      }
+    }
 
     for(int il=0; il<MAX_SOI_LAY; il++){
       ed->d_soi2l.layer_drain[il] = richards.layer_drain[il];
@@ -727,6 +737,8 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
         if(currl->frozen < 1){
           double uptake = root_water_up[currl->solind-topind] * SEC_IN_DAY;
           currl->liq -= uptake;
+          int k = currl->solind - topind; // Fix (c) (v5j), bookkeeping only
+          if (k >= 0 && k < MAX_SOI_LAY) { uptake_applied[k] = 1.0; }
         }
         currl = currl->nextl;
       }

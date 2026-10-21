@@ -150,6 +150,8 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
   vp_hpa_fix = controldata["model_settings"].get("vp_hpa_fix", 0).asInt();
   // Fix (b) (v5i), default 0 = off (legacy)
   nfactor_sameday = controldata["model_settings"].get("nfactor_sameday", 0).asInt();
+  // Fix (c) (v5j), default 0 = off (legacy)
+  nonvasc_trans_withdraw = controldata["model_settings"].get("nonvasc_trans_withdraw", 0).asInt();
   if (climate_timestep.empty()) {
     climate_timestep = "monthly";
   }
