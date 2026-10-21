@@ -2182,8 +2182,12 @@ void Ground::getOslThickness5Carbon(SoilLayer* sl, const double &plctop,
   double f2=fmin(1., sl->poro/oldporo);  //for whatever reason, if
                                          //  porosity changes
   f = fmin(f, f2);
+  double wat_before = sl->liq + sl->ice;
   sl->liq *=fmax(0., f);
   sl->ice *=fmax(0., f);
+  // DRAFT leak fix 3/3 (NOT MERGED): water squeezed out of a shrinking organic
+  // layer used to be deleted; layer state unchanged, water now booked as expelled.
+  expelled_water_mm += wat_before - (sl->liq + sl->ice);
   // above soil temperature and frozen status not modified
 };
 

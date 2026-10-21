@@ -87,6 +87,11 @@ public :
 
   // this is the last layer in which Richards Equation applied for
   Layer* drainl; /*! layer in which the subsurface drainage occurs */
+  // DRAFT leak fix (leakfix-draft-v2, NOT MERGED): soil water that the layer
+  // bookkeeping has to remove (freeze expansion beyond pore space, organic layer
+  // shrinkage). Booked as subsurface drainage on the next Soil_Env::updateDailySM
+  // instead of being deleted (mm).
+  double expelled_water_mm = 0.0;
 
   double draindepth; //the subsurface drainage depth (m), which much
                      //  be in somewhere of 'drainl'

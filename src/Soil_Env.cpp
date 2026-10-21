@@ -574,6 +574,10 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   //Calculate surface runoff
   ed->d_soi2l.qover  = 0.0;
   ed->d_soi2l.qdrain = 0.0;
+  // DRAFT leak fix (NOT MERGED): water expelled by freeze expansion / organic layer
+  // shrinkage since the last call leaves the column as subsurface drainage.
+  ed->d_soi2l.qdrain += ground->expelled_water_mm;
+  ground->expelled_water_mm = 0.0;
   //Update water table for runoff calculation
   ed->d_sois.watertab = getWaterTable(lstsoill);
   if( (rnth + melt) > 0 ) {

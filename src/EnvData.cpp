@@ -223,7 +223,9 @@ void EnvData::grnd_beginOfYear() {
   //Clearing the daily value of magic_puddle here instead of in
   // the daily prep function because it needs to maintain a value
   // in between days (and possibly months).
-  d_soi2l.magic_puddle = 0.;
+  // DRAFT leak fix 2/3 (NOT MERGED): the surface puddle (<= ponding_max_mm) used to
+  // be zeroed here once a year, deleting its water. Keep it.
+  //d_soi2l.magic_puddle = 0.;
 }
 
 // initialize monthly accumulators before daily-processes start
