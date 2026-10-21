@@ -141,6 +141,10 @@ public:
   double mineral_tcsolid, mineral_vhcsolid;
   int mineral_tcdry_form;
 
+  // Fix (a) (v5i): vapor pressure units, see Climate.h. vp_hpa_fix 0 (default)
+  // = legacy (hPa vapor_press used as if Pa); 1 = convert to Pa.
+  int vp_hpa_fix;
+
   // Maps holding data about variables to be output at specific timesteps
   // C++11 would allow the use of unordered_maps, which have a faster
   // by-key access time.

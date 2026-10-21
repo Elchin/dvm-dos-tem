@@ -65,6 +65,9 @@ Cohort::Cohort(int y, int x, ModelData* modeldatapointer):
 
   BOOST_LOG_SEV(glg, debug) << "Construct Climate object ...";
 
+  // Fix (a) (v5i): vapor pressure units switch (static, before any climate is derived)
+  Climate::vp_hpa_fix = modeldatapointer->vp_hpa_fix;
+
   //On construction we assume historic climate, which will be
   // overwritten by projected climate later when necessary.
   this->climate = Climate(modeldatapointer->hist_climate_file, modeldatapointer->co2_file, y, x);

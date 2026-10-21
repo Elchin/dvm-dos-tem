@@ -884,7 +884,12 @@ void EnvData::update_from_climate(const Climate& clm, const int midx, const int 
   this->d_a2l.prec = clm.rain_d[doy_idx] + clm.snow_d[doy_idx];
   this->d_a2l.par  = clm.par_d[doy_idx];
   this->d_a2l.nirr = clm.nirr_d[doy_idx];
-  this->d_atmd.vp  = clm.vapo_d[doy_idx];
+  // Fix (a) (v5i): d_atmd.vp is documented in Pa (diagnostics.h); vapo_d is hPa.
+  if (Climate::vp_hpa_fix == 1) {
+    this->d_atmd.vp = clm.vapo_d[doy_idx] * 100.0;
+  } else {
+    this->d_atmd.vp = clm.vapo_d[doy_idx];
+  }
   this->d_atmd.svp = clm.svp_d[doy_idx];
   this->d_atmd.vpd = clm.vpd_d[doy_idx];
 

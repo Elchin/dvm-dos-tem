@@ -22,6 +22,8 @@
 
 extern src::severity_logger< severity_level > glg;
 
+int Climate::vp_hpa_fix = 0; // Fix (a) (v5i), default off (legacy)
+
 // Should really put these in temutil and then write some test
 // routines that exercise the funcitons over a wide range of values
 
@@ -1044,7 +1046,13 @@ void Climate::derive_daily_secondary_vars() {
   std::transform( tair_d.begin(), tair_d.end(), svp_d.begin(), calculate_saturated_vapor_pressure );
 
   vpd_d.resize(tair_d.size());
-  std::transform( svp_d.begin(), svp_d.end(), vapo_d.begin(), vpd_d.begin(), calculate_vpd );
+  if (vp_hpa_fix == 1) { // Fix (a) (v5i): vapo_d is hPa, svp_d is Pa
+    for (size_t i = 0; i < vpd_d.size(); ++i) {
+      vpd_d[i] = calculate_vpd(svp_d[i], vapo_d[i] * 100.0f);
+    }
+  } else {
+    std::transform( svp_d.begin(), svp_d.end(), vapo_d.begin(), vpd_d.begin(), calculate_vpd );
+  }
 
   cld_d.resize(tair_d.size());
   std::transform( girr_d.begin(), girr_d.end(), nirr_d.begin(), cld_d.begin(), calculate_clouds );

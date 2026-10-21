@@ -28,6 +28,16 @@ public:
   //   into tair/prec/nirr/vapo (and cld/par); only then does
   //   prepare_daily_driving_data() take the direct daily path.
   bool daily_proj = false;
+
+  // Fix (a) (v5i), OFF by default: model_settings.vp_hpa_fix. The vapor_press
+  // input is in hPa (docs model_overview.rst; CRU and the TVC/HPC MIP inputs,
+  // whose files carry units = "hPa"), but svp is computed in Pa, so the legacy
+  // vpd = svp(Pa) - vp(hPa) is ~svp and rh = vp/svp is ~1/100 of its true value.
+  // 1 = convert vp to Pa (x100) for vpd (Penman-Monteith ET, stomatal VPD
+  // limitation) and for EnvData d_atmd.vp (non-vascular rh in Cohort). The
+  // vapo / vapo_d series themselves (and the VAPO output) stay in hPa.
+  // 0 (default) = legacy units mix.
+  static int vp_hpa_fix;
   bool daily_series_loaded = false;
 
   // Daily (365) extraterrestrial radiation, used in daily mode only.
