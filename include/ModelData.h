@@ -123,6 +123,18 @@ public:
   double org_tc_kunf, org_tc_kfrz, org_tc_dry, org_tc_thre_f, org_tc_thre_h,
          org_tc_depth;
 
+  // Option 2 (v5h): lateral ("fill and spill") drainage of
+  // thawed near-surface organic layers (Quinton & Marsh 1999; Quinton et al.
+  // 2000) towards the peat retention capacity theta_re (Letts et al. 2000, as in
+  // CLASS/CLASSIC organic soils), cf. the CLM5 perched-water-table lateral
+  // drainage (Lawrence et al. 2018/2019). Per day, for every fully thawed
+  // fibric/humic layer with top < org_drain_depth:
+  //   drain = org_drain_rate * max(0, liq - theta_re*dz*1000)   [mm]
+  // booked as subsurface drainage (qdrain). org_drain_rate <= 0 (default) = off.
+  // Keys (defaults): org_drain_rate 0 [1/day], org_drain_thre_f 0.275,
+  // org_drain_thre_h 0.62, org_drain_depth 0.3 [m].
+  double org_drain_rate, org_drain_thre_f, org_drain_thre_h, org_drain_depth;
+
   // Maps holding data about variables to be output at specific timesteps
   // C++11 would allow the use of unordered_maps, which have a faster
   // by-key access time.

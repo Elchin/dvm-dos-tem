@@ -41,6 +41,10 @@ Soil_Env::Soil_Env() {
   frozen_infil_eice = -1.0;
   frozen_infil_mm = 0.0;
   soil_evap_beta = 0;
+  org_drain_rate = 0.0; // Option 2 (v5h), off
+  org_drain_thre_f = 0.275;
+  org_drain_thre_h = 0.62;
+  org_drain_depth = 0.3;
 };
 
 Soil_Env::~Soil_Env() {
@@ -729,6 +733,13 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
       checkSoilLiquidWaterValidity(fstsoill, topind);
     }
   }
+  // Option 2 (v5h): lateral drainage of thawed near-surface
+  // organic layers (off unless org_drain_rate > 0). Same thawed-top condition
+  // as the Richards branch above.
+  if(org_drain_rate > 0.0 && ground->fstshlwl->frozen != 1
+     && ground->fstmossl->frozen != 1){
+    ed->d_soi2l.qdrain += orgLateralDrain();
+  }
   //for moss layers excluded from hydrological process, match
   //water to first shallow layer.
   currl = ground->fstshlwl->prevl;
@@ -742,6 +753,32 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   };
 }
 
+
+// Option 2 (v5h): see ModelData::org_drain_rate.
+double Soil_Env::orgLateralDrain() {
+  double total = 0.0;
+  double rate = fmin(org_drain_rate, 1.0);
+  Layer* currl = ground->fstshlwl;
+  while(currl != NULL && currl->isSoil && currl->isOrganic
+        && currl->z < org_drain_depth){
+    if(currl->frozen == -1){
+      double thre = currl->isHumic ? org_drain_thre_h : org_drain_thre_f;
+      thre = fmin(fmax(thre, 0.0), currl->poro);
+      double liq_re = fmax(thre * DENLIQ * currl->dz, currl->minliq);
+      double excess = currl->liq - liq_re;
+      if(excess > 0.0){
+        double d = rate * excess;
+        currl->liq -= d;
+        total += d;
+        if(currl->indl >= 0 && currl->indl < MAX_SOI_LAY){
+          ed->d_soi2l.layer_drain[currl->indl] += d;
+        }
+      }
+    }
+    currl = currl->nextl;
+  }
+  return total;
+}
 
 double Soil_Env::getPenMonET(const double & ta, const double& vpd,
                              const double &irad, const double &rv,

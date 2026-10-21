@@ -267,6 +267,10 @@ void Cohort::initialize_state_parameters() {
   SoilLayer::org_tc_thre_f = md->org_tc_thre_f;
   SoilLayer::org_tc_thre_h = md->org_tc_thre_h;
   SoilLayer::org_tc_depth  = md->org_tc_depth;
+  soilenv.org_drain_rate   = md->org_drain_rate;   // Option 2 (v5h)
+  soilenv.org_drain_thre_f = md->org_drain_thre_f;
+  soilenv.org_drain_thre_h = md->org_drain_thre_h;
+  soilenv.org_drain_depth  = md->org_drain_depth;
   soilenv.soil_evap_beta = md->soil_evap_beta;       // DRAFT (daily-structural)
   soilbgc.initializeParameter();
 

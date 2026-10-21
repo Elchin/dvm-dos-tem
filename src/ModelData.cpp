@@ -137,6 +137,11 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
   org_tc_thre_f = controldata["model_settings"].get("org_tc_thre_f", 0.275).asDouble();
   org_tc_thre_h = controldata["model_settings"].get("org_tc_thre_h", 0.62).asDouble();
   org_tc_depth  = controldata["model_settings"].get("org_tc_depth", 10.0).asDouble();
+  // Option 2 (v5h), default rate 0 = off
+  org_drain_rate   = controldata["model_settings"].get("org_drain_rate", 0.0).asDouble();
+  org_drain_thre_f = controldata["model_settings"].get("org_drain_thre_f", 0.275).asDouble();
+  org_drain_thre_h = controldata["model_settings"].get("org_drain_thre_h", 0.62).asDouble();
+  org_drain_depth  = controldata["model_settings"].get("org_drain_depth", 0.3).asDouble();
   if (climate_timestep.empty()) {
     climate_timestep = "monthly";
   }
