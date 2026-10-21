@@ -829,7 +829,7 @@ void Stefan::updateWaterAfterFront(Layer* toplayer) {
 
     if (currl->ice>=(currl->maxice-icebylwc)) {
       double icecap = fmax(0., currl->maxice-icebylwc);
-      // DRAFT leak fix 1/3 (NOT MERGED): freezing a near-saturated soil layer needs
+      // Water-leak fix 1/3 (v5f): freezing a near-saturated soil layer needs
       // more pore volume than exists (ice is ~9% less dense than water). The excess
       // used to be deleted ("what to do about the 'extra' water???"). The layer state
       // is unchanged, but the water is now booked as expelled -> subsurface drainage.
