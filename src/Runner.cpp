@@ -3592,8 +3592,12 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
       double nlost;
       //monthly
       if(curr_spec.monthly){
-        nlost = cohort.bdall->m_soi2l.avlnlost
-              + cohort.bdall->m_soi2l.orgnlost;
+        // orgnlost is not a realised flux: in baseline mode Soil_Bgc sets it to the
+        // excess of soil organic N over SOC/nmincnsoil, but that excess is never removed
+        // from the ORGN pools, so it was counted again every month (~12x the excess per
+        // year, e.g. ~6400 gN/m2/yr at HPC nfeed with flat N stocks). Report the
+        // inorganic (AVLN) leaching loss only, as described in output_spec.csv.
+        nlost = cohort.bdall->m_soi2l.avlnlost;
         outhold.nlost_for_output.push_back(nlost);
 
         if(output_this_timestep){
@@ -3603,8 +3607,12 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
       }
       //yearly
       else if(curr_spec.yearly){
-        nlost = cohort.bdall->y_soi2l.avlnlost
-              + cohort.bdall->y_soi2l.orgnlost;
+        // orgnlost is not a realised flux: in baseline mode Soil_Bgc sets it to the
+        // excess of soil organic N over SOC/nmincnsoil, but that excess is never removed
+        // from the ORGN pools, so it was counted again every month (~12x the excess per
+        // year, e.g. ~6400 gN/m2/yr at HPC nfeed with flat N stocks). Report the
+        // inorganic (AVLN) leaching loss only, as described in output_spec.csv.
+        nlost = cohort.bdall->y_soi2l.avlnlost;
         outhold.nlost_for_output.push_back(nlost);
 
         if(output_this_timestep){
