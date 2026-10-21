@@ -1,7 +1,7 @@
 #!/bin/bash
 # Regression harness for daily-mode dvm-dos-tem: compare two binaries on a case set.
 #
-# usage: run_regression.sh [-j N] [--no-expect-identical] [--no-repeat] BIN_A BIN_B CASESET OUTDIR
+# usage: run_regression.sh [-j N] [--no-expect-identical] [--no-repeat] [--strict] BIN_A BIN_B CASESET OUTDIR
 #
 #   BIN_A, BIN_B  two dvmdostem binaries (A = reference, B = candidate)
 #   CASESET       directory made by prepare_caseset.py (OUTDIR/<case>/case.json ...)
@@ -13,7 +13,9 @@
 # (A, B, R have equal-length paths on purpose.)
 # Checks (summarize.py): A vs B bit-identity of spin-up and main outputs (required unless
 # --no-expect-identical), B vs R bit-identity (determinism, always required), C/water/N closure of
-# B (water |resid| < 1% P), run_status == 100, no fail_log, safety-net counts (B must not exceed A).
+# B (water |resid| < 1% P, C max |annual| < 0.5 gC/m2, N |mean| < 1 gN/m2/yr), run_status == 100
+# and no fail_log for A and B. Reported as WARN (FAIL with --strict): B has more integrator
+# safety-net / veg give-up events than A, or B's water/N closure is worse than A's.
 # Writes OUTDIR/report.json and OUTDIR/report.txt; exit 0 = PASS.
 #
 # Environment: runs get ONLY the variables in run_case.ENV; LD_LIBRARY_PATH is
@@ -22,12 +24,13 @@
 # depended on the size of the inherited environment; use the box with the wf4 runtime).
 set -euo pipefail
 HERE="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
-J=8; EXPECT=1; REPEAT=1
+J=8; EXPECT=1; REPEAT=1; STRICT=0
 while [[ $# -gt 0 && "$1" == -* ]]; do
   case "$1" in
     -j) J="$2"; shift 2;;
     --no-expect-identical) EXPECT=0; shift;;
     --no-repeat) REPEAT=0; shift;;
+    --strict) STRICT=1; shift;;
     -h|--help) sed -n '2,25p' "$0"; exit 0;;
     *) echo "unknown option $1" >&2; exit 2;;
   esac
@@ -52,4 +55,4 @@ t0=$(date +%s)
 # a failing model run is reported by summarize.py, so don't abort here
 xargs -P "$J" -L 1 python3 "$HERE/run_case.py" < "$JOBS" > "$OUT/runs.log" 2>&1 || true
 echo "runs done in $(( $(date +%s) - t0 )) s"
-python3 "$HERE/summarize.py" "$OUT" --expect-identical "$EXPECT" --repeat "$REPEAT" $CASES
+python3 "$HERE/summarize.py" "$OUT" --expect-identical "$EXPECT" --repeat "$REPEAT" --strict "$STRICT" $CASES

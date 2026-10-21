@@ -61,7 +61,7 @@ TEST_CASE("snow, cold clear night: energy balance closes, Ts <= 0 and below Tair
   CHECK(f.col.g.seb_melt == 0.0);
   CHECK(f.se.sebdiag.h < 0.0);                     // sensible heat towards the colder surface
   CHECK(f.se.sebdiag.iters < 60);
-  CHECK(f.se.sebdiag.alb == doctest::Approx(0.8)); // tem < -10 -> albmax... (vis 0.9 / nir clamp)
+  CHECK(f.se.sebdiag.alb == doctest::Approx(0.8)); // snow tem = -10 C -> albmax
 }
 
 TEST_CASE("snow, warm sunny day: Ts = 0, energy surplus melts snow (melt = Qmelt * 86400 / Lf)") {
@@ -151,6 +151,31 @@ TEST_CASE("v5j snow_tc_form = 1: documented jump at 600 kg/m3 (Sturm 0.696 -> Go
   StaticRestore r; SnowLayer s; s.dz = 0.1; SnowLayer::snow_tc_form = 1;
   s.rho = 600.0; double a = s.getThermalConductivity(); s.rho = 600.001; double b = s.getThermalConductivity();
   CHECK(a == doctest::Approx(0.6959).epsilon(1e-3)); CHECK(b == doctest::Approx(1.044).epsilon(1e-3));
+}
+
+} // TEST_SUITE snow
+
+TEST_SUITE("snow") {
+
+TEST_CASE("snow albedo: albmax at -10 C, linear to albmin at 0 C, NIR = VIS") {
+  Snow_Env se; se.snowenvpar.albmax = 0.8; se.snowenvpar.albmin = 0.4;
+  CHECK(se.getAlbedoVis(-10.0) == doctest::Approx(0.8));
+  CHECK(se.getAlbedoVis(-5.0) == doctest::Approx(0.6));
+  CHECK(se.getAlbedoVis(0.0) == doctest::Approx(0.4));
+  CHECK(se.getAlbedoVis(3.0) == doctest::Approx(0.4));
+  CHECK(se.getAlbedoNir(-5.0) == se.getAlbedoVis(-5.0));
+}
+
+// KNOWN BUG (reported, not fixed; legacy code): Snow_Env::getAlbedoVis returns a
+// hard-coded 0.9 below -10 C instead of snowenvpar.albmax, so with the shipped
+// parameters (snwalbmax 0.8) snow albedo jumps from 0.9 to 0.8 at -10 C and exceeds
+// the parameterised maximum on cold days (affects snow SW reflection/sublimation and
+// the v5j SEB).
+TEST_CASE("snow albedo never exceeds albmax and is continuous at -10 C [KNOWN BUG: xfail]"
+          * doctest::should_fail(true)) {
+  Snow_Env se; se.snowenvpar.albmax = 0.8; se.snowenvpar.albmin = 0.4;
+  CHECK(se.getAlbedoVis(-10.001) == doctest::Approx(se.getAlbedoVis(-10.0)).epsilon(1e-3));
+  CHECK(se.getAlbedoVis(-30.0) <= 0.8);
 }
 
 } // TEST_SUITE snow
