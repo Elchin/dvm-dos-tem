@@ -406,6 +406,7 @@ int ntasks = 1;
     }
   }
 
+  int n_cells_failed = 0; // cells that ended in STATUS_FAIL or STATUS_TIMEOUT (sets the exit code)
   if (args->get_loop_order() == "space-major") {
 
     // y <==> row <==> lat
@@ -496,6 +497,8 @@ int ntasks = 1;
             BOOST_LOG_SEV(glg, warn) << "Time Exception (row, col): (" << rowidx << ", " << colidx << "): " << e.what();
 
             write_status_info(run_status_fname, "run_status", rowidx, colidx, STATUS_TIMEOUT); // <- what if this throws??
+            #pragma omp atomic
+            n_cells_failed++;
             BOOST_LOG_SEV(glg, warn) << "End of Time Exception handler";
 
           }
@@ -512,6 +515,8 @@ int ntasks = 1;
 
             // Write to fail_mask.nc file?? or json? might be good for visualization
             write_status_info(run_status_fname, "run_status", rowidx, colidx, STATUS_FAIL); // <- what if this throws??
+            #pragma omp atomic
+            n_cells_failed++;
             BOOST_LOG_SEV(glg, warn) << "End of exception handler.";
 
           }
@@ -552,6 +557,11 @@ int ntasks = 1;
   BOOST_LOG_SEV(glg, info) << "Total Seconds: " << difftime(etime, stime);
   //cout as well as log, since Atlas runs have logging disabled.
   std::cout << "Total Seconds: " << difftime(etime, stime) << std::endl;
+  if (n_cells_failed > 0) {
+    // Non-zero exit status so that callers notice failed cells without parsing run_status.nc.
+    std::cerr << "dvmdostem: " << n_cells_failed << " cell(s) failed or timed out (see run_status.nc / fail_log.txt); exit code 2" << std::endl;
+    return 2;
+  }
   return 0;
 } /* End main() */
 
