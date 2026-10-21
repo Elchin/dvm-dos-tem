@@ -40,6 +40,10 @@ public:
   double frozen_infil_mm; // water infiltrated into frozen soil today (mm)
   int soil_evap_beta;     // DRAFT: see ModelData::soil_evap_beta (0 = off)
   double evap_unapplied_mm;
+  // Fix (c) (v5j): per-layer flag (index as root_water_up) = 1 if today's root
+  // uptake from that layer was actually applied by updateDailySM, else 0.
+  // Filled every call; only used when model_settings.nonvasc_trans_withdraw = 1.
+  double uptake_applied[MAX_SOI_LAY];
   // Option 2 (v5h): lateral drainage of thawed near-surface
   // organic layers towards the peat retention capacity; see ModelData.h.
   double org_drain_rate, org_drain_thre_f, org_drain_thre_h, org_drain_depth;
