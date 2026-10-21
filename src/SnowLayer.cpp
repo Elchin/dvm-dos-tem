@@ -84,8 +84,14 @@ double SnowLayer::getThermCond5Sturm() {
   return tc;
 };
 
+int SnowLayer::snow_tc_form = 0; // Option 4 (v5j) SEB, legacy Goodrich
+
 double SnowLayer::getThermCond() {
   double tc=0;
+  if (snow_tc_form == 1 && rho <= 600.0) { // Option 4 (v5j) SEB: Sturm et al. 1997
+    tc = getThermCond5Sturm();
+    return fmax(tc, 0.023);
+  }
 
   //From Jordan 1991, referenced in Oleson 2004
   //tc = TCAIR + (7.75e-5 * rho + 1.105e-6*rho*rho)*(TCICE-TCAIR);

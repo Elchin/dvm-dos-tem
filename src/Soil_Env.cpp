@@ -30,6 +30,8 @@
  */
 
 #include "../include/Soil_Env.h"
+#include "../include/Climate.h" // Option 4 (v5j) SEB: Climate::vp_hpa_fix
+#include "../include/Snow_Env.h"
 
 #include "../include/TEMLogger.h"
 extern src::severity_logger< severity_level > glg;
@@ -46,6 +48,10 @@ Soil_Env::Soil_Env() {
   org_drain_thre_f = 0.275;
   org_drain_thre_h = 0.62;
   org_drain_depth = 0.3;
+  seb_scheme = 0; // Option 4 (v5j) SEB, off
+  seb_fc_last = 0.0;
+  snowenvp = NULL;
+  sebdiag.used = 0;
 };
 
 Soil_Env::~Soil_Env() {
@@ -267,6 +273,20 @@ void Soil_Env::updateDailyGroundT(const double & tdrv, const double & dayl) {
     ed->d_snw2a.sublim = 0.0;
   }
 
+  // Option 4 (v5j) SEB: replace the n-factor surface temperature
+  // by the daily SEB skin temperature (scheme 1: always; 2: snow only).
+  if (seb_scheme > 0) {
+    ground->seb_on = false;
+    ground->seb_melt = 0.0;
+    ground->seb_sublim = 0.0;
+    sebdiag.used = 0;
+    if (seb_scheme == 1 || ground->toplayer->isSnow) {
+      tsurface = solveSEB(tdrv);
+      ground->seb_on = true;
+      ground->seb_ts = tsurface;
+    }
+  }
+
   // solution for snow-soil column thermal process
   int nstep = 1;
 
@@ -321,6 +341,118 @@ void Soil_Env::updateDailyGroundT(const double & tdrv, const double & dayl) {
   retrieveDailyFronts(); //update 'ed' with new soil thawing/freezing
                          //  fronts, and daily 'ald', 'cld'
 };
+
+/** Option 4 (v5j) SEB. Daily-mean skin energy balance of the top
+* layer (snow or moss/soil), solved for Ts by safeguarded Newton/bisection:
+*   (1-alb)*SW_g + eps*LW_g - eps*sigma*Ts^4 - H(Ts) - LE(Ts) - G(Ts) = 0
+* SW_g: SW reaching the ground (same expression as updateDailySurfFlux);
+* LW_g = (1-fc)*LW_sky + fc*sigma*Ta^4, fc = 1 - SW_g/SW_top (canopy-obscured
+*   sky fraction, last lit-day value in polar night);
+* H = rho*cp*CH*U*(Ts-Ta), CH = k^2/(ln(zu/z0) ln(zt/z0h)) * f(Ri_b),
+*   z0h = z0/10, stable f = 1/(1+b*Ri_b), unstable f = min(3, sqrt(1+16|Ri_b|));
+* LE: snow = Ls*rho*CH*U*0.622/p*(esat_ice(Ts)-ea) (sublimation);
+*     soil = Lv*(soil evaporation + seb_tran_frac*transpiration) of today
+*     (the model's own ET, fixed: keeps energy and water consistent);
+* G = Lam*(Ts-T1), Lam = 1/(1/100 + 0.5*dz1/k1), i.e. the same top conductance
+*   the temperature solver uses with its virtual boundary layer (cn = 100).
+* Over snow Ts <= 0; a surplus at Ts = 0 melts snow (seb_melt).
+*/
+double Soil_Env::solveSEB(const double & tdrv) {
+  Layer* top = ground->toplayer;
+  const bool snow = top->isSnow;
+  const double sig = 5.67e-8, karman = 0.4, rd = 287.04, cp = 1004.64;
+  const double ta = tdrv, TaK = ta + 273.15;
+  const double p = seb_pres;
+  const double rho = p / (rd * TaK);
+  // vapor_press input is hPa; d_atmd.vp is already Pa when vp_hpa_fix = 1 (v5i)
+  const double ea = fmax(ed->d_atmd.vp, 0.0) * ((Climate::vp_hpa_fix == 1) ? 1.0 : 100.0);
+  // radiation
+  double fpcsum = cd->m_vegd.fpcsum;
+  double insw = ed->d_v2g.swthfl * fpcsum + ed->d_a2l.nirr * (1. - fpcsum);
+  if (ed->d_a2l.nirr > 10.0) {
+    seb_fc_last = fmin(0.9, fmax(0.0, 1.0 - insw / ed->d_a2l.nirr));
+  }
+  double fc = seb_fc_last;
+  double alb, emis, z0;
+  if (snow) {
+    alb = 0.5 * snowenvp->getAlbedoVis(top->tem) + 0.5 * snowenvp->getAlbedoNir(top->tem);
+    emis = seb_emis_snow; z0 = seb_z0_snow;
+  } else {
+    SoilLayer* sl = dynamic_cast<SoilLayer*>(top);
+    alb = 0.5 * sl->getAlbedoVis() + 0.5 * sl->getAlbedoNir();
+    emis = seb_emis_soil; z0 = seb_z0_soil;
+  }
+  double lwsky = ed->seb_lwdown;
+  double lwin = (1.0 - fc) * lwsky + fc * sig * pow(TaK, 4.0);
+  double swabs = (1.0 - alb) * insw;
+  double U = (seb_wind >= 0.0) ? seb_wind : ed->seb_wind;
+  U = fmax(U, seb_minwind);
+  double chn = karman * karman / (log(seb_zwind / z0) * log(seb_ztemp / (0.1 * z0)));
+  // ground conductance (same as the solver's top half-layer + virtual layer)
+  double k1 = fmax(top->getThermalConductivity(), 1.0e-3);
+  double dz1 = fmax(top->dz, 1.0e-4);
+  double lam = 1.0 / (1.0 / 100.0 + 0.5 * dz1 / k1);
+  double t1 = top->tem;
+  // latent heat of snow-free ground: the model's own ET today (W/m2)
+  double le_soil = 0.0;
+  if (!snow) {
+    le_soil = LHVAP * (fmax(ed->d_soi2a.evap, 0.0) + seb_tran_frac * fmax(ed->d_v2a.tran, 0.0)) / 86400.0;
+  }
+  double h_, le_, g_, lwout_;
+  auto chu = [&](double ts) {
+    double ri = 9.81 * seb_ztemp * (ta - ts) / (0.5 * (TaK + ts + 273.15) * U * U);
+    double f;
+    if (ri >= 0.0) { f = (seb_stab_b > 0.0) ? 1.0 / (1.0 + seb_stab_b * ri) : 1.0; }
+    else { f = fmin(3.0, sqrt(1.0 - 16.0 * ri)); }
+    return chn * f * U;
+  };
+  auto esat = [](double t) { // Pa, as Climate::calculate_saturated_vapor_pressure
+    return (t > 0) ? 611.2 * exp(17.63 * t / (243.12 + t)) : 611.2 * exp(17.27 * t / (272.62 + t));
+  };
+  auto F = [&](double ts) {
+    double c = chu(ts);
+    h_ = rho * cp * c * (ts - ta);
+    if (snow) { le_ = LHSUB * rho * c * 0.622 / p * (esat(ts) - ea); }
+    else { le_ = le_soil; }
+    g_ = lam * (ts - t1);
+    lwout_ = emis * sig * pow(ts + 273.15, 4.0) + (1.0 - emis) * lwin;
+    return swabs + lwin - lwout_ - h_ - le_ - g_;
+  };
+  // F is monotonically decreasing in Ts: bracket and Newton with bisection safeguard
+  double lo = ta - 60.0, hi = ta + 60.0;
+  if (snow) { hi = fmin(hi, 0.0); lo = fmin(lo, hi - 1.0); }
+  double ts, qmelt = 0.0; int it = 0;
+  double flo = F(lo), fhi = F(hi);
+  if (snow && fhi >= 0.0) {
+    ts = 0.0; qmelt = fhi; // surplus at the melting point
+  } else if (flo <= 0.0) {
+    ts = lo;
+  } else if (fhi >= 0.0) {
+    ts = hi;
+  } else {
+    ts = fmin(hi, fmax(lo, ta));
+    for (it = 0; it < 60; ++it) {
+      double f0 = F(ts);
+      if (fabs(f0) < 1.0e-6) { break; }
+      if (f0 > 0.0) { lo = ts; } else { hi = ts; }
+      double d = (F(ts + 1.0e-3) - f0) / 1.0e-3;
+      double tn = (d < 0.0) ? ts - f0 / d : 0.5 * (lo + hi);
+      if (!(tn > lo && tn < hi)) { tn = 0.5 * (lo + hi); }
+      if (fabs(tn - ts) < 1.0e-7) { ts = tn; break; }
+      ts = tn;
+    }
+  }
+  F(ts); // final fluxes
+  if (snow) {
+    ground->seb_melt = fmax(qmelt, 0.0) * 86400.0 / LHFUS;   // mm/day
+    ground->seb_sublim = fmax(le_, 0.0) * 86400.0 / LHSUB;   // mm/day
+  }
+  sebdiag.ta = ta; sebdiag.ts = ts; sebdiag.swin = insw; sebdiag.alb = alb;
+  sebdiag.lwsky = lwsky; sebdiag.lwin = lwin; sebdiag.lwout = lwout_; sebdiag.h = h_;
+  sebdiag.le = le_; sebdiag.g = g_; sebdiag.qmelt = qmelt; sebdiag.wind = U; sebdiag.fc = fc;
+  sebdiag.lam = lam; sebdiag.t1 = t1; sebdiag.snow = snow ? 1 : 0; sebdiag.iters = it; sebdiag.used = 1;
+  return ts;
+}
 
 void Soil_Env::updateDailySurfFlux(Layer* toplayer, const double & dayl) {
   // soil surface radiation budget

@@ -14,6 +14,9 @@ void Snow_Env::updateDailyM(const double & tdrv) {
   // nfactor(w) = 1 this only matters on days where the summer n-factor is in
   // effect (n-factor is chosen from the previous day's Tair, Cohort.cpp ~503).
   tsurface = tdrv *ed->d_soid.nfactor;
+  if (ground->seb_on) { // Option 4 (v5j) SEB
+    tsurface = ground->seb_ts;
+  }
   //dsmass is the total snowfall during one timestep:
   double dsmass = ed->d_v2g.sthfl + ed->d_v2g.sdrip //these 2 items has already
                                                     //  been adjusted by FPC
@@ -96,7 +99,13 @@ void Snow_Env::updateDailySurfFlux( Layer* toplayer, const double & tdrv) {
     ed->d_snw2a.swrefl = insw *0.5 * albnir + insw *0.5 * albvis;
     double rn = insw- ed->d_snw2a.swrefl;
     double pradmelt = 0.;
-    double sublim = getSublimation(rn, ed->d_snws.swesum, tdrv, pradmelt); //mm SWE/day, or kgSW/day
+    double sublim;
+    if (ground->seb_on) { // Option 4 (v5j) SEB: melt and sublimation from the SEB
+      sublim = ground->seb_sublim;
+      pradmelt = ground->seb_melt;
+    } else {
+      sublim = getSublimation(rn, ed->d_snws.swesum, tdrv, pradmelt); //mm SWE/day, or kgSW/day
+    }
     Layer * currl=toplayer;
     double actsub = 0.;
     double actmelt = 0.;

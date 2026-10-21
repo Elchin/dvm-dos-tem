@@ -152,6 +152,22 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
   nfactor_sameday = controldata["model_settings"].get("nfactor_sameday", 0).asInt();
   // Fix (c) (v5j), default 0 = off (legacy)
   nonvasc_trans_withdraw = controldata["model_settings"].get("nonvasc_trans_withdraw", 0).asInt();
+  // Option 4 (v5j): SEB top boundary, default seb_scheme 0 = off (see ModelData.h)
+  seb_scheme    = controldata["model_settings"].get("seb_scheme", 0).asInt();
+  seb_z0_snow   = controldata["model_settings"].get("seb_z0_snow", 0.001).asDouble();
+  seb_z0_soil   = controldata["model_settings"].get("seb_z0_soil", 0.01).asDouble();
+  seb_zwind     = controldata["model_settings"].get("seb_zwind", 10.0).asDouble();
+  seb_ztemp     = controldata["model_settings"].get("seb_ztemp", 2.0).asDouble();
+  seb_emis_snow = controldata["model_settings"].get("seb_emis_snow", 0.99).asDouble();
+  seb_emis_soil = controldata["model_settings"].get("seb_emis_soil", 0.97).asDouble();
+  seb_wind      = controldata["model_settings"].get("seb_wind", -1.0).asDouble();
+  seb_minwind   = controldata["model_settings"].get("seb_minwind", 0.5).asDouble();
+  seb_stab_b    = controldata["model_settings"].get("seb_stab_b", 10.0).asDouble();
+  seb_tran_frac = controldata["model_settings"].get("seb_tran_frac", 1.0).asDouble();
+  seb_pres      = controldata["model_settings"].get("seb_pres", 100000.0).asDouble();
+  seb_lw_source = controldata["model_settings"].get("seb_lw_source", 0).asInt();
+  seb_diag      = controldata["model_settings"].get("seb_diag", 0).asInt();
+  seb_snow_tc   = controldata["model_settings"].get("seb_snow_tc", 0).asInt();
   if (climate_timestep.empty()) {
     climate_timestep = "monthly";
   }
@@ -165,6 +181,18 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     std::cerr << "FATAL: Invalid model_settings.climate_timestep: '"
               << climate_timestep << "' (must be 'monthly' or 'daily')" << std::endl;
     exit(EXIT_FAILURE);
+  }
+
+  if (seb_scheme > 0 && !daily_proj_climate) {
+    std::cerr << "FATAL: model_settings.seb_scheme > 0 requires climate_timestep 'daily'" << std::endl;
+    exit(EXIT_FAILURE);
+  }
+  if (seb_scheme < 0 || seb_scheme > 2 || seb_snow_tc < 0 || seb_snow_tc > 1 || seb_lw_source < 0 || seb_lw_source > 1) {
+    std::cerr << "FATAL: model_settings seb_scheme must be 0/1/2, seb_snow_tc and seb_lw_source 0/1" << std::endl;
+    exit(EXIT_FAILURE);
+  }
+  if (seb_scheme == 1) {
+    std::cerr << "WARNING: model_settings.seb_scheme = 1 is EXPERIMENTAL (SEB on snow-free days too)" << std::endl;
   }
 
   // These must be directories. If user forgets to add the trailing slash, 

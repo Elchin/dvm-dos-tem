@@ -25,6 +25,11 @@ public:
 
   void clear();
 
+  // Option 4 (v5j) SEB: today's LW down (W/m2) and wind (m/s);
+  // -1 when not available (SEB off).
+  double seb_lwdown = -1.0;
+  double seb_wind = -1.0;
+
   // for daily  - 'd' is daily
   atmstate_env d_atms;  // last 's' - state variable
   vegstate_env d_vegs;

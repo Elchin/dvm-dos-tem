@@ -892,6 +892,10 @@ void EnvData::update_from_climate(const Climate& clm, const int midx, const int 
   }
   this->d_atmd.svp = clm.svp_d[doy_idx];
   this->d_atmd.vpd = clm.vpd_d[doy_idx];
+  if (!clm.lwdown_d.empty()) { // Option 4 (v5j) SEB only
+    this->seb_lwdown = clm.lwdown_d[doy_idx];
+    this->seb_wind = clm.wind_d[doy_idx];
+  }
 
   // Adjust days-since-rain (used by Soil_Env::getEvaporation(), where the
   // realized fraction of potential soil evaporation is 0.3/dsr^2, floored at
