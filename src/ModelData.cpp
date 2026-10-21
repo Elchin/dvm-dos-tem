@@ -148,6 +148,8 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
   mineral_tcdry_form = controldata["model_settings"].get("mineral_tcdry_form", 0).asInt();
   // Fix (a) (v5i), default 0 = off (legacy)
   vp_hpa_fix = controldata["model_settings"].get("vp_hpa_fix", 0).asInt();
+  // Fix (b) (v5i), default 0 = off (legacy)
+  nfactor_sameday = controldata["model_settings"].get("nfactor_sameday", 0).asInt();
   if (climate_timestep.empty()) {
     climate_timestep = "monthly";
   }

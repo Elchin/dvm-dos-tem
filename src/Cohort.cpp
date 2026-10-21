@@ -497,7 +497,17 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
   edall->grnd_beginOfMonth();
 
   // (iii) daily light/water processes at plant canopy
-  double tdrv, daylength;
+  // Fix (b) (v5i): tdrv used to be declared uninitialized here, yet it selects
+  // the n-factor below before being set from today's Tair, i.e. the legacy
+  // selection uses the PREVIOUS day's Tair, and on the first day of each month
+  // an uninitialized value (undefined behaviour). In the v5h binary that stack
+  // slot held a stale stack address (e.g. 0x00007ffd..., read as a tiny
+  // positive denormal ~6.95e-310; checked with gdb on bin_v5h), so day 1 of
+  // every month used the SUMMER n-factor. Initializing tdrv to a positive value
+  // (only its sign matters before it is set below) makes that behaviour defined
+  // and keeps the legacy output bit-identical; nfactor_sameday = 1 is the fix.
+  double tdrv = 1.0;
+  double daylength;
   BOOST_LOG_NAMED_SCOPE("D") {
   for(int id = 0; id < dinmcurr; id++) {
     int doy = temutil::day_of_year(currmind, id);
@@ -520,9 +530,14 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
     // that calculation; for now, just use air surface temp in winter (Raleigh
     // shows it's well-correlated but air tends to be warmer by ~5 deg C).
 
+    // Fix (b) (v5i), OFF by default: model_settings.nfactor_sameday. 1 = select
+    // the n-factor from the CURRENT day's Tair (climate.tair_d[doy], the value
+    // update_from_climate() puts into d_atms.ta below); 0 (default) = legacy,
+    // the previous day's Tair (tdrv, defined since v5i, see above).
+    double tsel = (md->nfactor_sameday == 1) ? (double)climate.tair_d[doy] : tdrv;
     edall->d_soid.nfactor = soilenv.envpar.nfactor_s; //summer nfactor (max nfactor)
     //If airtemp is freezing, use winter nfactor
-    if(tdrv <= 0.0){
+    if(tsel <= 0.0){
       edall->d_soid.nfactor = soilenv.envpar.nfactor_w;
     }
 
@@ -651,7 +666,7 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
           cout<<"checking";
         }
     //*/
-    tdrv = edall->d_atms.ta;
+    tdrv = edall->d_atms.ta; // (legacy: also the n-factor selector for the NEXT day)
     //Snow-soil Env-module: ground/soil temperatur e- moisture
     //  dynamics at daily timestep
     //note: hydrology is done separately for snow and soil,

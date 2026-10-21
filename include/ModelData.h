@@ -144,6 +144,9 @@ public:
   // Fix (a) (v5i): vapor pressure units, see Climate.h. vp_hpa_fix 0 (default)
   // = legacy (hPa vapor_press used as if Pa); 1 = convert to Pa.
   int vp_hpa_fix;
+  // Fix (b) (v5i): n-factor selection day, see Cohort::updateMonthly_Env.
+  // nfactor_sameday 0 (default) = legacy previous-day Tair; 1 = same-day Tair.
+  int nfactor_sameday;
 
   // Maps holding data about variables to be output at specific timesteps
   // C++11 would allow the use of unordered_maps, which have a faster
