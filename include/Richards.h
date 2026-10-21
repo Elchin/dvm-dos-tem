@@ -15,6 +15,10 @@
 #include "SoilLayer.h"
 #include "CrankNicholson.h"
 
+// Richards work arrays are indexed by Layer::indl, which counts snow layers above the
+// soil column (up to MAX_SNW_LAY), and prepareSoilColumn() reads index drainind+1.
+const int MAX_RICH_IND = MAX_SNW_LAY + MAX_SOI_LAY + 2;
+
 class Richards {
 public :
   Richards();
@@ -27,8 +31,8 @@ public :
   double e_ice; //ice impedance factor (CLM5)
 
   //Array to hold lateral drainage values for output to file.
-  double layer_drain[MAX_SOI_LAY];
-  double percolation[MAX_SOI_LAY];
+  double layer_drain[MAX_RICH_IND];
+  double percolation[MAX_RICH_IND];
 
   void update(Layer *fstsoill, Layer* bdrainl, const double & bdraindepth,
               const double & fbaseflow, const double & watertab,
@@ -63,50 +67,50 @@ private:
   //is filled will usually be element 2, corresponding to the index of the first fibric organic layer.
 
   //Hydraulic properties and water fluxes for calculation of percolation and lateral drainage
-  double qtrans[MAX_SOI_LAY+1]; //root water uptake (incoming) (mm/s)
-  double fluxNet0[MAX_SOI_LAY+1]; //column water flux based on solver solution; from CLM fortran code
-  double fluxNet1[MAX_SOI_LAY+1]; //estimated column water flux based on water qin/qout/trans/evap/infil; from CLM fortran code
-  double qin[MAX_SOI_LAY+1]; //water flux into soil layer (mm/s); see CLM 5 eq 7.74
-  double qout[MAX_SOI_LAY+1]; //water flux out of soil layer (mm/s); see CLM 5 eq 7.75
-  double s1[MAX_SOI_LAY+1]; //liquid saturation at the layer interface (unitless); from CLM fortran code
-  double s2[MAX_SOI_LAY+1]; //liquid saturation at the layer node (unitless); from CLM fortran code
-  double imped[MAX_SOI_LAY+1]; // ice impedance (unitless); see CLM 5 eq 7.48
-  double hk[MAX_SOI_LAY+1]; //hydraulic conductivity (mm/s); see CLM 5 eq 7.47
-  double dhkdw[MAX_SOI_LAY+1]; //d(hk)/d(vol_liq); see CLM 5 eqs 7.83-7.84
-  double dsmpdw[MAX_SOI_LAY+1]; //d(smp)/d(vol_liq); see CLM 5 eqs 7.80-7.82
-  double smp[MAX_SOI_LAY+1]; //soil matric potential (mm); see CLM 5 eq 7.53
-  double dqidw0[MAX_SOI_LAY+1]; //d(qin)/d(vol_liq(i-1)); see CLM 5 eq 7.76
-  double dqidw1[MAX_SOI_LAY+1]; //d(qin)/d(vol_liq(i)); see CLM 5 eq 7.77
-  double dqodw1[MAX_SOI_LAY+1]; //d(qout)/d(vol_liq(i)); see CLM 5 eq 7.78
-  double dqodw2[MAX_SOI_LAY+1]; //d(qout)/d(vol_liq(i+1)); see CLM 5 eq 7.79
+  double qtrans[MAX_RICH_IND]; //root water uptake (incoming) (mm/s)
+  double fluxNet0[MAX_RICH_IND]; //column water flux based on solver solution; from CLM fortran code
+  double fluxNet1[MAX_RICH_IND]; //estimated column water flux based on water qin/qout/trans/evap/infil; from CLM fortran code
+  double qin[MAX_RICH_IND]; //water flux into soil layer (mm/s); see CLM 5 eq 7.74
+  double qout[MAX_RICH_IND]; //water flux out of soil layer (mm/s); see CLM 5 eq 7.75
+  double s1[MAX_RICH_IND]; //liquid saturation at the layer interface (unitless); from CLM fortran code
+  double s2[MAX_RICH_IND]; //liquid saturation at the layer node (unitless); from CLM fortran code
+  double imped[MAX_RICH_IND]; // ice impedance (unitless); see CLM 5 eq 7.48
+  double hk[MAX_RICH_IND]; //hydraulic conductivity (mm/s); see CLM 5 eq 7.47
+  double dhkdw[MAX_RICH_IND]; //d(hk)/d(vol_liq); see CLM 5 eqs 7.83-7.84
+  double dsmpdw[MAX_RICH_IND]; //d(smp)/d(vol_liq); see CLM 5 eqs 7.80-7.82
+  double smp[MAX_RICH_IND]; //soil matric potential (mm); see CLM 5 eq 7.53
+  double dqidw0[MAX_RICH_IND]; //d(qin)/d(vol_liq(i-1)); see CLM 5 eq 7.76
+  double dqidw1[MAX_RICH_IND]; //d(qin)/d(vol_liq(i)); see CLM 5 eq 7.77
+  double dqodw1[MAX_RICH_IND]; //d(qout)/d(vol_liq(i)); see CLM 5 eq 7.78
+  double dqodw2[MAX_RICH_IND]; //d(qout)/d(vol_liq(i+1)); see CLM 5 eq 7.79
 
   //Incoming layer property values copied to arrays for convenience.
-  double Bsw[MAX_SOI_LAY+1]; //bsw hornberger constant (unitless) (by horizon type)
-  double ksat[MAX_SOI_LAY+1]; //saturated hydraulic conductivity (mm/s) (by horizon type)
-  double psisat[MAX_SOI_LAY+1]; //saturated soil matric potential (mm/s) (by horizon type)
+  double Bsw[MAX_RICH_IND]; //bsw hornberger constant (unitless) (by horizon type)
+  double ksat[MAX_RICH_IND]; //saturated hydraulic conductivity (mm/s) (by horizon type)
+  double psisat[MAX_RICH_IND]; //saturated soil matric potential (mm/s) (by horizon type)
 
   //Physical values calculated and/or collected to arrays for convenience
-  double vol_liq[MAX_SOI_LAY+1];//volumetric liquid water (mm3 liquid water/mm3 soil)
-  double vol_ice[MAX_SOI_LAY+1];//volumetric ice (mm3 ice/mm3 soil)
-  double vol_h2o[MAX_SOI_LAY+1]; //total volumetric water (mm3 liq + mm3 ice)/mm3 soil)
-  double vol_poro[MAX_SOI_LAY+1]; //total layer porosity
-  double liq_poro[MAX_SOI_LAY+1]; //porosity available to be filled by liquid (vol_poro - vol_ice)
-  double soi_liq[MAX_SOI_LAY+1]; //layer liquid water (kg/m2 or mm)
-  double ice_frac[MAX_SOI_LAY+1]; //fraction of porosity filled by ice (vol_ice/vol_poro)
-  double effminliq[MAX_SOI_LAY+1]; //minimum layer liquid adjusted for frozen layer fraction (kg m-2 or mm)
-  double effmaxliq[MAX_SOI_LAY+1]; //maximum layer liquid adjusted for frozen layer fraction (kg m-2 or mm)
-  double z_h[MAX_SOI_LAY+1]; //depth of layer bottom interface in mm; see CLM 5 Figure 7.2
-  double dzmm[MAX_SOI_LAY+1]; // layer thickness in mm
-  double nodemm[MAX_SOI_LAY+1]; //depth of center of layer in mm; CLM 5 Figure 7.2 'z(i)'
+  double vol_liq[MAX_RICH_IND];//volumetric liquid water (mm3 liquid water/mm3 soil)
+  double vol_ice[MAX_RICH_IND];//volumetric ice (mm3 ice/mm3 soil)
+  double vol_h2o[MAX_RICH_IND]; //total volumetric water (mm3 liq + mm3 ice)/mm3 soil)
+  double vol_poro[MAX_RICH_IND]; //total layer porosity
+  double liq_poro[MAX_RICH_IND]; //porosity available to be filled by liquid (vol_poro - vol_ice)
+  double soi_liq[MAX_RICH_IND]; //layer liquid water (kg/m2 or mm)
+  double ice_frac[MAX_RICH_IND]; //fraction of porosity filled by ice (vol_ice/vol_poro)
+  double effminliq[MAX_RICH_IND]; //minimum layer liquid adjusted for frozen layer fraction (kg m-2 or mm)
+  double effmaxliq[MAX_RICH_IND]; //maximum layer liquid adjusted for frozen layer fraction (kg m-2 or mm)
+  double z_h[MAX_RICH_IND]; //depth of layer bottom interface in mm; see CLM 5 Figure 7.2
+  double dzmm[MAX_RICH_IND]; // layer thickness in mm
+  double nodemm[MAX_RICH_IND]; //depth of center of layer in mm; CLM 5 Figure 7.2 'z(i)'
 
   //Arrays related to iteration and the tridiagonal matrix solution for richards percolation
-  double deltathetaliq[MAX_SOI_LAY+1]; //Results from tridiagonal calculation
-  double amx[MAX_SOI_LAY+1]; //left off-diagonal of tridiagonal matrix for richards solution
-  double bmx[MAX_SOI_LAY+1]; //diagonal of tridiagonal matrix input for richards solution
-  double cmx[MAX_SOI_LAY+1]; //right off-diagonal of tridiagonal matrix input for richards solution
-  double rmx[MAX_SOI_LAY+1]; //forcing term of input for tridiagonal richards solution
-  double dt_dz[MAX_SOI_LAY+1]; //temporary time/thickness variable used in iteration
-  double tridiag_error[MAX_SOI_LAY+1]; //layer-wise error in tridiagonal solver solution per iteration; from CLM 5 eq 7.98
+  double deltathetaliq[MAX_RICH_IND]; //Results from tridiagonal calculation
+  double amx[MAX_RICH_IND]; //left off-diagonal of tridiagonal matrix for richards solution
+  double bmx[MAX_RICH_IND]; //diagonal of tridiagonal matrix input for richards solution
+  double cmx[MAX_RICH_IND]; //right off-diagonal of tridiagonal matrix input for richards solution
+  double rmx[MAX_RICH_IND]; //forcing term of input for tridiagonal richards solution
+  double dt_dz[MAX_RICH_IND]; //temporary time/thickness variable used in iteration
+  double tridiag_error[MAX_RICH_IND]; //layer-wise error in tridiagonal solver solution per iteration; from CLM 5 eq 7.98
 
   //Values related to iteration and the tridiagonal matrix solution for richards percolation
   double max_tridiag_error; //maximum layer-wise error in tridiagonal solver solution per iteration
