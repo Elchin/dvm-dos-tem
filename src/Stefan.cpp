@@ -55,6 +55,9 @@ void Stefan::updateFronts(const double & tdrv, const double &timestep) {
   if (ground->frontsz.empty()) {
     rebuildFrontsFromLayerStates();
   }
+  // Number of fronts before today's front is added (used below to detect that
+  // the new front swept out every existing front).
+  const size_t nfnt_before = ground->frontsz.size();
 
   // find the new front
   double newfntz1 = 0.;
@@ -109,6 +112,15 @@ void Stefan::updateFronts(const double & tdrv, const double &timestep) {
   combineExtraFronts(); //it is possible that there are too many fronts exist
                         //  to hold in 'ed's 'frontz' and 'fronttype', so
                         //  combine them if there are too many
+  // If fronts existed but today's front swept all of them out (e.g. a freezing
+  // front closing a talik by meeting the thawing front at the permafrost table),
+  // the new front has passed through every layer that was not already in its
+  // state, so the whole soil column is now in state 'freezing1'. Without this
+  // flag updateLayerFrozenState() would assign states from each layer's own
+  // temperature sign, which can flip fully frozen layers with tem slightly > 0
+  // to unfrozen (melting all their ice with no latent heat) and leave the column
+  // with frozen layers below unfrozen ones and no front between them.
+  all_fronts_swept = (nfnt_before > 0 && ground->frontsz.empty());
   updateLayerFrozenState(ground->toplayer, freezing1); //this must be done before
                                             //  the following call
   updateWaterAfterFront(ground->toplayer); //after fronts processed, need to
@@ -768,7 +780,10 @@ void Stefan::updateLayerFrozenState(Layer * toplayer, const int freezing1) {
           currl->frozen = -fntouttype;
         }
       } else { // no front at all
-        if (currl->frozen==0 && currl->isSoil){ //suggests that this was a front layer but fronts have been swept out
+        if (all_fronts_swept && currl->isSoil) {
+          currl->frozen = freezing1; // swept by today's front (see updateFronts)
+        }
+        else if (currl->frozen==0 && currl->isSoil){ //suggests that this was a front layer but fronts have been swept out
           currl->frozen = freezing1; // in this case, assume the layer now matches overall forcing.
         }
         else{

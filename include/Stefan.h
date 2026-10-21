@@ -25,6 +25,8 @@ public:
   void updateFronts(const double & tdrv, const double &timestep);
 
 private:
+  bool all_fronts_swept = false; // set in updateFronts(): today's front swept out every existing front
+
 
   Ground *ground;
   Layer *botdrvl;
