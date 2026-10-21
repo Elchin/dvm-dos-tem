@@ -15,7 +15,7 @@ BIN     := dvmdostem_unittest
 
 all: $(BIN)
 
-obj/%.o: %.cpp test_access.h test_helpers.h nc_fixtures.h doctest.h
+obj/%.o: %.cpp test_access.h test_helpers.h nc_fixtures.h doctest.h $(wildcard $(ROOT)/include/*.h)
 	@mkdir -p obj
 	$(CC) -c $(TFLAGS) $(INCLUDES) -I$(ROOT)/include $< -o $@
 
