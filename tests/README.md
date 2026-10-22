@@ -45,7 +45,7 @@ How the tests are written:
 | root_n | test_integrator_bgc.cpp | N-conserving per-layer root N extraction (hand values plus a 200-case property test) |
 | nfactor | test_nfactor.cpp | n-factor selection, nfactor_sameday 0/1, first day of month |
 | seb | test_seb.cpp | v5j SEB scheme 2 (Soil_Env::solveSEB): energy closure, melt, brackets, vp units |
-| fixes_v5k | test_fixes_v5k.cpp | v5k switches: B1 svp over ice (+SEB esat), B2 Richards early-return infiltration, B3 combineExtraFronts termination, B4 snow albedo cap; N1-N3 soil N conservation (deltastate), non-vascular N extraction |
+| fixes_v5k | test_fixes_v5k.cpp | v5k switches: B1 svp over ice (+SEB esat), B2 Richards early-return infiltration, B3 combineExtraFronts termination, B4 snow albedo cap; N1-N3 soil N conservation (deltastate), non-vascular N extraction; C1 soil integrator NMIN tolerance |
 
 Tests in `test_seb.cpp` need the v5j commits (9dae595b and d41c7f79), which are cherry-picked onto this branch.
 
@@ -89,7 +89,7 @@ Checks, in `summarize.py` (results in `out_dir/report.txt` and `report.json`):
 
 * `include/NFactorSelect.h`: `nfactor_sel::selector_tair`, `nfactor_sel::select_nfactor` and `TDRV_MONTH_START`. This is the n-factor selection code from `Cohort::updateMonthly_Env`, moved unchanged. Proven bit-identical on all 8 calibration cases (spin-up and main, every variable) with `nfactor_sameday` = 0 and = 1.
 
-## Switchable fixes (v5k, branch v5k-fixes; all default 0 = legacy, bit-identical when off)
+## Switchable fixes (v5k: merged in daily-climate-mode, tags v5k (B1-B4, N1-N3) and v5k1 (+C1); all default 0 = legacy, bit-identical when off)
 
 | key (model_settings) | values | fixes | tests (switch on) | legacy xfail kept |
 |---|---|---|---|---|
@@ -99,6 +99,7 @@ Checks, in `summarize.py` (results in `out_dir/report.txt` and `report.json`):
 | `snow_albedo_fix` | 0/1 | B4: `Snow_Env::getAlbedoVis` returned 0.9 below -10 C; 1 = snwalbmax | cap, continuity at -10 C | test_seb.cpp |
 | `n_rootless_fix` | 0/1/2 | N1 (draft): rootless layers lost their net mineralisation N (and ignored extraction); 1 = no mineralisation there, 2 = mineralised N to AVLN (extraction applied) | deltastate conservation | (documented in the N1 test, fx = 0) |
 | `n_som_move_fix` | 0/1 | N2 (draft): SOM N moved shallow->deep was overwritten ('=' not '+=') in the top humic layers (main HPC N sink), receivers got the full instead of the thickness share, donors gave N for the cumulative C | deltastate conservation, equal donors | N2 legacy xfail |
+| `soil_nmin_tol_fix` | 0/1 | C1: the soil step control tested the signed net-N-mineralisation accumulator NMIN against ptol*\|NMIN\|; when NMIN ~ 0 every doubled step is rejected, adapt() crawls at dt ~ 2^-19 (264k steps, TVC_B W nfeed Nov 2012 with B1+B2+B4) and the float soil state loses the tiny C decrements to rounding (+2.74 gC unbooked, runtime 29 s vs 16 s); 1 = tolerance ptol*max(\|NMIN\|, \|NIMMOB\|, \|AVLN\|) | boundcon accept/reject cases | legacy-behaviour test (reject on NMIN ~ 0) |
 | `n_nonvasc_extract` | 0/1 | N3 (draft): non-vascular N uptake had no soil extraction (implicit N source); 1 = extracted from moss/fibric layers by avln*liq and capped at 95 % of that avln | afterIntegration extraction | (documented, fx = 0) |
 
-Proof of neutrality: `run_regression.sh` A = bin_v5j vs B = v5k-fixes binary, all new switches 0, on the 8 calib8 cases (with determinism) and on TVC_B + HPC_H1 with the v5j combined-round settings: bit-identical (see /workspace/v5k/V5K_REPORT.md).
+Proof of neutrality: `run_regression.sh` A = bin_v5j vs B = bin_v5k / bin_v5k1, all new switches 0, on the 8 calib8 cases (with determinism) and on TVC_B + HPC_H1 with the v5j combined-round settings: bit-identical (see /workspace/v5k/V5K_REPORT.md).
