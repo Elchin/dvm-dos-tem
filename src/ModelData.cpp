@@ -157,6 +157,12 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
   richards_infil_fix = controldata["model_settings"].get("richards_infil_fix", 0).asInt();
   stefan_fronts_fix  = controldata["model_settings"].get("stefan_fronts_fix", 0).asInt();
   snow_albedo_fix    = controldata["model_settings"].get("snow_albedo_fix", 0).asInt();
+  // Fix C1 (v5k), default 0 = off (legacy)
+  soil_nmin_tol_fix  = controldata["model_settings"].get("soil_nmin_tol_fix", 0).asInt();
+  if (soil_nmin_tol_fix < 0 || soil_nmin_tol_fix > 1) {
+    std::cerr << "FATAL: model_settings soil_nmin_tol_fix must be 0 or 1" << std::endl;
+    exit(EXIT_FAILURE);
+  }
   n_rootless_fix     = controldata["model_settings"].get("n_rootless_fix", 0).asInt(); // Fix N1 (v5k)
   n_som_move_fix     = controldata["model_settings"].get("n_som_move_fix", 0).asInt();     // Fix N2 (v5k)
   n_nonvasc_extract  = controldata["model_settings"].get("n_nonvasc_extract", 0).asInt();  // Fix N3 (v5k)

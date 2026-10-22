@@ -117,6 +117,15 @@ public :
   int blackhole_count;    // cumulative number of adapt() give-ups
   int safetynet_count;    // cumulative number of soil safety-net deliveries
   bool safetynet_fired;   // set by the last updateMonthlySbgc()
+  // Fix C1 (v5k), OFF by default: model_settings.soil_nmin_tol_fix. The soil
+  // step-size control (boundcon) tests the error of the monthly net-N-
+  // mineralisation accumulator NMIN against ptol*|NMIN|. NMIN is a signed net
+  // flux; when mineralisation ~ immobilisation it passes through ~0, every
+  // doubled step is rejected and adapt() crawls at dt ~ 2^-19 (264k steps in
+  // TVC_B Warming nfeed Nov 2012 with B1+B2+B4), and the float state then loses
+  // the tiny C decrements to rounding (+2.74 gC unbooked). 1 = scale the NMIN
+  // tolerance by the gross flux/pool size ptol*max(|NMIN|, |NIMMOB|, |AVLN|).
+  static int nmin_tol_fix;
   float safetynet_t0;     // month fraction already integrated when it gave up
   double safetynet_c;     // C delivered by the last safety net (g/m2)
   double safetynet_n;     // N delivered by the last safety net (g/m2)
