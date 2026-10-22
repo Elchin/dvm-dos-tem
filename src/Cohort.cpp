@@ -25,6 +25,7 @@
 #include "../include/TEMUtilityFunctions.h"
 
 #include "../include/Cohort.h"
+#include "../include/NFactorSelect.h"
 
 extern src::severity_logger< severity_level > glg;
 
@@ -525,7 +526,7 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
   // every month used the SUMMER n-factor. Initializing tdrv to a positive value
   // (only its sign matters before it is set below) makes that behaviour defined
   // and keeps the legacy output bit-identical; nfactor_sameday = 1 is the fix.
-  double tdrv = 1.0;
+  double tdrv = nfactor_sel::TDRV_MONTH_START;
   double daylength;
   BOOST_LOG_NAMED_SCOPE("D") {
   for(int id = 0; id < dinmcurr; id++) {
@@ -553,12 +554,12 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
     // the n-factor from the CURRENT day's Tair (climate.tair_d[doy], the value
     // update_from_climate() puts into d_atms.ta below); 0 (default) = legacy,
     // the previous day's Tair (tdrv, defined since v5i, see above).
-    double tsel = (md->nfactor_sameday == 1) ? (double)climate.tair_d[doy] : tdrv;
-    edall->d_soid.nfactor = soilenv.envpar.nfactor_s; //summer nfactor (max nfactor)
-    //If airtemp is freezing, use winter nfactor
-    if(tsel <= 0.0){
-      edall->d_soid.nfactor = soilenv.envpar.nfactor_w;
-    }
+    // (selection logic in include/NFactorSelect.h, unchanged; seam for unit tests)
+    double tsel = nfactor_sel::selector_tair(md->nfactor_sameday,
+                                             (double)climate.tair_d[doy], tdrv);
+    //summer nfactor (max nfactor); if airtemp is freezing, use winter nfactor
+    edall->d_soid.nfactor = nfactor_sel::select_nfactor(tsel, soilenv.envpar.nfactor_s,
+                                                        soilenv.envpar.nfactor_w);
 
 
     /* Daily processes for a Cohort, Environmental module...
