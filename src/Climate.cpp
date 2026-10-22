@@ -23,6 +23,7 @@
 extern src::severity_logger< severity_level > glg;
 
 int Climate::vp_hpa_fix = 0; // Fix (a) (v5i), default off (legacy)
+int Climate::svp_ice_fix = 0; // Fix B1 (v5k), default off (legacy)
 
 // Should really put these in temutil and then write some test
 // routines that exercise the funcitons over a wide range of values
@@ -55,6 +56,8 @@ float calculate_saturated_vapor_pressure(const float tair) {
 
   if( tair > 0 ) {
     svp = 6.112 * exp(17.63 * tair / (243.12 + tair) ) * 100.0;
+  } else if (Climate::svp_ice_fix == 1) { // Fix B1 (v5k): WMO over ice, eq (2) above
+    svp = 6.112 * exp(22.46 * tair / (272.62 + tair) ) * 100.0;
   } else {
     svp = 6.112 * exp(17.27 * tair / (272.62 + tair) ) * 100.0;
   }

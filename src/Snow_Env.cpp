@@ -1,5 +1,7 @@
 #include "../include/Snow_Env.h"
 
+int Snow_Env::albedo_fix = 0; // Fix B4 (v5k), default off (legacy)
+
 Snow_Env::Snow_Env(): rad_melt(0.) {
 };
 
@@ -157,7 +159,7 @@ double Snow_Env::getAlbedoVis(const double & tem) {
   double vis;
 
   if(tem<-10) {
-    vis =0.9;
+    vis = (albedo_fix == 1) ? (double)snowenvpar.albmax : 0.9; // Fix B4 (v5k)
   } else {
     vis = snowenvpar.albmax - (snowenvpar.albmax -snowenvpar.albmin)
           * (tem+10)/10;

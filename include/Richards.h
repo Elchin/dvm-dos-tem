@@ -27,6 +27,9 @@ public :
   int num_al;   // active layers' layer numbers
   double qdrain; // mm/day
   double qinfil; // mm/day
+  // Fix B2 (v5k): true when the last update() returned early (drainage depth at
+  // or above the top of its domain: no infiltration, evaporation or uptake applied).
+  bool early_return = false;
   double qevap; // mm/day
   double e_ice; //ice impedance factor (CLM5)
 

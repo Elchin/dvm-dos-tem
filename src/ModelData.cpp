@@ -152,6 +152,11 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
   nfactor_sameday = controldata["model_settings"].get("nfactor_sameday", 0).asInt();
   // Fix (c) (v5j), default 0 = off (legacy)
   nonvasc_trans_withdraw = controldata["model_settings"].get("nonvasc_trans_withdraw", 0).asInt();
+  // Fixes B1-B4 (v5k), default 0 = off (legacy)
+  svp_ice_fix        = controldata["model_settings"].get("svp_ice_fix", 0).asInt();
+  richards_infil_fix = controldata["model_settings"].get("richards_infil_fix", 0).asInt();
+  stefan_fronts_fix  = controldata["model_settings"].get("stefan_fronts_fix", 0).asInt();
+  snow_albedo_fix    = controldata["model_settings"].get("snow_albedo_fix", 0).asInt();
   // Option 4 (v5j): SEB top boundary, default seb_scheme 0 = off (see ModelData.h)
   seb_scheme    = controldata["model_settings"].get("seb_scheme", 0).asInt();
   seb_z0_snow   = controldata["model_settings"].get("seb_z0_snow", 0.001).asDouble();
@@ -189,6 +194,11 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
   }
   if (seb_scheme < 0 || seb_scheme > 2 || seb_snow_tc < 0 || seb_snow_tc > 1 || seb_lw_source < 0 || seb_lw_source > 1) {
     std::cerr << "FATAL: model_settings seb_scheme must be 0/1/2, seb_snow_tc and seb_lw_source 0/1" << std::endl;
+    exit(EXIT_FAILURE);
+  }
+  if (svp_ice_fix < 0 || svp_ice_fix > 1 || richards_infil_fix < 0 || richards_infil_fix > 1 ||
+      stefan_fronts_fix < 0 || stefan_fronts_fix > 1 || snow_albedo_fix < 0 || snow_albedo_fix > 1) {
+    std::cerr << "FATAL: model_settings svp_ice_fix, richards_infil_fix, stefan_fronts_fix and snow_albedo_fix must be 0 or 1" << std::endl;
     exit(EXIT_FAILURE);
   }
   if (seb_scheme == 1) {

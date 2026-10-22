@@ -59,6 +59,15 @@ public:
 
   // Option 4 (v5j) SEB (see ModelData::seb_scheme). 0 = off.
   int seb_scheme;
+  // Fix B2 (v5k), OFF by default: model_settings.richards_infil_fix. When
+  // Richards::update returns early, the legacy code adds the day's infiltration
+  // to the puddle/runoff of Richards' private EnvData copy, which nothing reads,
+  // so the water is lost (and soil evaporation / uptake are reported although
+  // not applied). 1 = the infiltration goes to this cohort's puddle (up to
+  // ponding_max_mm) and the rest to surface runoff (qover), as in the frozen-top
+  // branch; evaporation is booked as unapplied and the uptake as not applied.
+  int richards_infil_fix = 0;
+  void rebookUnappliedRichards(const double infil, const double evap);
   double seb_z0_snow, seb_z0_soil, seb_zwind, seb_ztemp, seb_emis_snow,
          seb_emis_soil, seb_wind, seb_minwind, seb_stab_b, seb_tran_frac,
          seb_pres;
