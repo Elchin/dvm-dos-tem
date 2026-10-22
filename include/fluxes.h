@@ -90,11 +90,16 @@ struct veg2atm_env {
 
   double sublim; // mm/day
 
+  // v5l (nv_rain_surface = 1): evaporation of rain held on the moss/lichen
+  // surface (non-vascular "interception"), booked apart from canopy 'evap'.
+  // Always 0 when the switch is off. mm/day
+  double evap_moss;
+
   //energy
   double swrefl; // W/m2: reflected solar radiation
 
   veg2atm_env() : tran(UIN_D), evap(UIN_D), tran_pet(UIN_D), evap_pet(std::numeric_limits<double>::signaling_NaN()),
-                  sublim(UIN_D), swrefl(UIN_D) {}
+                  sublim(UIN_D), evap_moss(0.0), swrefl(UIN_D) {}
   
 };
 

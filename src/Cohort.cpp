@@ -305,6 +305,13 @@ void Cohort::initialize_state_parameters() {
   soilbgc.n_rootless_fix = md->n_rootless_fix;         // Fix N1 (v5k)
   soilbgc.n_som_move_fix = md->n_som_move_fix;         // Fix N2 (v5k)
   for (int ip = 0; ip < NUM_PFT; ip++) { vegbgc[ip].n_nonvasc_extract = md->n_nonvasc_extract; } // Fix N3 (v5k)
+  for (int ip = 0; ip < NUM_PFT; ip++) {   // ET-split fixes S1-S4 (v5l), default 0
+    vegenv[ip].fpc_once_fix       = md->et_fpc_once_fix;
+    vegenv[ip].nv_snow_bury_fix   = md->nv_snow_bury_fix;
+    vegenv[ip].nv_snow_bury_depth = md->nv_snow_bury_depth;
+    vegenv[ip].rain_int_lai_fix   = md->rain_int_lai_fix;
+    vegenv[ip].nv_rain_surface    = md->nv_rain_surface;
+  }
   soilenv.snowenvp      = &snowenv;
   soilbgc.initializeParameter();
 
@@ -636,6 +643,8 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
         }
 
         // calculate vegetation light/water dynamics at daily timestep
+        vegenv[ip].nonvasc = cd.d_veg.nonvascular[ip];           // v5l S2/S4 context
+        vegenv[ip].snow_depth = edall->d_snws.snowthick;         // v5l S2 (start-of-day snowpack, m)
         vegenv[ip].updateRadiation(cd.m_veg.lai[ip], cd.m_veg.fpc[ip]);
         vegenv[ip].updateWaterBalance(daylength, cd.m_veg.lai[ip], cd.m_veg.fpc[ip]);
         // ALT fix 1: transpiration's VPD term uses single-leaf conductance (not fpc-scaled);
@@ -1277,6 +1286,7 @@ void Cohort::getEd4allveg_daily() {
   edall->d_v2a.evap_pet = 0.;
   edall->d_v2a.tran_pet = 0.;
   edall->d_v2a.sublim   = 0.;
+  edall->d_v2a.evap_moss = 0.; // v5l S4
   edall->d_v2g.swthfl   = 0.;
   edall->d_v2g.rdrip    = 0.;
   edall->d_v2g.rthfl    = 0.;
@@ -1306,6 +1316,7 @@ void Cohort::getEd4allveg_daily() {
       edall->d_v2a.evap_pet += ed[ip].d_v2a.evap_pet;
       edall->d_v2a.tran_pet += ed[ip].d_v2a.tran_pet;
       edall->d_v2a.sublim   += ed[ip].d_v2a.sublim;
+      edall->d_v2a.evap_moss += ed[ip].d_v2a.evap_moss; // v5l S4 (0 when off)
       edall->d_v2g.swthfl   += ed[ip].d_v2g.swthfl;
       edall->d_v2g.rdrip    += ed[ip].d_v2g.rdrip;
       edall->d_v2g.rthfl    += ed[ip].d_v2g.rthfl;
@@ -1326,6 +1337,7 @@ void Cohort::getEd4land_daily() {
       ed[ip].d_l2a.eet = ed[ip].d_v2a.evap + ed[ip].d_v2a.sublim
                          + ed[ip].d_v2a.tran +ed[ip].d_snw2a.sublim
                          + ed[ip].d_soi2a.evap;
+      if (md->nv_rain_surface == 1) { ed[ip].d_l2a.eet += ed[ip].d_v2a.evap_moss; } // v5l S4
 
       ed[ip].d_l2a.pet = ed[ip].d_v2a.evap_pet + ed[ip].d_v2a.sublim
                          + ed[ip].d_v2a.tran_pet + ed[ip].d_snw2a.sublim
@@ -1336,6 +1348,10 @@ void Cohort::getEd4land_daily() {
   //
   edall->d_l2a.eet = edall->d_v2a.evap + edall->d_v2a.sublim + edall->d_v2a.tran
                      + edall->d_snw2a.sublim + edall->d_soi2a.evap;
+  if (md->nv_rain_surface == 1) {
+    // v5l S4 mode 1: moss-surface evaporation is booked apart from canopy evaporation
+    edall->d_l2a.eet += edall->d_v2a.evap_moss;
+  }
 
   edall->d_l2a.pet = edall->d_v2a.evap_pet + edall->d_v2a.sublim
                      + edall->d_v2a.tran_pet + edall->d_snw2a.sublim
