@@ -26,6 +26,8 @@ public:
   // without leaving the soil (an implicit, unreported N input). 1 = extract it
   // from the moss/fibric layers (soil type <= 1) in proportion to avln * liq
   // (all layers if those hold none); Soil_Bgc limits it per layer as for roots.
+  // The non-vascular uptake is then capped at 95 % of the available N in those
+  // layers (as for vascular plants in their root zone).
   int n_nonvasc_extract = 0;
   ~Vegetation_Bgc();
 

@@ -530,6 +530,21 @@ void Vegetation_Bgc::deltanfeed() {
         del_soi2v.innuptake = 0.95 * avln;
       }
 
+    } else if (n_nonvasc_extract == 1) {
+      // Fix N3 (v5k): the uptake is taken from the soil (see afterIntegration),
+      // so limit it like the vascular uptake: 95 % of the available N in the
+      // moss/fibric layers (all layers if those hold none with liquid water).
+      double avln = 0.0;
+      for (int pass = 0; pass < 2 && avln <= 0.0; pass++) {
+        for (int il=0; il<cd->m_soil.numsl; il++) {
+          if ((pass == 1 || cd->m_soil.type[il] <= 1) && bd->m_sois.avln[il] > 0. && ed->m_sois.liq[il] > 0.) {
+            avln += bd->m_sois.avln[il];
+          }
+        }
+      }
+      if (del_soi2v.innuptake > 0.95 * avln) {
+        del_soi2v.innuptake = 0.95 * avln;
+      }
     } else {
       // For non-vascular plants innuptake is not influenced by soil
       // available Nitrogen! Nothing to do...
