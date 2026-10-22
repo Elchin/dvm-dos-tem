@@ -302,6 +302,8 @@ void Cohort::initialize_state_parameters() {
   SnowLayer::snow_tc_form = md->seb_snow_tc;
   soilenv.richards_infil_fix = md->richards_infil_fix; // Fix B2 (v5k)
   soilbgc.n_rootless_fix = md->n_rootless_fix;         // Fix N1 (v5k)
+  soilbgc.n_som_move_fix = md->n_som_move_fix;         // Fix N2 (v5k)
+  for (int ip = 0; ip < NUM_PFT; ip++) { vegbgc[ip].n_nonvasc_extract = md->n_nonvasc_extract; } // Fix N3 (v5k)
   soilenv.snowenvp      = &snowenv;
   soilbgc.initializeParameter();
 

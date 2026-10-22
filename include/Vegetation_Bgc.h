@@ -20,6 +20,13 @@
 class Vegetation_Bgc {
 public:
   Vegetation_Bgc();
+  // Fix N3 (v5k), OFF by default: model_settings.n_nonvasc_extract. Non-vascular
+  // PFTs (no fine roots) take up N (innuptake = nmax * ffoliage) but their
+  // per-layer soil extraction (nextract) is 0, so that N enters the vegetation
+  // without leaving the soil (an implicit, unreported N input). 1 = extract it
+  // from the moss/fibric layers (soil type <= 1) in proportion to avln * liq
+  // (all layers if those hold none); Soil_Bgc limits it per layer as for roots.
+  int n_nonvasc_extract = 0;
   ~Vegetation_Bgc();
 
   int ipft;

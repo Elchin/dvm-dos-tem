@@ -158,6 +158,12 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
   stefan_fronts_fix  = controldata["model_settings"].get("stefan_fronts_fix", 0).asInt();
   snow_albedo_fix    = controldata["model_settings"].get("snow_albedo_fix", 0).asInt();
   n_rootless_fix     = controldata["model_settings"].get("n_rootless_fix", 0).asInt(); // Fix N1 (v5k)
+  n_som_move_fix     = controldata["model_settings"].get("n_som_move_fix", 0).asInt();     // Fix N2 (v5k)
+  n_nonvasc_extract  = controldata["model_settings"].get("n_nonvasc_extract", 0).asInt();  // Fix N3 (v5k)
+  if (n_som_move_fix < 0 || n_som_move_fix > 1 || n_nonvasc_extract < 0 || n_nonvasc_extract > 1) {
+    std::cerr << "FATAL: model_settings n_som_move_fix and n_nonvasc_extract must be 0 or 1" << std::endl;
+    exit(EXIT_FAILURE);
+  }
   if (n_rootless_fix < 0 || n_rootless_fix > 2) {
     std::cerr << "FATAL: model_settings.n_rootless_fix must be 0, 1 or 2" << std::endl;
     exit(EXIT_FAILURE);

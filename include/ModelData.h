@@ -164,6 +164,8 @@ public:
   int svp_ice_fix, richards_infil_fix, stefan_fronts_fix, snow_albedo_fix;
   // Fix N1 (v5k), default 0: see Soil_Bgc.h (n_rootless_fix 0/1/2).
   int n_rootless_fix;
+  // Fixes N2/N3 (v5k), default 0: see Soil_Bgc.h (n_som_move_fix) and Vegetation_Bgc.h (n_nonvasc_extract).
+  int n_som_move_fix, n_nonvasc_extract;
   // Option 4 (v5j), OFF by default: daily surface energy balance (SEB) top
   // boundary (ported from the seb-explore exploration branch).
   // model_settings.seb_scheme: 0 = off (n-factor top boundary, unchanged);

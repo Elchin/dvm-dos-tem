@@ -82,6 +82,17 @@ public:
   // 2 = the mineralised N goes to AVLN of that layer (no root extraction there;
   //     leaching as for other layers).
   int n_rootless_fix = 0;
+  // Fix N2 (v5k), OFF by default: model_settings.n_som_move_fix. deltastate()
+  // moves organic N with the SOM C that is moved down the profile, but (a) the N
+  // added to the top humic layer(s) is overwritten ('=' instead of '+=') when the
+  // mobile part of the humic layer's own decomposition products is exported, so
+  // the shallow->deep N transfer disappears every step (the dominant unreported
+  // N sink at HPC nfeed), (b) a humic receiving layer gets the full shallow N
+  // transfer instead of its thickness share (dcaddfrac, as for C) and (c) each
+  // fibric donor gives N in proportion to the CUMULATIVE C moved from all fibric
+  // layers above it, not its own. 1 = N moves with C: per-layer donor share,
+  // dcaddfrac share to receivers, export accumulated (+=).
+  int n_som_move_fix = 0;
 private:
 
   // NOTE: seems like these 3 variables are supposed to shadow the
