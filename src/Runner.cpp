@@ -6016,6 +6016,49 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
   map_itr = netcdf_outputs.end();
 
 
+  // v5l: ET components and interception, cohort totals (all PFTs), monthly or
+  // yearly sums in mm. Written only when requested in output_spec.csv.
+  //   EVAP_CANOPY     evaporation of intercepted rain (d_v2a.evap; includes the
+  //                   moss/lichen "canopy" unless nv_rain_surface = 1)
+  //   SUBL_CANOPY     sublimation of intercepted snow (d_v2a.sublim)
+  //   EVAP_MOSS       moss/lichen surface evaporation (d_v2a.evap_moss, only
+  //                   non-zero with nv_rain_surface = 1)
+  //   EVAP_SOIL       ground (soil / moss-layer) evaporation (d_soi2a.evap)
+  //   SUBL_SNOW       snowpack sublimation (d_snw2a.sublim)
+  //   RAIN_INTERCEPT  rain intercepted by all PFTs (d_a2v.rinter)
+  //   SNOW_INTERCEPT  snow intercepted by all PFTs (d_a2v.sinter)
+  // EET = EVAP_CANOPY + SUBL_CANOPY + EVAP_MOSS + TRANSPIRATION + EVAP_SOIL + SUBL_SNOW
+  {
+    struct EtOut { const char* name; double* m; double* y; };
+    EtOut etouts[] = {
+      {"EVAP_CANOPY",    &cohort.edall->m_v2a.evap,      &cohort.edall->y_v2a.evap},
+      {"SUBL_CANOPY",    &cohort.edall->m_v2a.sublim,    &cohort.edall->y_v2a.sublim},
+      {"EVAP_MOSS",      &cohort.edall->m_v2a.evap_moss, &cohort.edall->y_v2a.evap_moss},
+      {"EVAP_SOIL",      &cohort.edall->m_soi2a.evap,    &cohort.edall->y_soi2a.evap},
+      {"SUBL_SNOW",      &cohort.edall->m_snw2a.sublim,  &cohort.edall->y_snw2a.sublim},
+      {"RAIN_INTERCEPT", &cohort.edall->m_a2v.rinter,    &cohort.edall->y_a2v.rinter},
+      {"SNOW_INTERCEPT", &cohort.edall->m_a2v.sinter,    &cohort.edall->y_a2v.sinter},
+    };
+    for (size_t k = 0; k < sizeof(etouts) / sizeof(etouts[0]); k++) {
+      map_itr = netcdf_outputs.find(etouts[k].name);
+      if(map_itr != netcdf_outputs.end()){
+        BOOST_LOG_SEV(glg, debug)<<"NetCDF output: "<<etouts[k].name;
+        curr_spec = map_itr->second;
+        #pragma omp critical(outputV5LET)
+        {
+          if(curr_spec.monthly){
+            output_nc_3dim(&curr_spec, file_stage_suffix, etouts[k].m, 1, month_timestep, 1);
+          }
+          else if(curr_spec.yearly){
+            output_nc_3dim(&curr_spec, file_stage_suffix, etouts[k].y, 1, year, 1);
+          }
+        }
+      }
+      map_itr = netcdf_outputs.end();
+    }
+  }
+
+
   //TRANSPIRATION
   map_itr = netcdf_outputs.find("TRANSPIRATION");
   if(map_itr != netcdf_outputs.end()){

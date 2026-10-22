@@ -63,6 +63,8 @@
 #include "../../include/Soil_Env.h"
 #include "../../include/Soil_Bgc.h"
 #include "../../include/Integrator.h"
+#include "../../include/Vegetation_Env.h"
+#include "../../include/ModelData.h"
 #undef private
 #undef protected
 

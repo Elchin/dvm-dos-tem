@@ -169,6 +169,20 @@ public:
   int n_rootless_fix;
   // Fixes N2/N3 (v5k), default 0: see Soil_Bgc.h (n_som_move_fix) and Vegetation_Bgc.h (n_nonvasc_extract).
   int n_som_move_fix, n_nonvasc_extract;
+  // ET-split fixes (v5l), all OFF by default (0 = legacy, bit-identical); see
+  // Vegetation_Env.h for the physics of each switch:
+  //   et_fpc_once_fix    0/1  S1: apply the foliar projected cover (FPC) once in transpiration
+  //   nv_snow_bury_fix   0/1  S2: no snow interception by moss/lichen buried by snow
+  //     nv_snow_bury_depth (m, default 0.0): snowpack depth above which they count as buried
+  //   rain_int_lai_fix   0/1  S3: rain interception capacity = ircoef*LAI with canopy storage
+  //   nv_rain_surface    0/1/2 S4: moss/lichen rain interception is moss-surface water
+  //     (1: evaporated as EVAP_MOSS, not canopy evaporation; 2: goes to the ground surface)
+  int et_fpc_once_fix, nv_snow_bury_fix, rain_int_lai_fix, nv_rain_surface;
+  double nv_snow_bury_depth;
+  static bool v5l_switches_valid(int fpc1, int bury, double bury_depth, int rint, int nvsurf) {
+    return (fpc1 == 0 || fpc1 == 1) && (bury == 0 || bury == 1) && (bury_depth >= 0.0)
+           && (rint == 0 || rint == 1) && (nvsurf >= 0 && nvsurf <= 2);
+  }
   // Option 4 (v5j), OFF by default: daily surface energy balance (SEB) top
   // boundary (ported from the seb-explore exploration branch).
   // model_settings.seb_scheme: 0 = off (n-factor top boundary, unchanged);

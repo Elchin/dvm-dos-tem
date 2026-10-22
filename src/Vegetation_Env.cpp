@@ -27,6 +27,14 @@
 
 Vegetation_Env::Vegetation_Env() {
   ipft = MISSING_I;
+  // v5l ET-split switches: default 0 = legacy (see Vegetation_Env.h)
+  fpc_once_fix = 0;
+  nv_snow_bury_fix = 0;
+  nv_snow_bury_depth = 0.0;
+  rain_int_lai_fix = 0;
+  nv_rain_surface = 0;
+  nonvasc = 0;
+  snow_depth = 0.0;
 };
 
 Vegetation_Env::~Vegetation_Env() {
@@ -76,7 +84,13 @@ void Vegetation_Env::updateRadiation(double leaf_area_index, double foliar_proje
   ed->d_a2v.parabsorb  = ed->d_a2v.pardown * (1.0 - exp(-envpar.er * leaf_area_index));
   
   double ppfd50  = envpar.ppfd50 ;//mumol/m2s, ppfd for 0.5 stomatal closure
-  ed->d_vegd.m_ppfd = ed->d_a2v.pardown * EPAR / (ed->d_a2v.pardown * EPAR + ppfd50);
+  if (fpc_once_fix == 1 && foliar_projected_cover > 0.) {
+    // S1 (v5l): stomatal light factor from the PAR per unit covered area
+    double ppfd_c = ed->d_a2v.pardown / foliar_projected_cover * EPAR;
+    ed->d_vegd.m_ppfd = ppfd_c / (ppfd_c + ppfd50);
+  } else {
+    ed->d_vegd.m_ppfd = ed->d_a2v.pardown * EPAR / (ed->d_a2v.pardown * EPAR + ppfd50);
+  }
 }
 
 //VEGETATION DAILY WATER BALANCE CALCULATION
@@ -93,11 +107,37 @@ void Vegetation_Env::updateWaterBalance(const double & daylhr, double leaf_area_
   ed->d_a2v.snfl = snfl * foliar_projected_cover;   //note: foliar_projected_cover adjusted here
   ed->d_a2v.rnfl = rnfl * foliar_projected_cover;
   double downpar = ed->d_a2v.pardown;             //note: already foliar_projected_cover adjusted
+  ed->d_v2a.evap_moss = 0.;                       // v5l S4 (stays 0 unless nv_rain_surface == 1)
+
+  // v5l ET-split switches for this PFT and day (all false when the switches are 0)
+  const bool nv_moss_evap = (nv_rain_surface == 1 && nonvasc > 0);   // S4 mode 1
+  const bool nv_to_ground = (nv_rain_surface == 2 && nonvasc > 0);   // S4 mode 2
+  const bool nv_buried = (nv_snow_bury_fix == 1 && nonvasc > 0
+                          && snow_depth > nv_snow_bury_depth);       // S2
+  const bool tran_fpc_once = (fpc_once_fix == 1 && foliar_projected_cover > 0.); // S1
 
   if(leaf_area_index >0) {
     //precipitation interception and throughfall
-    ed->d_a2v.rinter = getRainInterception(ed->d_a2v.rnfl, leaf_area_index);
+    double rstore0 = 0.;   // S3: canopy water stored from previous days (mm)
+    if (rain_int_lai_fix == 1) {
+      // S3 (v5l): capacity = ircoef [mm per unit LAI] * LAI, minus what is still stored
+      double rcap = envpar.ircoef * leaf_area_index;
+      rstore0 = fmax(ed->d_vegs.rwater, 0.);
+      ed->d_a2v.rinter = fmin(ed->d_a2v.rnfl, fmax(rcap - rstore0, 0.));
+    } else {
+      ed->d_a2v.rinter = getRainInterception(ed->d_a2v.rnfl, leaf_area_index);
+    }
+    if (nv_to_ground) {
+      ed->d_a2v.rinter = 0.;   // S4 mode 2: rain on moss/lichen reaches the ground surface
+    }
     ed->d_a2v.sinter = getSnowInterception(ed->d_a2v.snfl, leaf_area_index);
+    if (nv_buried) {
+      ed->d_a2v.sinter = 0.;   // S2: moss/lichen under the snowpack intercept no snow
+    }
+    // water available on the wet canopy today: legacy = today's interception only
+    double wetw = ed->d_a2v.rinter;
+    if (rain_int_lai_fix == 1) { wetw = rstore0 + ed->d_a2v.rinter; }
+    if (nv_to_ground) { wetw = 0.; }   // S4 mode 2: no wet moss "canopy"; stored water drips below
     ed->d_v2g.rthfl = ed->d_a2v.rnfl- ed->d_a2v.rinter;
     ed->d_v2g.sthfl = ed->d_a2v.snfl -ed->d_a2v.sinter;
     //evapotranspiration
@@ -107,8 +147,13 @@ void Vegetation_Env::updateWaterBalance(const double & daylhr, double leaf_area_
     ed->d_vegd.m_vpd=0.;
 
     if(ed->d_vegd.btran>0) {
-      gl_st = getLeafStomaCond(ta,downpar*EPAR, vpd, ed->d_vegd.btran,
-                               ed->d_vegd.m_ppfd, ed->d_vegd.m_vpd);
+      if (tran_fpc_once) {   // S1: PAR per unit covered area
+        gl_st = getLeafStomaCond(ta,downpar/foliar_projected_cover*EPAR, vpd, ed->d_vegd.btran,
+                                 ed->d_vegd.m_ppfd, ed->d_vegd.m_vpd);
+      } else {
+        gl_st = getLeafStomaCond(ta,downpar*EPAR, vpd, ed->d_vegd.btran,
+                                 ed->d_vegd.m_ppfd, ed->d_vegd.m_vpd);
+      }
     }
 
     gl_st *= gcorr;
@@ -132,15 +177,18 @@ void Vegetation_Env::updateWaterBalance(const double & daylhr, double leaf_area_
     double rv, rh;
     double rv_pet, rh_pet;
     double vpdpa = vpd; //Pa
+    // S1: transpiration radiation per unit covered area (tran *= FPC once, in Cohort)
+    double tran_sw = sw;
+    if (tran_fpc_once) { tran_sw = sw / foliar_projected_cover; }
 
-    if(ed->d_a2v.rinter>0.) {
+    if(wetw>0.) {
       rv = 1./gc_e_wv;
       rh = 1./gc_sh;
       rv_pet = 1./gc_e_wv_pet;
       rh_pet = 1./gc_sh_pet;
       double et1 = getPenMonET(ta,vpdpa, rainsw, rv, rh);
       double et1_pet= getPenMonET(ta,vpdpa, rainsw, rv_pet, rh_pet);
-      double dayl1 = ed->d_a2v.rinter/et1;
+      double dayl1 = wetw/et1;
 
       if(dayl1>daylsec) {
         if(daylsec>0.) {
@@ -151,15 +199,20 @@ void Vegetation_Env::updateWaterBalance(const double & daylhr, double leaf_area_
           ed->d_v2a.evap=0.;
         }
       } else {
-        ed->d_v2a.evap = ed->d_a2v.rinter;
+        ed->d_v2a.evap = wetw;
         daylsec -= dayl1;
         rv = 1.0/gl_t_wv;
         rh =1.0/gl_sh;
-        double et2= getPenMonET(ta, vpdpa, rainsw, rv, rh);
+        double et2;
+        if (tran_fpc_once) {
+          et2 = getPenMonET(ta, vpdpa, tran_sw, rv, rh);
+        } else {
+          et2 = getPenMonET(ta, vpdpa, rainsw, rv, rh);
+        }
         ed->d_v2a.tran = et2 * daylsec;
       }
 
-      double dayl1_pet = ed->d_a2v.rinter/et1_pet;
+      double dayl1_pet = wetw/et1_pet;
 
       if(dayl1_pet>daylsec) {
         if(daylsec>0.) {
@@ -170,7 +223,7 @@ void Vegetation_Env::updateWaterBalance(const double & daylhr, double leaf_area_
           ed->d_v2a.evap_pet = 0.;
         }
       } else {
-        ed->d_v2a.evap_pet = ed->d_a2v.rinter;
+        ed->d_v2a.evap_pet = wetw;
         daylsec -= dayl1_pet;
         rv_pet = 1.0/gl_t_wv_pet;
         rh_pet =1.0/gl_sh_pet;
@@ -181,7 +234,12 @@ void Vegetation_Env::updateWaterBalance(const double & daylhr, double leaf_area_
       ed->d_v2a.evap = 0.;
       rv = 1.0/gl_t_wv;
       rh =1.0/gl_sh;
-      double et3= getPenMonET(ta, vpdpa, daytimesw, rv, rh);
+      double et3;
+      if (tran_fpc_once) {
+        et3 = getPenMonET(ta, vpdpa, tran_sw, rv, rh);
+      } else {
+        et3 = getPenMonET(ta, vpdpa, daytimesw, rv, rh);
+      }
       ed->d_v2a.tran = et3 * daylsec;
       ed->d_v2a.evap_pet = 0.;
       rv_pet = 1.0/gl_t_wv_pet;
@@ -194,11 +252,17 @@ void Vegetation_Env::updateWaterBalance(const double & daylhr, double leaf_area_
     ed->d_vegd.cc = gc_e_wv;
     ed->d_vegd.rc = 1./ed->d_vegd.cc;
     ed->d_vegs.snow  += (ed->d_a2v.sinter - ed->d_v2a.sublim);
-    ed->d_vegs.rwater+= (ed->d_a2v.rinter - ed->d_v2a.evap);
+    if (rain_int_lai_fix == 1) {
+      // S3: storage = stored + intercepted - evaporated (nothing is lost)
+      ed->d_vegs.rwater = rstore0 + ed->d_a2v.rinter - ed->d_v2a.evap;
+    } else {
+      ed->d_vegs.rwater+= (ed->d_a2v.rinter - ed->d_v2a.evap);
+    }
     ed->d_v2g.sdrip = 0.0;
     double maxvegsnow = 0.10*leaf_area_index; //that 0.10 LAI mm snow on vegetation is
                                      //arbitrary - needs more mechanism
                                      //to do this
+    if (nv_buried) { maxvegsnow = 0.; }   // S2: stored snow falls onto the snowpack
 
     if (ed->d_vegs.snow>maxvegsnow) {
       ed->d_v2g.sdrip = ed->d_vegs.snow - maxvegsnow;
@@ -209,12 +273,20 @@ void Vegetation_Env::updateWaterBalance(const double & daylhr, double leaf_area_
     double maxvegrain = 0.05*leaf_area_index; //that 0.05 LAI mm rain storage is
                                      //arbitrary - needs more mechanism
                                      //to do this
+    if (rain_int_lai_fix == 1) { maxvegrain = envpar.ircoef * leaf_area_index; } // S3 capacity
+    if (nv_to_ground) { maxvegrain = 0.; }   // S4 mode 2: stored water drips to the ground
 
     if (ed->d_vegs.rwater>maxvegrain) {
       ed->d_v2g.rdrip = ed->d_vegs.rwater - maxvegrain;
     }
 
     ed->d_vegs.rwater -= ed->d_v2g.rdrip;
+    if (nv_moss_evap) {
+      // S4 mode 1: evaporation of the moss/lichen surface water is moss-surface
+      // evaporation (EVAP_MOSS, still part of EET), not canopy evaporation
+      ed->d_v2a.evap_moss = ed->d_v2a.evap;
+      ed->d_v2a.evap = 0.;
+    }
   } else {   //leaf_area_index <=0, i.e., no vegetation?
     ed->d_vegd.cc =0.;
     ed->d_vegd.rc =0.;

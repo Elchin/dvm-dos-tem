@@ -174,6 +174,18 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     std::cerr << "FATAL: model_settings.n_rootless_fix must be 0, 1 or 2" << std::endl;
     exit(EXIT_FAILURE);
   }
+  // ET-split fixes S1-S4 (v5l), default 0 = off (legacy); see ModelData.h / Vegetation_Env.h
+  et_fpc_once_fix    = controldata["model_settings"].get("et_fpc_once_fix", 0).asInt();
+  nv_snow_bury_fix   = controldata["model_settings"].get("nv_snow_bury_fix", 0).asInt();
+  nv_snow_bury_depth = controldata["model_settings"].get("nv_snow_bury_depth", 0.0).asDouble();
+  rain_int_lai_fix   = controldata["model_settings"].get("rain_int_lai_fix", 0).asInt();
+  nv_rain_surface    = controldata["model_settings"].get("nv_rain_surface", 0).asInt();
+  if (!ModelData::v5l_switches_valid(et_fpc_once_fix, nv_snow_bury_fix, nv_snow_bury_depth,
+                                     rain_int_lai_fix, nv_rain_surface)) {
+    std::cerr << "FATAL: model_settings et_fpc_once_fix, nv_snow_bury_fix and rain_int_lai_fix"
+              << " must be 0 or 1, nv_rain_surface 0, 1 or 2, nv_snow_bury_depth >= 0 (m)" << std::endl;
+    exit(EXIT_FAILURE);
+  }
   // Option 4 (v5j): SEB top boundary, default seb_scheme 0 = off (see ModelData.h)
   seb_scheme    = controldata["model_settings"].get("seb_scheme", 0).asInt();
   seb_z0_snow   = controldata["model_settings"].get("seb_z0_snow", 0.001).asDouble();
@@ -267,6 +279,8 @@ void ModelData::update(ArgHandler const * arghandler) {
 
 
 ModelData::ModelData():force_cmt(-1) {
+  et_fpc_once_fix = 0; nv_snow_bury_fix = 0; rain_int_lai_fix = 0; nv_rain_surface = 0; // v5l (off)
+  nv_snow_bury_depth = 0.0;
   set_envmodule(false);
   set_bgcmodule(false);
   set_dynamic_lai_module(false);

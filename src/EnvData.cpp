@@ -115,6 +115,7 @@ void EnvData::veg_beginOfYear() {
   y_vegd.m_vpd   = 0.;
   y_v2a.swrefl   = 0.;
   y_v2a.evap     = 0.;
+  y_v2a.evap_moss = 0.; // v5l
   y_v2a.tran     = 0.;
   y_v2a.evap_pet = 0.;
   y_v2a.tran_pet = 0.;
@@ -265,6 +266,7 @@ void EnvData::veg_beginOfMonth() {
   m_vegd.m_vpd   = 0.;
   m_v2a.swrefl   = 0.;
   m_v2a.evap     = 0.;
+  m_v2a.evap_moss = 0.; // v5l
   m_v2a.tran     = 0.;
   m_v2a.evap_pet = 0.;
   m_v2a.tran_pet = 0.;
@@ -409,6 +411,7 @@ void EnvData::veg_endOfDay(const int & dinm) {
   m_vegd.m_vpd   += d_vegd.m_vpd/dinm;
   m_v2a.swrefl   += d_v2a.swrefl/dinm;
   m_v2a.evap     += d_v2a.evap;
+  m_v2a.evap_moss += d_v2a.evap_moss; // v5l
   m_v2a.tran     += d_v2a.tran;
   m_v2a.evap_pet += d_v2a.evap_pet;
   m_v2a.tran_pet += d_v2a.tran_pet;
@@ -767,6 +770,7 @@ void EnvData::veg_endOfMonth(const int & currmind) {
   y_vegd.m_vpd   += m_vegd.m_vpd/12.;
   y_v2a.swrefl   += m_v2a.swrefl/12;
   y_v2a.evap     += m_v2a.evap;
+  y_v2a.evap_moss += m_v2a.evap_moss; // v5l
   y_v2a.tran     += m_v2a.tran;
   y_v2a.evap_pet += m_v2a.evap_pet;
   y_v2a.tran_pet += m_v2a.tran_pet;
