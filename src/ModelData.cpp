@@ -157,6 +157,11 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
   richards_infil_fix = controldata["model_settings"].get("richards_infil_fix", 0).asInt();
   stefan_fronts_fix  = controldata["model_settings"].get("stefan_fronts_fix", 0).asInt();
   snow_albedo_fix    = controldata["model_settings"].get("snow_albedo_fix", 0).asInt();
+  n_rootless_fix     = controldata["model_settings"].get("n_rootless_fix", 0).asInt(); // Fix N1 (v5k)
+  if (n_rootless_fix < 0 || n_rootless_fix > 2) {
+    std::cerr << "FATAL: model_settings.n_rootless_fix must be 0, 1 or 2" << std::endl;
+    exit(EXIT_FAILURE);
+  }
   // Option 4 (v5j): SEB top boundary, default seb_scheme 0 = off (see ModelData.h)
   seb_scheme    = controldata["model_settings"].get("seb_scheme", 0).asInt();
   seb_z0_snow   = controldata["model_settings"].get("seb_z0_snow", 0.001).asDouble();

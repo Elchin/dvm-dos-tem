@@ -72,6 +72,16 @@ public:
   int get_baseline();
   void set_baseline(int);
 
+  // Fix N1 (v5k), OFF by default: model_settings.n_rootless_fix. In soil layers
+  // without roots (rtlfalfrac == 0) deltastate() sets the inorganic N change and
+  // net mineralisation to 0, but only after the organic N change was computed with
+  // the net mineralisation removed, so that N leaves ORGN and is never added to
+  // AVLN (lost from the column; unreported N sink). 0 = legacy;
+  // 1 = no net mineralisation in rootless layers (the N stays in ORGN, consistent
+  //     with the zeroed NETNMIN and AVLN changes);
+  // 2 = the mineralised N goes to AVLN of that layer (no root extraction there;
+  //     leaching as for other layers).
+  int n_rootless_fix = 0;
 private:
 
   // NOTE: seems like these 3 variables are supposed to shadow the

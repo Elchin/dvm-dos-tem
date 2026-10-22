@@ -1059,7 +1059,12 @@ void Soil_Bgc::deltastate() {
       if(bd->m_v2soi.rtlfalfrac[il] > 0.){
         del_sois.avln[il] = ninput + del_soi2soi.netnmin[il]
                             - ndrain - rtnextract[il];
+      } else if (n_rootless_fix == 2) { // Fix N1 (v5k): mineralised N -> AVLN, no roots
+        del_sois.avln[il] = ninput + del_soi2soi.netnmin[il] - ndrain - rtnextract[il];
       } else {
+        if (n_rootless_fix == 1) { // Fix N1 (v5k): no mineralisation -> N stays organic
+          del_sois.orgn[il] += del_soi2soi.netnmin[il];
+        }
         del_sois.avln[il] = 0;
         del_soi2soi.netnmin[il] = 0.0;
       }
