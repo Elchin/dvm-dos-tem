@@ -202,3 +202,95 @@ TEST_CASE("B4 snow_albedo_fix=1: albmax below -10 C, continuous, unchanged above
 }
 
 } // TEST_SUITE fixes_v5k
+
+// ------------------------------------------------------------------ N1-N3 (unreported N sinks/sources)
+// Soil N bookkeeping of one Soil_Bgc::deltastate() call: with no N input, no leaching
+// and no fire, the soil N change must equal litterfall N - root N extraction.
+namespace {
+struct SoilNFix {
+  CohortData cd; BgcData bd; EnvData ed; FirData fd; Soil_Bgc sb;
+  SoilNFix(const std::vector<int>& types, const std::vector<double>& dz) {
+    sb.setCohortData(&cd); sb.setBgcData(&bd); sb.setEnvData(&ed); sb.setFirData(&fd);
+    sb.nfeed = 1; sb.bgcpar.som2co2 = 0.2; sb.bgcpar.fsoma = 0.3; sb.bgcpar.fsompr = 0.5; sb.bgcpar.fsomcr = 0.2;
+    cd.m_soil.numsl = (int)types.size(); cd.m_soil.deepthick = 0.1; sb.totdzliq = 0.0;   // no leaching
+    double z = 0;
+    for (int i = 0; i < MAX_SOI_LAY; ++i) {
+      bool on = i < (int)types.size();
+      cd.m_soil.type[i] = on ? types[i] : 3; cd.m_soil.dz[i] = on ? dz[i] : 0.1; cd.m_soil.z[i] = z; z += cd.m_soil.dz[i];
+      sb.tmp_sois.rawc[i] = 100; sb.tmp_sois.soma[i] = 50; sb.tmp_sois.sompr[i] = 200; sb.tmp_sois.somcr[i] = 300;
+      sb.tmp_sois.orgn[i] = 20; sb.tmp_sois.avln[i] = 1;
+      sb.del_soi2a.rhrawc[i] = 3.0; sb.del_soi2a.rhsoma[i] = 0.5; sb.del_soi2a.rhsompr[i] = 0.1; sb.del_soi2a.rhsomcr[i] = 0.01;
+      sb.ltrflc[i] = on ? 2.0 : 0.0; sb.ltrfln[i] = on ? 0.1 : 0.0; sb.rtnextract[i] = on ? 0.02 : 0.0;
+      sb.del_soi2soi.netnmin[i] = on ? 0.05 : 0.0; bd.m_v2soi.rtlfalfrac[i] = on ? 0.2 : 0.0;
+      ed.m_sois.liq[i] = 10.0;
+    }
+    sb.tmp_sois.wdebrisc = 0; sb.tmp_sois.wdebrisn = 0; sb.d2wdebrisc = 0; sb.d2wdebrisn = 0; sb.del_soi2a.rhwdeb = 0;
+    bd.m_a2soi.orgninput = 0; bd.m_a2soi.avlninput = 0; sb.del_soi2l.avlnlost = 0; ed.m_sois.draindepth = 0;
+  }
+  double dN() { double s = 0; for (int i = 0; i < cd.m_soil.numsl; ++i) s += sb.del_sois.orgn[i] + sb.del_sois.avln[i]; return s; }
+  double expected() { double s = 0; for (int i = 0; i < cd.m_soil.numsl; ++i) s += sb.ltrfln[i] - sb.rtnextract[i]; return s; }
+};
+const std::vector<int> PROFILE = {1, 1, 2, 2, 3, 3};                 // fibric x2, humic x2 (top 0.1 m), mineral x2
+const std::vector<double> PROFILE_DZ = {0.05, 0.05, 0.05, 0.05, 0.1, 0.1};
+}
+
+TEST_CASE("N2 n_som_move_fix=1: SOM N movement conserves N (soil dN = litter N - extraction)") {
+  SoilNFix f(PROFILE, PROFILE_DZ); f.sb.n_som_move_fix = 1;
+  f.sb.deltastate();
+  CHECK(f.dN() == doctest::Approx(f.expected()).epsilon(1e-9));
+  // (c) equal fibric layers give equal N (legacy: the second gives N for both layers' C)
+  CHECK(f.sb.del_sois.orgn[0] == doctest::Approx(f.sb.del_sois.orgn[1]).epsilon(1e-12));
+}
+
+// KNOWN BUG N2 (pre-existing, found by the v5k N trace): legacy deltastate() loses the
+// shallow->deep organic N transfer (see Soil_Bgc.h n_som_move_fix).
+TEST_CASE("N2 legacy (n_som_move_fix=0): SOM N movement conserves N [KNOWN BUG: xfail]" * doctest::should_fail(true)) {
+  SoilNFix f(PROFILE, PROFILE_DZ); f.sb.n_som_move_fix = 0;
+  f.sb.deltastate();
+  CHECK(f.dN() == doctest::Approx(f.expected()).epsilon(1e-9));
+}
+
+TEST_CASE("N2 legacy: documents the size of the loss = shallow->deep N transfer (C:N of the donors)") {
+  SoilNFix a(PROFILE, PROFILE_DZ); a.sb.n_som_move_fix = 0; a.sb.deltastate();
+  CHECK(a.dN() < a.expected() - 1e-6);   // N disappears
+}
+
+TEST_CASE("N1 n_rootless_fix: rootless layers conserve N (1 = stays organic, 2 = to AVLN); legacy loses netnmin") {
+  const std::vector<int> MIN = {3, 3, 3};
+  const std::vector<double> MDZ = {0.1, 0.1, 0.1};
+  for (int fx = 0; fx <= 2; ++fx) {
+    CAPTURE(fx);
+    SoilNFix f(MIN, MDZ); f.sb.n_rootless_fix = fx; f.sb.n_som_move_fix = 1;
+    f.bd.m_v2soi.rtlfalfrac[2] = 0.0; f.sb.rtnextract[2] = 0.0;       // layer 2 has no roots
+    f.sb.deltastate();
+    if (fx == 0) {
+      CHECK(f.dN() == doctest::Approx(f.expected() - 0.05).epsilon(1e-9));   // legacy: layer-2 netnmin lost
+    } else {
+      CHECK(f.dN() == doctest::Approx(f.expected()).epsilon(1e-9));
+    }
+    if (fx == 1) { CHECK(f.sb.del_sois.avln[2] == 0.0); CHECK(f.sb.del_soi2soi.netnmin[2] == 0.0); }
+    if (fx == 2) { CHECK(f.sb.del_sois.avln[2] == doctest::Approx(0.05)); }
+  }
+}
+
+TEST_CASE("N3 n_nonvasc_extract=1: non-vascular N uptake is extracted from moss/fibric layers (avln*liq weights)") {
+  for (int fx = 0; fx <= 1; ++fx) {
+    CAPTURE(fx);
+    CohortData cd; BgcData bd; EnvData ed; Vegetation_Bgc vb;
+    vb.setCohortData(&cd); vb.setBgcData(&bd); vb.setEnvData(&ed); vb.set_nfeed(true);
+    vb.ipft = 0; cd.m_veg.nonvascular[0] = 1; vb.n_nonvasc_extract = fx;
+    cd.m_soil.numsl = 4; int ty[4] = {0, 1, 2, 3}; double av[4] = {0.1, 0.2, 0.3, 0.4};
+    for (int i = 0; i < MAX_SOI_LAY; ++i) { cd.m_soil.type[i] = i < 4 ? ty[i] : 3; bd.m_sois.avln[i] = i < 4 ? av[i] : 0; ed.m_sois.liq[i] = 10; vb.fracnuptake[i] = 0; }
+    for (int i = 0; i < NUM_PFT_PART; ++i) { bd.m_vegs.c[i] = 1; bd.m_vegs.strn[i] = 0.1; bd.m_soi2v.snuptake[i] = 0; bd.m_v2soi.ltrfalc[i] = 0; bd.m_v2soi.ltrfaln[i] = 0; bd.m_a2v.ingpp[i] = 0; bd.m_a2v.innpp[i] = 0; bd.m_a2v.gpp[i] = 0; bd.m_a2v.npp[i] = 0; bd.m_v2a.rg[i] = 0; bd.m_v2a.rm[i] = 0; bd.m_v2v.nmobil[i] = 0; bd.m_v2v.nresorb[i] = 0; }
+    bd.m_vegs.labn = 0.1; bd.m_soi2v.lnuptake = 0.3;
+    vb.afterIntegration();
+    double tot = 0; for (int i = 0; i < 4; ++i) tot += bd.m_soi2v.nextract[i];
+    if (fx == 1) {
+      CHECK(tot == doctest::Approx(0.3));
+      CHECK(bd.m_soi2v.nextract[0] == doctest::Approx(0.1)); CHECK(bd.m_soi2v.nextract[1] == doctest::Approx(0.2));
+      CHECK(bd.m_soi2v.nextract[2] == 0.0);
+    } else {
+      CHECK(tot == 0.0);   // legacy: uptake 0.3 enters the plant, nothing leaves the soil
+    }
+  }
+}
