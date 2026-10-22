@@ -874,22 +874,27 @@ void Soil_Bgc::deltastate() {
     //      above) will move down so that fibric horizon will be
     //      coarse-material dominated (active SOM will remain)
     if (cd->m_soil.type[il]<=1) {
+      double s2dc_layer = 0.0; // Fix N2 (v5k): this layer's own contribution
       if (del_sois.sompr[il] > 0.) {
         s2dcarbon1 += del_sois.sompr[il]*s2dfraction;   //
+        s2dc_layer += del_sois.sompr[il]*s2dfraction;
         del_sois.sompr[il] *= (1.0-s2dfraction); // <<-- NOTE: may set delta sompr to zero?
       }
 
       if (del_sois.somcr[il] > 0.) {
         s2dcarbon2 += del_sois.somcr[il]*s2dfraction;   //
+        s2dc_layer += del_sois.somcr[il]*s2dfraction;
         del_sois.somcr[il] *= (1.0-s2dfraction);
       }
 
       if (this->nfeed == 1) {  // move orgn with SOMC as well
         double totsomc = tmp_sois.rawc[il] + tmp_sois.soma[il]
                          + tmp_sois.sompr[il] + tmp_sois.somcr[il];
+        // Fix N2 (v5k) (c): legacy uses the cumulative C moved from all layers so far
+        double s2dc_n = (n_som_move_fix == 1) ? s2dc_layer : (s2dcarbon1 + s2dcarbon2);
 
-        if (totsomc > (s2dcarbon1 + s2dcarbon2)) {
-          del_orgn[il] = - (s2dcarbon1+s2dcarbon2) / totsomc
+        if (totsomc > s2dc_n) {
+          del_orgn[il] = - s2dc_n / totsomc
                           * tmp_sois.orgn[il]; //assuming C/N same for all
                                                //  SOM components
         } else {
@@ -927,7 +932,8 @@ void Soil_Bgc::deltastate() {
       del_sois.somcr[il] += dcaddfrac * s2dcarbon2;
 
       if (this->nfeed == 1) {
-        del_orgn[il]+=s2dorgn;
+        // Fix N2 (v5k) (b): thickness share, as for C
+        del_orgn[il] += (n_som_move_fix == 1) ? dcaddfrac * s2dorgn : s2dorgn;
       }
 
       // 3) meanwhile, the most mobilable portion of increment in
@@ -957,6 +963,12 @@ void Soil_Bgc::deltastate() {
           double totsomc = tmp_sois.rawc[il] + tmp_sois.soma[il]
                            + tmp_sois.sompr[il] + tmp_sois.somcr[il];
 
+          if (n_som_move_fix == 1) {
+            // Fix N2 (v5k) (a): export accumulates; the N received from above is kept
+            double dn = (totsomc > totmobile) ? totmobile/totsomc*tmp_sois.orgn[il] : 0.0;
+            del_orgn[il] -= dn;
+            d2morgn += dn;
+          } else {
           if (totsomc > totmobile) {
             del_orgn [il] = - totmobile/totsomc*tmp_sois.orgn[il]; //assuming C/N same for all SOM components
           } else {
@@ -964,6 +976,7 @@ void Soil_Bgc::deltastate() {
           }
 
           d2morgn += (-del_orgn[il]); //note: del_orgn[il] above is not positive
+          }
         }
       }
 
@@ -1059,7 +1072,12 @@ void Soil_Bgc::deltastate() {
       if(bd->m_v2soi.rtlfalfrac[il] > 0.){
         del_sois.avln[il] = ninput + del_soi2soi.netnmin[il]
                             - ndrain - rtnextract[il];
+      } else if (n_rootless_fix == 2) { // Fix N1 (v5k): mineralised N -> AVLN, no roots
+        del_sois.avln[il] = ninput + del_soi2soi.netnmin[il] - ndrain - rtnextract[il];
       } else {
+        if (n_rootless_fix == 1) { // Fix N1 (v5k): no mineralisation -> N stays organic
+          del_sois.orgn[il] += del_soi2soi.netnmin[il];
+        }
         del_sois.avln[il] = 0;
         del_soi2soi.netnmin[il] = 0.0;
       }

@@ -20,6 +20,10 @@ public:
 
   // parameters for snow physics
   snwpar_env snowenvpar;
+  // Fix B4 (v5k), OFF by default: model_settings.snow_albedo_fix. Legacy
+  // getAlbedoVis() returns a hard-coded 0.9 below -10 C (above snwalbmax, e.g.
+  // 0.8, with a jump at -10 C); 1 = snwalbmax below -10 C.
+  static int albedo_fix;
 
   void setGround(Ground* grndp);
 

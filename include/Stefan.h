@@ -23,6 +23,10 @@ public:
   void setGround(Ground* grndp);
   void initpce();
   void updateFronts(const double & tdrv, const double &timestep);
+  // Fix B3 (v5k), OFF by default: model_settings.stefan_fronts_fix. 1 = reset
+  // the minimum front distance on every pass of combineExtraFronts() (legacy:
+  // set once, which never terminates with more than one surplus pair).
+  static int fronts_fix;
 
 private:
   bool all_fronts_swept = false; // set in updateFronts(): today's front swept out every existing front

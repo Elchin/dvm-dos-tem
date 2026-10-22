@@ -530,6 +530,21 @@ void Vegetation_Bgc::deltanfeed() {
         del_soi2v.innuptake = 0.95 * avln;
       }
 
+    } else if (n_nonvasc_extract == 1) {
+      // Fix N3 (v5k): the uptake is taken from the soil (see afterIntegration),
+      // so limit it like the vascular uptake: 95 % of the available N in the
+      // moss/fibric layers (all layers if those hold none with liquid water).
+      double avln = 0.0;
+      for (int pass = 0; pass < 2 && avln <= 0.0; pass++) {
+        for (int il=0; il<cd->m_soil.numsl; il++) {
+          if ((pass == 1 || cd->m_soil.type[il] <= 1) && bd->m_sois.avln[il] > 0. && ed->m_sois.liq[il] > 0.) {
+            avln += bd->m_sois.avln[il];
+          }
+        }
+      }
+      if (del_soi2v.innuptake > 0.95 * avln) {
+        del_soi2v.innuptake = 0.95 * avln;
+      }
     } else {
       // For non-vascular plants innuptake is not influenced by soil
       // available Nitrogen! Nothing to do...
@@ -830,6 +845,22 @@ void Vegetation_Bgc::afterIntegration() {
         bd->m_soi2v.nextract[il] = tempnuptake * fracnuptake[il];   //
       } else {
         bd->m_soi2v.nextract[il] = 0.;
+      }
+    }
+    if (n_nonvasc_extract == 1 && cd->m_veg.nonvascular[ipft] > 0 && tempnuptake > 0.) {
+      // Fix N3 (v5k): non-vascular uptake comes from the top (moss/fibric) layers
+      double w[MAX_SOI_LAY] = {0.}, ws = 0.;
+      for (int pass = 0; pass < 2 && ws <= 0.; pass++) {
+        for (int il=0; il<cd->m_soil.numsl; il++) {
+          w[il] = 0.;
+          if ((pass == 1 || cd->m_soil.type[il] <= 1) && bd->m_sois.avln[il] > 0. && ed->m_sois.liq[il] > 0.) {
+            w[il] = bd->m_sois.avln[il] * ed->m_sois.liq[il];
+          }
+          ws += w[il];
+        }
+      }
+      if (ws > 0.) {
+        for (int il=0; il<cd->m_soil.numsl; il++) { bd->m_soi2v.nextract[il] = tempnuptake * w[il] / ws; }
       }
     }
   }

@@ -158,6 +158,14 @@ public:
   //   is below 0.01 C (same criterion as vascular roots); uptake that could not
   //   be applied is removed from the reported transpiration (as for evaporation).
   int nonvasc_trans_withdraw;
+  // Fixes B1-B4 (v5k), all OFF by default (0 = legacy), see Climate.h
+  // (svp_ice_fix), Soil_Env.h (richards_infil_fix), Stefan.h (stefan_fronts_fix)
+  // and Snow_Env.h (snow_albedo_fix).
+  int svp_ice_fix, richards_infil_fix, stefan_fronts_fix, snow_albedo_fix;
+  // Fix N1 (v5k), default 0: see Soil_Bgc.h (n_rootless_fix 0/1/2).
+  int n_rootless_fix;
+  // Fixes N2/N3 (v5k), default 0: see Soil_Bgc.h (n_som_move_fix) and Vegetation_Bgc.h (n_nonvasc_extract).
+  int n_som_move_fix, n_nonvasc_extract;
   // Option 4 (v5j), OFF by default: daily surface energy balance (SEB) top
   // boundary (ported from the seb-explore exploration branch).
   // model_settings.seb_scheme: 0 = off (n-factor top boundary, unchanged);

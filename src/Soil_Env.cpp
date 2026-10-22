@@ -357,6 +357,23 @@ void Soil_Env::updateDailyGroundT(const double & tdrv, const double & dayl) {
 *   the temperature solver uses with its virtual boundary layer (cn = 100).
 * Over snow Ts <= 0; a surplus at Ts = 0 melts snow (seb_melt).
 */
+// Fix B2 (v5k): Richards::update returned early and applied nothing. The day's
+// infiltration (mm/s) goes to the puddle (up to ponding_max_mm) and the rest to
+// surface runoff, as in the frozen-top branch of updateDailySM; the soil
+// evaporation (mm/s) is booked as unapplied (removed from reported ET).
+// Uptake is left marked as not applied (uptake_applied stays 0).
+void Soil_Env::rebookUnappliedRichards(const double infil, const double evap) {
+  double in_mm = fmax(infil, 0.0) * SEC_IN_DAY;
+  if (in_mm > 0.0) {
+    double sp = fmax(ponding_max_mm - ed->d_soi2l.magic_puddle, 0.0);
+    double add = fmin(sp, in_mm);
+    ed->d_soi2l.magic_puddle += add;
+    ed->d_soi2l.qover += in_mm - add;
+    ed->d_soi2l.qinfl = 0;
+  }
+  evap_unapplied_mm = fmax(evap, 0.0) * SEC_IN_DAY;
+}
+
 double Soil_Env::solveSEB(const double & tdrv) {
   Layer* top = ground->toplayer;
   const bool snow = top->isSnow;
@@ -407,7 +424,9 @@ double Soil_Env::solveSEB(const double & tdrv) {
     return chn * f * U;
   };
   auto esat = [](double t) { // Pa, as Climate::calculate_saturated_vapor_pressure
-    return (t > 0) ? 611.2 * exp(17.63 * t / (243.12 + t)) : 611.2 * exp(17.27 * t / (272.62 + t));
+    if (t > 0) { return 611.2 * exp(17.63 * t / (243.12 + t)); }
+    if (Climate::svp_ice_fix == 1) { return 611.2 * exp(22.46 * t / (272.62 + t)); } // Fix B1 (v5k)
+    return 611.2 * exp(17.27 * t / (272.62 + t));
   };
   auto F = [&](double ts) {
     double c = chu(ts);
@@ -814,6 +833,9 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
                     ed->d_sois.watertab, root_water_up, evap,
                     infil, cd->cell_slope);
     ed->d_soi2l.qdrain += richards.qdrain;
+    if (richards_infil_fix == 1 && richards.early_return) {
+      rebookUnappliedRichards(infil, evap); // Fix B2 (v5k); infil, evap in mm/s here
+    } else
     { // Fix (c) (v5j), bookkeeping only: Richards applies uptake to fstsoill..drainl
       Layer* ul = fstsoill;
       while (ul != NULL && ul->isSoil && drainl != NULL && ul->indl <= drainl->indl) {

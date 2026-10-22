@@ -5,7 +5,7 @@ Two layers:
 * `tests/unit/` has unit tests in C++. They use [doctest](https://github.com/doctest/doctest) 2.4.11, which is vendored as the header-only `doctest.h`. The test binary links every model object except `obj/TEM.o`, which holds `main`.
 * `tests/regression/` has a scripted regression harness. It compares two `dvmdostem` binaries on a case set and checks bit-identity, determinism, mass closure and run health.
 
-None of these files change model behaviour. The only model-source change made for testing is the behaviour-neutral seam `include/NFactorSelect.h` (see "Seams" below).
+None of these files change model behaviour. The only model-source change made for testing is the behaviour-neutral seam `include/NFactorSelect.h` (see "Seams" below). Since v5k the suite also covers the switchable fixes B1-B4 and the draft N fixes N1-N3 (all default 0 = legacy; see "Switchable fixes" below).
 
 ## Unit tests
 
@@ -45,6 +45,7 @@ How the tests are written:
 | root_n | test_integrator_bgc.cpp | N-conserving per-layer root N extraction (hand values plus a 200-case property test) |
 | nfactor | test_nfactor.cpp | n-factor selection, nfactor_sameday 0/1, first day of month |
 | seb | test_seb.cpp | v5j SEB scheme 2 (Soil_Env::solveSEB): energy closure, melt, brackets, vp units |
+| fixes_v5k | test_fixes_v5k.cpp | v5k switches: B1 svp over ice (+SEB esat), B2 Richards early-return infiltration, B3 combineExtraFronts termination, B4 snow albedo cap; N1-N3 soil N conservation (deltastate), non-vascular N extraction |
 
 Tests in `test_seb.cpp` need the v5j commits (9dae595b and d41c7f79), which are cherry-picked onto this branch.
 
@@ -59,6 +60,8 @@ tests/regression/run_regression.sh -j 8 BIN_A BIN_B /path/calib8 /path/out_dir
 #    --no-expect-identical  intended behaviour change: skip the A==B requirement, keep the other checks
 #    --no-repeat            skip the determinism re-run of B
 #    --strict               turn WARNs (relative closure, extra safety-net events) into FAILs
+# diagnostic env vars for a diagnostic binary (recorded in meta.json), e.g.
+REG_EXTRA_ENV="DVM_ET_DIAG=1" python3 tests/regression/run_case.py BIN CASEDIR RUNDIR
 ```
 
 Protocol for each case is in `run_case.py`. It is the same launcher and argv as the calibration runs (`vrun_seb.py`), with one segment:
@@ -85,3 +88,17 @@ Checks, in `summarize.py` (results in `out_dir/report.txt` and `report.json`):
 ## Seams (model-source changes made for testability)
 
 * `include/NFactorSelect.h`: `nfactor_sel::selector_tair`, `nfactor_sel::select_nfactor` and `TDRV_MONTH_START`. This is the n-factor selection code from `Cohort::updateMonthly_Env`, moved unchanged. Proven bit-identical on all 8 calibration cases (spin-up and main, every variable) with `nfactor_sameday` = 0 and = 1.
+
+## Switchable fixes (v5k, branch v5k-fixes; all default 0 = legacy, bit-identical when off)
+
+| key (model_settings) | values | fixes | tests (switch on) | legacy xfail kept |
+|---|---|---|---|---|
+| `svp_ice_fix` | 0/1 | B1: svp at t <= 0 used the Tetens water coefficient with the WMO ice denominator (+51 % at -20 C); 1 = WMO ice formula 6.112 exp(22.46 t/(272.62+t)) hPa in `calculate_saturated_vapor_pressure` and in the SEB esat | values vs WMO/Murphy-Koop, continuity at 0 C, daily svp/vpd, SEB sublimation | test_climate.cpp (2) |
+| `richards_infil_fix` | 0/1 | B2: `Richards::update` early return put the infiltration into Richards' private EnvData (lost); 1 = `Soil_Env::rebookUnappliedRichards` sends it to the puddle (<= ponding_max_mm) and runoff, books evaporation as unapplied, uptake as not applied | flag, closure soil+puddle+runoff, over-full puddle | test_stefan_water.cpp |
+| `stefan_fronts_fix` | 0/1 | B3: `Stefan::combineExtraFronts` set `mindz` once (hang with > 1 surplus pair); 1 = reset per pass | termination (fork+alarm), nearest pair removed, rebuild with > MAX_NUM_FNT+2 boundaries | test_stefan_water.cpp |
+| `snow_albedo_fix` | 0/1 | B4: `Snow_Env::getAlbedoVis` returned 0.9 below -10 C; 1 = snwalbmax | cap, continuity at -10 C | test_seb.cpp |
+| `n_rootless_fix` | 0/1/2 | N1 (draft): rootless layers lost their net mineralisation N (and ignored extraction); 1 = no mineralisation there, 2 = mineralised N to AVLN (extraction applied) | deltastate conservation | (documented in the N1 test, fx = 0) |
+| `n_som_move_fix` | 0/1 | N2 (draft): SOM N moved shallow->deep was overwritten ('=' not '+=') in the top humic layers (main HPC N sink), receivers got the full instead of the thickness share, donors gave N for the cumulative C | deltastate conservation, equal donors | N2 legacy xfail |
+| `n_nonvasc_extract` | 0/1 | N3 (draft): non-vascular N uptake had no soil extraction (implicit N source); 1 = extracted from moss/fibric layers by avln*liq and capped at 95 % of that avln | afterIntegration extraction | (documented, fx = 0) |
+
+Proof of neutrality: `run_regression.sh` A = bin_v5j vs B = v5k-fixes binary, all new switches 0, on the 8 calib8 cases (with determinism) and on TVC_B + HPC_H1 with the v5j combined-round settings: bit-identical (see /workspace/v5k/V5K_REPORT.md).

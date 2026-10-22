@@ -1,5 +1,7 @@
 #include "../include/Stefan.h"
 
+int Stefan::fronts_fix = 0; // Fix B3 (v5k), default off (legacy)
+
 Stefan::Stefan() {
 };
 
@@ -652,6 +654,9 @@ void Stefan::combineExtraFronts() {
   while (frntnum >MAX_NUM_FNT) {//because freezing and thawing fronts are
                                 //  alternatively ordered in 'ground->frontsz'
     int removefntid = -1;
+    if (fronts_fix == 1) {
+      mindz = 1000.; // Fix B3 (v5k): find the nearest pair afresh on every pass
+    }
 
     // find the nearest two fronts
     for(int i=0; i<frntnum-1; i++) {

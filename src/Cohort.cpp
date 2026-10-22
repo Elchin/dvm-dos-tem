@@ -69,6 +69,9 @@ Cohort::Cohort(int y, int x, ModelData* modeldatapointer):
 
   // Fix (a) (v5i): vapor pressure units switch (static, before any climate is derived)
   Climate::vp_hpa_fix = modeldatapointer->vp_hpa_fix;
+  Climate::svp_ice_fix = modeldatapointer->svp_ice_fix;   // Fix B1 (v5k)
+  Stefan::fronts_fix = modeldatapointer->stefan_fronts_fix; // Fix B3 (v5k)
+  Snow_Env::albedo_fix = modeldatapointer->snow_albedo_fix; // Fix B4 (v5k)
 
   //On construction we assume historic climate, which will be
   // overwritten by projected climate later when necessary.
@@ -297,6 +300,10 @@ void Cohort::initialize_state_parameters() {
   soilenv.seb_tran_frac = md->seb_tran_frac;
   soilenv.seb_pres      = md->seb_pres;
   SnowLayer::snow_tc_form = md->seb_snow_tc;
+  soilenv.richards_infil_fix = md->richards_infil_fix; // Fix B2 (v5k)
+  soilbgc.n_rootless_fix = md->n_rootless_fix;         // Fix N1 (v5k)
+  soilbgc.n_som_move_fix = md->n_som_move_fix;         // Fix N2 (v5k)
+  for (int ip = 0; ip < NUM_PFT; ip++) { vegbgc[ip].n_nonvasc_extract = md->n_nonvasc_extract; } // Fix N3 (v5k)
   soilenv.snowenvp      = &snowenv;
   soilbgc.initializeParameter();
 

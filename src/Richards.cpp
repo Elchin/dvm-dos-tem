@@ -38,8 +38,10 @@ void Richards::update(Layer *fstsoill, Layer* bdrainl,
   qinfil = infil;
   qevap  = evap;
   qdrain = 0.0;
+  early_return = false;
 
   if (bdraindepth <= fstsoill->z) {// no percolation
+    early_return = true; // Fix B2 (v5k): Soil_Env re-books the water when richards_infil_fix = 1
     if(qinfil > 0.0){//add infil back to ponding/qover
       qinfil *= SEC_IN_DAY;// -->mm/day
       //Add to ponding TODO replace hardcoded 100 mm with ponding_max_mm from soil env?

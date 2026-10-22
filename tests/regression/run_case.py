@@ -12,6 +12,9 @@ from pathlib import Path
 ENV = {"PATH": "/usr/bin:/bin", "HOME": "/tmp",
        "LD_LIBRARY_PATH": os.environ.get("REG_LD_LIBRARY_PATH", "/workspace/wf4-runtime/lib"),
        "OPENBLAS_NUM_THREADS": "1", "OMP_NUM_THREADS": "1", "LANG": "C"}
+# Optional diagnostic variables (e.g. REG_EXTRA_ENV="DVM_ET_DIAG=1"); recorded in meta.json.
+for _kv in os.environ.get("REG_EXTRA_ENV", "").split():
+    _k, _v = _kv.split("=", 1); ENV[_k] = _v
 
 def md5(p):
     h = hashlib.md5(); h.update(Path(p).read_bytes()); return h.hexdigest()
