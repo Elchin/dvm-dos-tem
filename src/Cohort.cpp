@@ -72,6 +72,7 @@ Cohort::Cohort(int y, int x, ModelData* modeldatapointer):
   Climate::svp_ice_fix = modeldatapointer->svp_ice_fix;   // Fix B1 (v5k)
   Stefan::fronts_fix = modeldatapointer->stefan_fronts_fix; // Fix B3 (v5k)
   Snow_Env::albedo_fix = modeldatapointer->snow_albedo_fix; // Fix B4 (v5k)
+  Integrator::nmin_tol_fix = modeldatapointer->soil_nmin_tol_fix; // Fix C1 (v5k)
 
   //On construction we assume historic climate, which will be
   // overwritten by projected climate later when necessary.

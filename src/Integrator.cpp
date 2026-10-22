@@ -50,6 +50,8 @@ float Integrator::b63 =  -1.381676413;
 float Integrator::b64 =   0.45297271;
 float Integrator::b65 =  -0.275;
 
+int Integrator::nmin_tol_fix = 0; // Fix C1 (v5k), default off (legacy)
+
 int REJECT = 0;
 int ACCEPT = 1;
 
@@ -1006,7 +1008,12 @@ int Integrator::boundcon( float ptstate[], float err[], float& ptol ) {
           return test = soivarkey(I_L_NIMMOB)+1+il;
         }
 
-        same = err[I_L_NMIN+il] - fabs( ptol * ptstate[I_L_NMIN+il]);
+        if (nmin_tol_fix == 1) { // Fix C1 (v5k): NMIN is signed; use the gross scale
+          same = err[I_L_NMIN+il] - fabs(ptol) * fmax(fabs(ptstate[I_L_NMIN+il]),
+                   fmax(fabs(ptstate[I_L_NIMMOB+il]), fabs(ptstate[I_L_AVLN+il])));
+        } else {
+          same = err[I_L_NMIN+il] - fabs( ptol * ptstate[I_L_NMIN+il]);
+        }
 
         if (same>zero) {
           return test = soivarkey(I_L_NMIN)+1+il;

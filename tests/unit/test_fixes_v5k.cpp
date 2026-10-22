@@ -294,3 +294,48 @@ TEST_CASE("N3 n_nonvasc_extract=1: non-vascular N uptake is extracted from moss/
     }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Fix C1 (v5k): soil integrator NMIN error tolerance (model_settings.soil_nmin_tol_fix)
+// TVC_B Warming nfeed with B1+B2+B4: in Nov 2012 every doubled soil step was
+// rejected on the signed NMIN accumulator of layer 5 (code 228, 131974 rejects),
+// adapt() took 263922 steps at dt ~ 2^-19 and the float C state lost +2.74 gC
+// to rounding. Legacy: tolerance ptol*|NMIN| ~ 0 when NMIN ~ 0.
+namespace {
+struct BoundconFixture {
+  CohortData cd; BgcData bd; EnvData ed; FirData fd; Soil_Bgc sb; Integrator in;
+  float st[NUMEQ], err[NUMEQ]; float ptol = 0.01f;
+  BoundconFixture() {
+    sb.setCohortData(&cd); sb.setBgcData(&bd); sb.setEnvData(&ed); sb.setFirData(&fd);
+    in.setBgcData(&bd); in.setSoil_Bgc(&sb);
+    sb.nfeed = 1; in.vegbgc = false; in.soibgc = true; in.numsl = 1;
+    for (int i = 0; i < NUMEQ; ++i) { st[i] = 1.0f; err[i] = 0.0f; }
+    st[Integrator::I_L_NMIN] = 1.0e-6f;    // net mineralisation ~ immobilisation
+    st[Integrator::I_L_NIMMOB] = 0.5f;     // gross immobilisation this month
+    st[Integrator::I_L_AVLN] = 0.2f;
+    err[Integrator::I_L_NMIN] = 1.0e-4f;   // small error vs the gross N flux
+  }
+  ~BoundconFixture() { Integrator::nmin_tol_fix = 0; }
+};
+}
+
+TEST_SUITE("fixes_v5k") {
+TEST_CASE("C1 legacy (soil_nmin_tol_fix=0): NMIN ~ 0 rejects a step with a tiny error (stall mechanism)") {
+  BoundconFixture f; Integrator::nmin_tol_fix = 0;
+  int t = f.in.boundcon(f.st, f.err, f.ptol);
+  CHECK(t == Integrator::I_L_NMIN + 1 + 0);   // rejected on NMIN of layer 0
+}
+TEST_CASE("C1 fix (soil_nmin_tol_fix=1): NMIN tolerance scales with max(|NMIN|,|NIMMOB|,|AVLN|)") {
+  BoundconFixture f; Integrator::nmin_tol_fix = 1;
+  CHECK(f.in.boundcon(f.st, f.err, f.ptol) == 1);          // 1e-4 < 0.01*0.5
+  f.err[Integrator::I_L_NMIN] = 0.01f;                          // > 0.01*0.5 -> still rejected
+  CHECK(f.in.boundcon(f.st, f.err, f.ptol) == Integrator::I_L_NMIN + 1);
+  f.err[Integrator::I_L_NMIN] = 0.0f; f.err[Integrator::I_L_AVLN] = 0.01f;   // other tests unchanged
+  CHECK(f.in.boundcon(f.st, f.err, f.ptol) == Integrator::I_L_AVLN + 1);
+  // large NMIN: same as legacy
+  f.err[Integrator::I_L_AVLN] = 0.0f; f.st[Integrator::I_L_NMIN] = 10.f; f.err[Integrator::I_L_NMIN] = 0.05f;
+  CHECK(f.in.boundcon(f.st, f.err, f.ptol) == 1);
+  Integrator::nmin_tol_fix = 0;
+  CHECK(f.in.boundcon(f.st, f.err, f.ptol) == 1);
+}
+}
