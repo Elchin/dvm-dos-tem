@@ -46,6 +46,7 @@ How the tests are written:
 | nfactor | test_nfactor.cpp | n-factor selection, nfactor_sameday 0/1, first day of month |
 | seb | test_seb.cpp | v5j SEB scheme 2 (Soil_Env::solveSEB): energy closure, melt, brackets, vp units |
 | fixes_v5k | test_fixes_v5k.cpp | v5k switches: B1 svp over ice (+SEB esat), B2 Richards early-return infiltration, B3 combineExtraFronts termination, B4 snow albedo cap; N1-N3 soil N conservation (deltastate), non-vascular N extraction; C1 soil integrator NMIN tolerance |
+| fixes_v5l | test_fixes_v5l.cpp | v5l ET-split switches: key defaults/validation/parsing (+ death tests), S1 per-cover stomatal light, S2 buried non-vascular snow interception, S3 LAI-based rain interception with storage, S4 moss rain as surface water (relabel / to ground), evap_moss accumulation |
 
 Tests in `test_seb.cpp` need the v5j commits (9dae595b and d41c7f79), which are cherry-picked onto this branch.
 
@@ -103,3 +104,19 @@ Checks, in `summarize.py` (results in `out_dir/report.txt` and `report.json`):
 | `n_nonvasc_extract` | 0/1 | N3 (draft): non-vascular N uptake had no soil extraction (implicit N source); 1 = extracted from moss/fibric layers by avln*liq and capped at 95 % of that avln | afterIntegration extraction | (documented, fx = 0) |
 
 Proof of neutrality: `run_regression.sh` A = bin_v5j vs B = bin_v5k / bin_v5k1, all new switches 0, on the 8 calib8 cases (with determinism) and on TVC_B + HPC_H1 with the v5j combined-round settings: bit-identical (see /workspace/v5k/V5K_REPORT.md).
+
+## Switchable fixes (v5l: merged in daily-climate-mode, local tag v5l; all default 0 = legacy, bit-identical to v5k1 when off)
+
+ET-partition fixes from the v5k ET-split diagnostic. Unit tests: suite `fixes_v5l` (15 cases).
+
+| key (model_settings) | values | fixes | tests |
+|---|---|---|---|
+| `et_fpc_once_fix` | 0/1 | S1: transpiration was cover-scaled twice: the radiation/PAR given to the stomatal and Penman-Monteith terms is already FPC-scaled (`updateRadiation`), and Cohort multiplies `d_v2a.tran` by FPC again ("ALT fix 1", 28167031); 1 = stomatal PAR and transpiration radiation use the per-cover values (pardown/fpc, sw/fpc), so Cohort's single FPC multiply is the only one. Wet-canopy evaporation and tran_pet are unchanged | legacy formula, per-cover formula independent of FPC, identity at FPC = 1 |
+| `nv_snow_bury_fix` | 0/1 | S2: moss/lichen intercepted snow while under the snowpack (`getSnowInterception` = min(snfl*fpc, iscoef*LAI)) and the snow then sublimated as "canopy" sublimation; 1 = no snow interception and zero snow-storage capacity for non-vascular PFTs when the start-of-day snow depth > `nv_snow_bury_depth`; stored snow drips | buried/not buried, threshold, vascular unaffected, mass |
+| `nv_snow_bury_depth` | m, >= 0, default 0.0 | S2 threshold. 0: the moss/lichen layer is the top of the soil column, so any snowpack lies on top of it | as above |
+| `rain_int_lai_fix` | 0/1 | S3: rain interception was max_int = 0.21 P + 0.5 mm, not related to LAI, and storage was not carried over in a consistent way; 1 = capacity = ircoef*LAI (mm, per ground area; ircoef in mm per unit LAI, from the CMT parameter file), intercepted = min(rain*fpc, capacity - stored), stored water evaporates first next day, excess drips. Literature 0.1-0.25 mm/LAI (CLM5 0.1 per LAI+SAI after Dickinson et al. 1993; BATS 0.2); parameter files have 0.041 | legacy formula, capacity, storage, evaporate first, shrinking capacity drips, mass |
+| `nv_rain_surface` | 0/1/2 | S4: rain intercepted by moss/lichen was evaporated and reported as canopy evaporation; 1 = same water flux, booked as the new moss-surface evaporation `EVAP_MOSS` (in EET; closure unchanged); 2 = no moss/lichen rain interception; the rain reaches the ground (soil/moss-layer evaporation and infiltration) | relabel, to ground with and without S3, accumulation |
+
+New outputs (output_spec.csv, off by default; monthly/yearly cohort totals, mm/time): `EVAP_CANOPY`, `SUBL_CANOPY`, `EVAP_MOSS`, `EVAP_SOIL`, `SUBL_SNOW`, `RAIN_INTERCEPT`, `SNOW_INTERCEPT`. EET = EVAP_CANOPY + SUBL_CANOPY + EVAP_MOSS + TRANSPIRATION + EVAP_SOIL + SUBL_SNOW. EVAP_MOSS counts in EET only when `nv_rain_surface` = 1.
+
+Proof of neutrality: `run_regression.sh` A = bin_v5k1 vs B = bin_v5l (rc and merged), all new switches off, on calib8 and on the 8 V-Nall baseline cases (with determinism), plus V-Nall with all new keys written explicitly as 0: bit-identical, closure OK (see /workspace/v5l/V5L_REPORT.md).
