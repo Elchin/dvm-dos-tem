@@ -82,6 +82,7 @@ public:
   // 2 = the mineralised N goes to AVLN of that layer (no root extraction there;
   //     leaching as for other layers).
   int n_rootless_fix = 0;
+  // Refs (N1): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 29d72af8); restores N mass conservation.
   // Fix N2 (v5k), OFF by default: model_settings.n_som_move_fix. deltastate()
   // moves organic N with the SOM C that is moved down the profile, but (a) the N
   // added to the top humic layer(s) is overwritten ('=' instead of '+=') when the
@@ -93,6 +94,7 @@ public:
   // layers above it, not its own. 1 = N moves with C: per-layer donor share,
   // dcaddfrac share to receivers, export accumulated (+=).
   int n_som_move_fix = 0;
+  // Refs (N2): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 20b2723e); restores N mass conservation (N moves with C).
 private:
 
   // NOTE: seems like these 3 variables are supposed to shadow the

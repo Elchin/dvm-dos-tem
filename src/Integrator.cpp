@@ -1008,6 +1008,7 @@ int Integrator::boundcon( float ptstate[], float err[], float& ptol ) {
           return test = soivarkey(I_L_NIMMOB)+1+il;
         }
 
+        // Refs (C1): no published source for the fix; standard restored: step-size error scaled by a magnitude that cannot pass through zero (Press et al. 2007, Numerical Recipes 3rd ed., sec. 17.2; Hairer, Norsett & Wanner 1993, doi:10.1007/978-3-540-78862-1).
         if (nmin_tol_fix == 1) { // Fix C1 (v5k): NMIN is signed; use the gross scale
           same = err[I_L_NMIN+il] - fabs(ptol) * fmax(fabs(ptstate[I_L_NMIN+il]),
                    fmax(fabs(ptstate[I_L_NIMMOB+il]), fabs(ptstate[I_L_AVLN+il])));

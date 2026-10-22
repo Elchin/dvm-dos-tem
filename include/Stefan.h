@@ -27,6 +27,7 @@ public:
   // the minimum front distance on every pass of combineExtraFronts() (legacy:
   // set once, which never terminates with more than one surplus pair).
   static int fronts_fix;
+  // Refs (B3): no published source; loop-termination bug in combineExtraFronts (upstream 419a4eb3, fix commit 07f6c8d0); algorithm: Woo et al. 2004, doi:10.1029/2004GL019475.
 
 private:
   bool all_fronts_swept = false; // set in updateFronts(): today's front swept out every existing front

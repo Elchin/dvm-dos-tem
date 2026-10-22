@@ -56,6 +56,7 @@ float calculate_saturated_vapor_pressure(const float tair) {
 
   if( tair > 0 ) {
     svp = 6.112 * exp(17.63 * tair / (243.12 + tair) ) * 100.0;
+  // Refs (B1): WMO-No. 8 (2008) CIMO Guide Annex 4.B, e_i = 6.112 exp(22.46 t/(272.62+t)) hPa; cf. Buck 1981, doi:10.1175/1520-0450(1981)020<1527:NEFCVP>2.0.CO;2; test values Murphy & Koop 2005, doi:10.1256/qj.04.94.
   } else if (Climate::svp_ice_fix == 1) { // Fix B1 (v5k): WMO over ice, eq (2) above
     svp = 6.112 * exp(22.46 * tair / (272.62 + tair) ) * 100.0;
   } else {
@@ -672,6 +673,8 @@ void Climate::load_daily_from_file(const std::string& fname, int y, int x) {
 * Prata (1996) clear-sky emissivity, Crawford & Duchon (1999) cloud
 * correction eps = c + (1-c)*eps_clr. On dark days (girr < 30 W m-2) the
 * cloud fraction is the series mean of the lit days of the same month.
+* Refs (LW): Prata 1996, doi:10.1002/qj.49712253306; Crawford & Duchon 1999,
+*   doi:10.1175/1520-0450(1999)038<0474:AIPFEE>2.0.CO;2; see docs/daily-mode-REFERENCES.md.
 */
 void Climate::seb_load_extra(const std::string& fname, int y, int x) {
   int ncid, vid;
@@ -991,6 +994,7 @@ void Climate::prepare_daily_driving_data(int iy, const std::string& stage) {
   // Daily climate mode: once a daily projected series is loaded, the SC
   // stage takes values directly from it. Any other stage after loading a
   // daily series would misread it, so fail loudly.
+  // Refs (daily mode): no published source for the mode itself; calendar = CF 365_day/noleap (CF Conventions 1.8); daily extraterrestrial radiation FAO-56 eq. 21 (Allen et al. 1998); see docs/daily-mode-REFERENCES.md.
   if (this->daily_series_loaded) {
     if (stage.find("sc") != std::string::npos) {
       this->prepare_daily_driving_data_from_daily(iy);
@@ -1123,6 +1127,7 @@ void Climate::derive_daily_secondary_vars() {
   std::transform( tair_d.begin(), tair_d.end(), svp_d.begin(), calculate_saturated_vapor_pressure );
 
   vpd_d.resize(tair_d.size());
+  // Refs: input vapour pressure in hPa (CRU TS vap: Harris et al. 2020, doi:10.1038/s41597-020-0453-3); VPD = es - ea in consistent units (FAO-56, Allen et al. 1998); Penman-Monteith (Monteith 1965, PMID 5321565).
   if (vp_hpa_fix == 1) { // Fix (a) (v5i): vapo_d is hPa, svp_d is Pa
     for (size_t i = 0; i < vpd_d.size(); ++i) {
       vpd_d[i] = calculate_vpd(svp_d[i], vapo_d[i] * 100.0f);

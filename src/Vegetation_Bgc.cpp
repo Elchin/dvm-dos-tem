@@ -530,6 +530,7 @@ void Vegetation_Bgc::deltanfeed() {
         del_soi2v.innuptake = 0.95 * avln;
       }
 
+    // Refs (N3): no published source for the scheme; restores N mass conservation; bryophyte N uptake from the moss/peat layer: Turetsky 2003, doi:10.1639/05.
     } else if (n_nonvasc_extract == 1) {
       // Fix N3 (v5k): the uptake is taken from the soil (see afterIntegration),
       // so limit it like the vascular uptake: 95 % of the available N in the

@@ -565,6 +565,7 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
     // that calculation; for now, just use air surface temp in winter (Raleigh
     // shows it's well-correlated but air tends to be warmer by ~5 deg C).
 
+    // Refs: n-factor (Klene et al. 2001, doi:10.1080/15230430.2001.12003416); the fix removes an uninitialised selector (code bug, upstream 419a4eb3, commit 9b3a4840).
     // Fix (b) (v5i), OFF by default: model_settings.nfactor_sameday. 1 = select
     // the n-factor from the CURRENT day's Tair (climate.tair_d[doy], the value
     // update_from_climate() puts into d_atms.ta below); 0 (default) = legacy,
@@ -629,6 +630,7 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
           } else {
             ed[ip].d_vegd.btran = 0.0;
           }
+          // Refs: no published source for the scheme; rationale: water mass conservation (reported ET must leave storage); context: Heijmans et al. 2004, doi:10.1016/j.agrformet.2003.12.006.
           if (md->nonvasc_trans_withdraw == 1) {
             // Fix (c) (v5j): water source = first shallow organic layer
             // (index 0 of r_e_ij / root_water_up); none if it is not thawed.
@@ -649,6 +651,8 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
         vegenv[ip].updateWaterBalance(daylength, cd.m_veg.lai[ip], cd.m_veg.fpc[ip]);
         // ALT fix 1: transpiration's VPD term uses single-leaf conductance (not fpc-scaled);
         // scale to ground area here so reported EET and soil uptake share the tran*fpc basis.
+        // Refs (S1): double FPC scaling introduced by commit 28167031; cover applied once as in LPJ (Gerten et al. 2004, doi:10.1016/j.jhydrol.2003.09.029),
+        //   LPJmL4 (Schaphoff et al. 2018, doi:10.5194/gmd-11-1343-2018) and CLM5 Tech Note eq. 2.7.68; FPC = 1-exp(-k LAI), Monsi & Saeki 1953 (transl. doi:10.1093/aob/mci052).
         ed[ip].d_v2a.tran *= cd.d_veg.fpc[ip];
       }
     }
@@ -1348,6 +1352,7 @@ void Cohort::getEd4land_daily() {
   //
   edall->d_l2a.eet = edall->d_v2a.evap + edall->d_v2a.sublim + edall->d_v2a.tran
                      + edall->d_snw2a.sublim + edall->d_soi2a.evap;
+  // Refs (S4): moss as a ground/soil layer (Chadburn et al. 2015, doi:10.5194/gmd-8-1493-2015; Yi et al. 2009, doi:10.1029/2008JG000841); moss/understory evaporation (Heijmans et al. 2004, doi:10.1016/j.agrformet.2003.12.006).
   if (md->nv_rain_surface == 1) {
     // v5l S4 mode 1: moss-surface evaporation is booked apart from canopy evaporation
     edall->d_l2a.eet += edall->d_v2a.evap_moss;

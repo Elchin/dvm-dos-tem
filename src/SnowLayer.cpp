@@ -88,6 +88,7 @@ int SnowLayer::snow_tc_form = 0; // Option 4 (v5j) SEB, legacy Goodrich
 
 double SnowLayer::getThermCond() {
   double tc=0;
+  // Refs: Sturm et al. 1997, doi:10.3189/S0022143000002781; legacy Goodrich 1982, doi:10.1139/t82-047.
   if (snow_tc_form == 1 && rho <= 600.0) { // Option 4 (v5j) SEB: Sturm et al. 1997
     tc = getThermCond5Sturm();
     return fmax(tc, 0.023);

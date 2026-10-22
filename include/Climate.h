@@ -38,12 +38,14 @@ public:
   // vapo / vapo_d series themselves (and the VAPO output) stay in hPa.
   // 0 (default) = legacy units mix.
   static int vp_hpa_fix;
+  // Refs: input vapour pressure in hPa (CRU TS vap: Harris et al. 2020, doi:10.1038/s41597-020-0453-3); VPD = es - ea in consistent units (FAO-56, Allen et al. 1998); Penman-Monteith (Monteith 1965, PMID 5321565).
   // Fix B1 (v5k), OFF by default: model_settings.svp_ice_fix. For t <= 0 C the
   // legacy saturation vapour pressure uses 17.27/(272.62+t), i.e. the Tetens
   // water coefficient with the WMO ice denominator (+51 % vs ice at -20 C).
   // 1 = WMO (2008) Magnus form over ice, 6.112 exp(22.46 t/(272.62+t)) hPa, for
   // t <= 0 C, in calculate_saturated_vapor_pressure() and in the SEB esat.
   static int svp_ice_fix;
+  // Refs (B1): WMO-No. 8 (2008) CIMO Guide Annex 4.B, e_i = 6.112 exp(22.46 t/(272.62+t)) hPa; cf. Buck 1981, doi:10.1175/1520-0450(1981)020<1527:NEFCVP>2.0.CO;2; test values Murphy & Koop 2005, doi:10.1256/qj.04.94.
   bool daily_series_loaded = false;
 
   // Daily (365) extraterrestrial radiation, used in daily mode only.

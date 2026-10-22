@@ -891,6 +891,7 @@ void Soil_Bgc::deltastate() {
         double totsomc = tmp_sois.rawc[il] + tmp_sois.soma[il]
                          + tmp_sois.sompr[il] + tmp_sois.somcr[il];
         // Fix N2 (v5k) (c): legacy uses the cumulative C moved from all layers so far
+        // Refs (N2): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 20b2723e); restores N mass conservation (N moves with C).
         double s2dc_n = (n_som_move_fix == 1) ? s2dc_layer : (s2dcarbon1 + s2dcarbon2);
 
         if (totsomc > s2dc_n) {
@@ -1072,6 +1073,7 @@ void Soil_Bgc::deltastate() {
       if(bd->m_v2soi.rtlfalfrac[il] > 0.){
         del_sois.avln[il] = ninput + del_soi2soi.netnmin[il]
                             - ndrain - rtnextract[il];
+      // Refs (N1): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 29d72af8); restores N mass conservation.
       } else if (n_rootless_fix == 2) { // Fix N1 (v5k): mineralised N -> AVLN, no roots
         del_sois.avln[il] = ninput + del_soi2soi.netnmin[il] - ndrain - rtnextract[il];
       } else {

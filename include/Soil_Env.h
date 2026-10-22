@@ -45,8 +45,10 @@ public:
   double floor_added_mm;
   // DRAFT (daily-structural): see ModelData::frozen_infil_eice (<0 = off)
   double frozen_infil_eice;
+  // Refs: Swenson et al. 2012, doi:10.1029/2012MS000165; CLM5 Tech Note eq. 2.7.48 (Omega = 6); see docs/daily-mode-REFERENCES.md.
   double frozen_infil_mm; // water infiltrated into frozen soil today (mm)
   int soil_evap_beta;     // DRAFT: see ModelData::soil_evap_beta (0 = off)
+  // Refs: Lee & Pielke 1992, doi:10.1175/1520-0450(1992)031<0480:ETSSSH>2.0.CO;2; theta_fc from Clapp & Hornberger 1978, doi:10.1029/WR014i004p00601.
   double evap_unapplied_mm;
   // Fix (c) (v5j): per-layer flag (index as root_water_up) = 1 if today's root
   // uptake from that layer was actually applied by updateDailySM, else 0.
@@ -55,10 +57,15 @@ public:
   // Option 2 (v5h): lateral drainage of thawed near-surface
   // organic layers towards the peat retention capacity; see ModelData.h.
   double org_drain_rate, org_drain_thre_f, org_drain_thre_h, org_drain_depth;
+  // Refs: Quinton & Marsh 1999, doi:10.1002/(SICI)1099-1085(199911)13:16<2563::AID-HYP942>3.0.CO;2-D; Letts et al. 2000, doi:10.1080/07055900.2000.9649643; cf. CLM5 Tech Note sec. 2.7.4.
   double orgLateralDrain(); // returns mm drained today
 
   // Option 4 (v5j) SEB (see ModelData::seb_scheme). 0 = off.
   int seb_scheme;
+  // Refs (SEB): bulk transfer, Brutsaert 1982, doi:10.1007/978-94-017-1497-6; simplified stability functions after Louis 1979, doi:10.1007/BF00117978
+  //   (stable) and Dyer 1974, doi:10.1007/BF00240838 (unstable); LW: Prata 1996, doi:10.1002/qj.49712253306; Crawford & Duchon 1999,
+  //   doi:10.1175/1520-0450(1999)038<0474:AIPFEE>2.0.CO;2; snow emissivity Warren 1982, doi:10.1029/RG020i001p00067; esat WMO-No. 8 (2008);
+  //   safeguarded Newton, Press et al. 2007 (Numerical Recipes 3rd ed., sec. 9.4); see docs/daily-mode-REFERENCES.md.
   // Fix B2 (v5k), OFF by default: model_settings.richards_infil_fix. When
   // Richards::update returns early, the legacy code adds the day's infiltration
   // to the puddle/runoff of Richards' private EnvData copy, which nothing reads,
@@ -67,6 +74,7 @@ public:
   // ponding_max_mm) and the rest to surface runoff (qover), as in the frozen-top
   // branch; evaporation is booked as unapplied and the uptake as not applied.
   int richards_infil_fix = 0;
+  // Refs (B2): no published source; code bug (Richards::update early return, upstream 419a4eb3, fix commit 07f6c8d0); restores water mass conservation (continuity in Richards 1931, doi:10.1063/1.1745010).
   void rebookUnappliedRichards(const double infil, const double evap);
   double seb_z0_snow, seb_z0_soil, seb_zwind, seb_ztemp, seb_emis_snow,
          seb_emis_soil, seb_wind, seb_minwind, seb_stab_b, seb_tran_frac,

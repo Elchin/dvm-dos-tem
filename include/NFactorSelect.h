@@ -2,6 +2,7 @@
 #define NFACTORSELECT_H_
 // Daily n-factor selection used by Cohort::updateMonthly_Env (pure helpers,
 // factored out unchanged so they can be unit tested; see tests/unit).
+// Refs: n-factor (Klene et al. 2001, doi:10.1080/15230430.2001.12003416); the fix removes an uninitialised selector (code bug, upstream 419a4eb3, commit 9b3a4840).
 namespace nfactor_sel {
 
 // Value of the n-factor selector before the first day of each month has set it

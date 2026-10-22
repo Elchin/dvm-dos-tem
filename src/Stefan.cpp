@@ -654,6 +654,7 @@ void Stefan::combineExtraFronts() {
   while (frntnum >MAX_NUM_FNT) {//because freezing and thawing fronts are
                                 //  alternatively ordered in 'ground->frontsz'
     int removefntid = -1;
+    // Refs (B3): no published source; loop-termination bug in combineExtraFronts (upstream 419a4eb3, fix commit 07f6c8d0); algorithm: Woo et al. 2004, doi:10.1029/2004GL019475.
     if (fronts_fix == 1) {
       mindz = 1000.; // Fix B3 (v5k): find the nearest pair afresh on every pass
     }

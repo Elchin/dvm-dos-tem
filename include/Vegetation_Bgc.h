@@ -29,6 +29,7 @@ public:
   // The non-vascular uptake is then capped at 95 % of the available N in those
   // layers (as for vascular plants in their root zone).
   int n_nonvasc_extract = 0;
+  // Refs (N3): no published source for the scheme; restores N mass conservation; bryophyte N uptake from the moss/peat layer: Turetsky 2003, doi:10.1639/05.
   ~Vegetation_Bgc();
 
   int ipft;

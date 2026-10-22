@@ -84,6 +84,8 @@ void Vegetation_Env::updateRadiation(double leaf_area_index, double foliar_proje
   ed->d_a2v.parabsorb  = ed->d_a2v.pardown * (1.0 - exp(-envpar.er * leaf_area_index));
   
   double ppfd50  = envpar.ppfd50 ;//mumol/m2s, ppfd for 0.5 stomatal closure
+  // Refs (S1): double FPC scaling introduced by commit 28167031; cover applied once as in LPJ (Gerten et al. 2004, doi:10.1016/j.jhydrol.2003.09.029),
+  //   LPJmL4 (Schaphoff et al. 2018, doi:10.5194/gmd-11-1343-2018) and CLM5 Tech Note eq. 2.7.68; FPC = 1-exp(-k LAI), Monsi & Saeki 1953 (transl. doi:10.1093/aob/mci052).
   if (fpc_once_fix == 1 && foliar_projected_cover > 0.) {
     // S1 (v5l): stomatal light factor from the PAR per unit covered area
     double ppfd_c = ed->d_a2v.pardown / foliar_projected_cover * EPAR;
@@ -110,14 +112,20 @@ void Vegetation_Env::updateWaterBalance(const double & daylhr, double leaf_area_
   ed->d_v2a.evap_moss = 0.;                       // v5l S4 (stays 0 unless nv_rain_surface == 1)
 
   // v5l ET-split switches for this PFT and day (all false when the switches are 0)
+  // Refs (S4): moss as a ground/soil layer (Chadburn et al. 2015, doi:10.5194/gmd-8-1493-2015; Yi et al. 2009, doi:10.1029/2008JG000841); moss/understory evaporation (Heijmans et al. 2004, doi:10.1016/j.agrformet.2003.12.006).
   const bool nv_moss_evap = (nv_rain_surface == 1 && nonvasc > 0);   // S4 mode 1
   const bool nv_to_ground = (nv_rain_surface == 2 && nonvasc > 0);   // S4 mode 2
+  // Refs (S2): snow interception is a canopy process (Hedstrom & Pomeroy 1998, doi:10.1002/(SICI)1099-1085(199808/09)12:10/11<1611::AID-HYP684>3.0.CO;2-4);
+  //   low vegetation buried by snow (Sturm et al. 2001, doi:10.1175/1520-0442(2001)014<0336:SSIIAT>2.0.CO;2); moss layer in the soil column (Yi et al. 2009, doi:10.1029/2008JG000841).
   const bool nv_buried = (nv_snow_bury_fix == 1 && nonvasc > 0
                           && snow_depth > nv_snow_bury_depth);       // S2
   const bool tran_fpc_once = (fpc_once_fix == 1 && foliar_projected_cover > 0.); // S1
 
   if(leaf_area_index >0) {
     //precipitation interception and throughfall
+    // Refs (S3): p_liq = 0.1 mm per unit (LAI+SAI) (Dickinson et al. 1993, doi:10.5065/D67W6959; CLM5 Tech Note eq. 2.7.12); S_max(LAI) of
+    //   von Hoyningen-Huene 1981 (DVWK report, no DOI) as in LISFLOOD (van der Knijff et al. 2010, doi:10.1080/13658810802549154); TVC interception
+    //   observations: Zwieback et al. 2019, doi:10.1088/1748-9326/ab1049; Chang et al. 2022, doi:10.1016/j.rse.2021.112747.
     double rstore0 = 0.;   // S3: canopy water stored from previous days (mm)
     if (rain_int_lai_fix == 1) {
       // S3 (v5l): capacity = ircoef [mm per unit LAI] * LAI, minus what is still stored

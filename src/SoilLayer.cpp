@@ -49,6 +49,7 @@ double SoilLayer::getMixVolHeatCapa() {
 // thermal conductivity. Returns a negative value if the option is off or the
 // layer is not a moss/organic layer within org_tc_depth.
 double SoilLayer::getOrgThermCond(const bool frozen_case) {
+  // Refs: Cote & Konrad 2005, doi:10.1139/t04-106; Letts et al. 2000, doi:10.1080/07055900.2000.9649643; Chadburn et al. 2015, doi:10.5194/gmd-8-1493-2015.
   if (org_tc_scheme != 1) { return -1.0; }
   if (!(isMoss || isOrganic)) { return -1.0; }
   if (z >= org_tc_depth) { return -1.0; }
@@ -96,6 +97,7 @@ double SoilLayer::getUnfThermCond() {
   double vliq = getVolLiq();
   double s = (vice + vliq)/poro;
   s = min(s, 1.0);
+  // Refs: Johansen 1975 (CRREL transl. 637), doi:10.21236/ADA044002; Lawrence & Slater 2008, doi:10.1007/s00382-007-0278-1; see docs/daily-mode-REFERENCES.md.
   double ke= (kersten_form == 1) ? log10(s) + 1 : log(s) +1; // for unfrozen case (DRAFT option: log10, Johansen fine / CLM)
   ke = fmax(ke, 0.);
 
@@ -173,6 +175,7 @@ void SoilLayer::derivePhysicalProperty() {
   tcdry   = pow((double)tcsolid , (double)1- poro) * pow((double)TCAIR, (double)poro);
   tcmin   = tcdry;
   // Option 3 (v5h): Johansen (1975) dry conductivity for mineral
+  // Refs: Johansen 1975, doi:10.21236/ADA044002; Farouki 1981 (CRREL Monograph 81-1), doi:10.21236/ADA111734; CLM5 Tech Note eqs. 2.6.80, 2.6.82.
   if (isMineral && mineral_tcdry_form == 1) {
     tcdry = (0.135 * bulkden + 64.7) / (2700. - 0.947 * bulkden);
     tcmin = tcdry;

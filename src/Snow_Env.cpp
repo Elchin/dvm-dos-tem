@@ -159,6 +159,7 @@ double Snow_Env::getAlbedoVis(const double & tem) {
   double vis;
 
   if(tem<-10) {
+    // Refs (B4): no published source; hard-coded 0.9 (upstream 419a4eb3, fix commit 07f6c8d0); restores consistency with snwalbmax and continuity at -10 C (cf. Warren 1982, doi:10.1029/RG020i001p00067).
     vis = (albedo_fix == 1) ? (double)snowenvpar.albmax : 0.9; // Fix B4 (v5k)
   } else {
     vis = snowenvpar.albmax - (snowenvpar.albmax -snowenvpar.albmin)

@@ -375,6 +375,10 @@ void Soil_Env::rebookUnappliedRichards(const double infil, const double evap) {
 }
 
 double Soil_Env::solveSEB(const double & tdrv) {
+// Refs (SEB): bulk transfer, Brutsaert 1982, doi:10.1007/978-94-017-1497-6; simplified stability functions after Louis 1979, doi:10.1007/BF00117978
+//   (stable) and Dyer 1974, doi:10.1007/BF00240838 (unstable); LW: Prata 1996, doi:10.1002/qj.49712253306; Crawford & Duchon 1999,
+//   doi:10.1175/1520-0450(1999)038<0474:AIPFEE>2.0.CO;2; snow emissivity Warren 1982, doi:10.1029/RG020i001p00067; esat WMO-No. 8 (2008);
+//   safeguarded Newton, Press et al. 2007 (Numerical Recipes 3rd ed., sec. 9.4); see docs/daily-mode-REFERENCES.md.
   Layer* top = ground->toplayer;
   const bool snow = top->isSnow;
   const double sig = 5.67e-8, karman = 0.4, rd = 287.04, cp = 1004.64;
@@ -523,6 +527,7 @@ void Soil_Env::updateDailySurfFlux(Layer* toplayer, const double & dayl) {
         double thfc = sl->poro * pow(-3400.0 / sl->psisat, -1.0 / sl->bsw);
         double thl = sl->getVolLiq();
         double x = fmin(1.0, fmax(thl, 0.0) / fmax(thfc, 1.0e-6));
+        // Refs: Lee & Pielke 1992, doi:10.1175/1520-0450(1992)031<0480:ETSSSH>2.0.CO;2; theta_fc from Clapp & Hornberger 1978, doi:10.1029/WR014i004p00601.
         double beta = 0.25 * pow(1.0 - cos(M_PI * x), 2.0);
         evap *= beta;
       }
@@ -833,6 +838,7 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
                     ed->d_sois.watertab, root_water_up, evap,
                     infil, cd->cell_slope);
     ed->d_soi2l.qdrain += richards.qdrain;
+    // Refs (B2): no published source; code bug (Richards::update early return, upstream 419a4eb3, fix commit 07f6c8d0); restores water mass conservation (continuity in Richards 1931, doi:10.1063/1.1745010).
     if (richards_infil_fix == 1 && richards.early_return) {
       rebookUnappliedRichards(infil, evap); // Fix B2 (v5k); infil, evap in mm/s here
     } else
@@ -921,6 +927,7 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
 
 
 // Option 2 (v5h): see ModelData::org_drain_rate.
+// Refs: Quinton & Marsh 1999, doi:10.1002/(SICI)1099-1085(199911)13:16<2563::AID-HYP942>3.0.CO;2-D; Letts et al. 2000, doi:10.1080/07055900.2000.9649643; cf. CLM5 Tech Note sec. 2.7.4.
 double Soil_Env::orgLateralDrain() {
   double total = 0.0;
   double rate = fmin(org_drain_rate, 1.0);
@@ -1104,6 +1111,7 @@ double Soil_Env::getWaterTable(Layer* lstsoill) {
 // absorption is limited by the layer's cold content and pore space; layers at or
 // above 0 C take it as liquid. Water not absorbed returns to the surface.
 // Returns mm infiltrated.
+// Refs: Swenson et al. 2012, doi:10.1029/2012MS000165; CLM5 Tech Note eq. 2.7.48 (Omega = 6); see docs/daily-mode-REFERENCES.md.
 double Soil_Env::frozenInfiltration(Layer* fstsoill, double supply_mm) {
   double absorbed = 0.0;
   double flux = supply_mm;   // mm/day reaching the current layer

@@ -25,6 +25,7 @@ public:
   // 1982 k = 2.9e-6 rho^2 (legacy, default); 1 = Sturm et al. 1997 (k(rho),
   // 156-600 kg/m3; 0.023+0.234 rho below).
   static int snow_tc_form;
+  // Refs: Sturm et al. 1997, doi:10.3189/S0022143000002781; legacy Goodrich 1982, doi:10.1139/t82-047.
   virtual double getFrzThermCond();//get frozen layer thermal conductivity
   virtual double getUnfThermCond();//get unfrozen layer thermal conductivity
 

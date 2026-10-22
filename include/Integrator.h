@@ -126,6 +126,7 @@ public :
   // the tiny C decrements to rounding (+2.74 gC unbooked). 1 = scale the NMIN
   // tolerance by the gross flux/pool size ptol*max(|NMIN|, |NIMMOB|, |AVLN|).
   static int nmin_tol_fix;
+  // Refs (C1): no published source for the fix; standard restored: step-size error scaled by a magnitude that cannot pass through zero (Press et al. 2007, Numerical Recipes 3rd ed., sec. 17.2; Hairer, Norsett & Wanner 1993, doi:10.1007/978-3-540-78862-1).
   float safetynet_t0;     // month fraction already integrated when it gave up
   double safetynet_c;     // C delivered by the last safety net (g/m2)
   double safetynet_n;     // N delivered by the last safety net (g/m2)

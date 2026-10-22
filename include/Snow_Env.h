@@ -24,6 +24,7 @@ public:
   // getAlbedoVis() returns a hard-coded 0.9 below -10 C (above snwalbmax, e.g.
   // 0.8, with a jump at -10 C); 1 = snwalbmax below -10 C.
   static int albedo_fix;
+  // Refs (B4): no published source; hard-coded 0.9 (upstream 419a4eb3, fix commit 07f6c8d0); restores consistency with snwalbmax and continuity at -10 C (cf. Warren 1982, doi:10.1029/RG020i001p00067).
 
   void setGround(Ground* grndp);
 

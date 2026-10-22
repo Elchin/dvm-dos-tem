@@ -35,6 +35,7 @@ public:
   // 1 = Johansen (1975) fine-grained / CLM / Lawrence & Slater (2008) form
   //     Ke = log10(Sr) + 1 (Ke = 0 only for Sr <= 0.1).
   static int kersten_form;
+  // Refs: Johansen 1975 (CRREL transl. 637), doi:10.21236/ADA044002; Lawrence & Slater 2008, doi:10.1007/s00382-007-0278-1; see docs/daily-mode-REFERENCES.md.
 
   // Option 1 (v5h, OFF by default): moisture-dependent thermal
   // conductivity of moss and organic (fibric/humic) layers following
@@ -55,6 +56,7 @@ public:
   static int    org_tc_scheme;
   static double org_tc_kunf, org_tc_kfrz, org_tc_dry, org_tc_thre_f,
                 org_tc_thre_h, org_tc_depth;
+                // Refs: Cote & Konrad 2005, doi:10.1139/t04-106; Letts et al. 2000, doi:10.1080/07055900.2000.9649643; Chadburn et al. 2015, doi:10.5194/gmd-8-1493-2015.
   double getOrgThermCond(const bool frozen_case); // < 0 if not applicable
 
   // Option 3 (v5h, OFF by default): mineral-layer thermal
@@ -71,6 +73,7 @@ public:
   // Defaults (key absent): -1, -1, 0 = legacy behaviour.
   static double mineral_tcsolid, mineral_vhcsolid;
   static int    mineral_tcdry_form;
+  // Refs: Johansen 1975, doi:10.21236/ADA044002; Farouki 1981 (CRREL Monograph 81-1), doi:10.21236/ADA111734; CLM5 Tech Note eqs. 2.6.80, 2.6.82.
 
 };
 #endif /*SOILLAYER_H_*/
