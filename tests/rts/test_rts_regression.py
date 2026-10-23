@@ -66,6 +66,18 @@ def test_unit_binary():
     print(p.stdout)
     assert p.returncode == 0
 
+def test_port_fixes_unit_binary():
+    """Unit tests for the bug fixes ported from hpc-tvc daily-climate-mode (17d53b56, 7a7fe61a,
+    032e8f13, e3fcc91c, 0e22205a): Feb precip conservation, Richards guards (no hang), empty snow
+    layers, SC CO2 by calendar year, NUL-safe time units, cohort.md pointer."""
+    exe = os.path.join(r.REPO, 'tests', 'rts', 'test_daily_port_fixes')
+    if not os.path.exists(exe):
+        pytest.skip('unit test binary not built (make rts-unit-test)')
+    p = subprocess.run([exe], capture_output=True, text=True, cwd=r.REPO, timeout=600)
+    print(p.stdout)
+    assert p.returncode == 0
+    assert ' 0 failed' in p.stdout
+
 def test_baseline_matches_reference(runs):
     """RTS off: identical to stored baseline produced by the unmodified RTS-branch binary."""
     assert r.compare_dirs(os.path.join(REF, 'baseline'), runs['base'], RTOL, ATOL) == []

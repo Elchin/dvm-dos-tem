@@ -166,6 +166,8 @@ RTS_PYTHON ?= python3
 rts-unit-test: $(APPNAME)
 	$(CC) -std=c++11 -g -DBOOST_ALL_DYN_LINK -Iinclude $(INCLUDES) -o tests/rts/test_rts_units tests/rts/test_rts_units.cpp $(addprefix obj/, $(OBJECTS)) $(LIBDIR) $(LIBS) $(MPILFLAGS) $(OMPLFLAGS)
 	./tests/rts/test_rts_units
+	$(CC) -std=c++11 -g -DBOOST_ALL_DYN_LINK -Iinclude $(INCLUDES) -o tests/rts/test_daily_port_fixes tests/rts/test_daily_port_fixes.cpp $(addprefix obj/, $(OBJECTS)) $(LIBDIR) $(LIBS) $(MPILFLAGS) $(OMPLFLAGS)
+	./tests/rts/test_daily_port_fixes
 
 rts-test: rts-unit-test
 	$(RTS_PYTHON) -m pytest -v tests/rts
