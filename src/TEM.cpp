@@ -908,6 +908,11 @@ void advance_model(const int rowidx, const int colidx,
     // Loading projected data instead of historic. FIX?
     runner.cohort.load_proj_climate(modeldata.proj_climate_file);
     runner.cohort.load_proj_co2(modeldata.proj_co2_file);
+    // Index scenario CO2 by calendar year (fails loudly if not covered).
+    // Ported from hpc-tvc daily-climate-mode 0e22205a (Elchin); offset 0 for our inputs.
+    runner.cohort.climate.index_proj_co2_by_year(modeldata.proj_climate_file,
+                                                 modeldata.proj_co2_file,
+                                                 modeldata.sc_yrs);
     runner.cohort.load_proj_explicit_fire(modeldata.proj_exp_fire_file);
     runner.cohort.load_proj_explicit_thermokarst(modeldata.proj_exp_thermokarst_file);
 
