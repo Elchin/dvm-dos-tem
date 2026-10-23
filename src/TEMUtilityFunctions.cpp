@@ -7,6 +7,7 @@
 //
 
 #include <string>
+#include <vector>
 #include <stdexcept>
 #include <fstream>
 #include <cerrno>
@@ -660,9 +661,12 @@ namespace temutil {
     size_t timeUnitsLen;
     temutil::nc( nc_inq_attlen(ncid, timeV, "units", &timeUnitsLen) );
 
-    char timeAttUnits[timeUnitsLen];
-    temutil::nc( nc_get_att_text(ncid, timeV, "units", timeAttUnits) );
-    std::string timeAttUnits_s(timeAttUnits);
+    // FIX (ported from hpc-tvc daily-climate-mode 17d53b56; C++ memory safety, no published
+    // source). nc_get_att_text does not NUL-terminate; build the string from the explicit length
+    // (constructing from the bare char array read past the end of the buffer).
+    std::vector<char> timeAttUnits(timeUnitsLen + 1, '\0');
+    temutil::nc( nc_get_att_text(ncid, timeV, "units", timeAttUnits.data()) );
+    std::string timeAttUnits_s(timeAttUnits.data());
 
     temutil::nc( nc_close(ncid) );
 

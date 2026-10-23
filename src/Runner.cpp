@@ -23,7 +23,13 @@ Runner::Runner(ModelData mdldata, bool cal_mode, int y, int x):
                            << "injected ModelData, and for explicit (y,x) "
                            << "position w/in the input data region.";
   this->md = mdldata;
-  this->cohort = Cohort(y, x, &mdldata); // explicitly constructed cohort...
+  // FIX (ported from hpc-tvc daily-climate-mode 17d53b56; C++ memory safety, no published
+  // source, see docs/daily-mode-REFERENCES.md section 2).
+  // Point the cohort at the Runner-owned copy. mdldata is a by-value constructor
+  // parameter, so &mdldata dangled as soon as this constructor returned and every later
+  // cohort.md->get_*/set_* (stage switches, nfeed, dsl, dynamic LAI, ...) read/wrote dead
+  // stack memory (ASan: stack-use-after-scope in TEM.cpp advance_model / ModelData::set_*).
+  this->cohort = Cohort(y, x, &this->md); // explicitly constructed cohort...
 
   BOOST_LOG_SEV(glg, info) << "Calibration mode?: " << cal_mode;
   if ( cal_mode ) {
@@ -413,7 +419,7 @@ void Runner::output_caljson_monthly(int year, int month, std::string stage, boos
   }
 
 
-  // CAUTION: this->md and this->cohort.md are different instances!
+  // NOTE: this->cohort.md now points to this->md (same instance).
 
   Json::Value data;
   std::ofstream out_stream;
@@ -659,7 +665,7 @@ void Runner::output_caljson_yearly(int year, std::string stage, boost::filesyste
     BOOST_LOG_SEV(glg, warn) << "========== END YEARLY CHECKSUMMING year: " << year << " ============";
   }
 
-  // CAUTION: this->md and this->cohort.md are different instances!
+  // NOTE: this->cohort.md now points to this->md (same instance; fix from 17d53b56).
 
   Json::Value data;
   std::ofstream out_stream;

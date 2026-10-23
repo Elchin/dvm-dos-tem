@@ -182,9 +182,18 @@ std::vector<float> calculate_daily_prec(const int midx, const float mta, const f
   DURS=RS/R;
   float B=1.0, T=0.0, S=1.0, RB, DURB;
 
-  float RAINDUR[DINM[midx]];
-  float RAININTE[DINM[midx]];
-  for(int id = 0; id < DINM[midx]; id++) {
+  // FIX (ported from hpc-tvc daily-climate-mode 17d53b56, "Memory fixes (startup UB)";
+  // reference: docs/daily-mode-REFERENCES.md section 2, "C++ memory safety, no published
+  // source"). The storm-generator loops below are 1-based (NN = 1..DINM, read back as
+  // [id+1]), so the arrays need DINM+1 elements; with DINM elements the last day was
+  // written/read past the end of the stack VLAs (ASan/UBSan: index 31 out of bounds).
+  // In monthly RTS runs this undefined behaviour lost 95-100 % of FEBRUARY precipitation
+  // with our gcc -O0 build (Gydan ~13 mm/yr, rts-synthetic ~18 mm/yr), because the
+  // out-of-bounds slot aliases the neighbouring array. Fixing it restores the monthly
+  // total (tests/rts/test_rts_units.cpp: test_daily_prec_conserves_monthly_total).
+  float RAINDUR[DINM[midx]+1];
+  float RAININTE[DINM[midx]+1];
+  for(int id = 0; id <= DINM[midx]; id++) {
     RAININTE[id] =0.;
     RAINDUR[id] = 0.;
   }
