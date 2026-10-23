@@ -532,7 +532,16 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
   edall->grnd_beginOfMonth();
 
   // (iii) daily light/water processes at plant canopy
-  double tdrv, daylength;
+  // FIX (ported from hpc-tvc daily-climate-mode 9b3a4840, Elchin -- ONLY the initialisation;
+  // the nfactor_sameday switch of that commit is NOT ported). tdrv selects the n-factor below
+  // before it is first assigned (tdrv = d_atms.ta), so on day 1 of every month the selector read
+  // an uninitialised stack value (undefined behaviour; code bug from upstream 419a4eb3).
+  // 1.0 (> 0) reproduces the legacy one-day-lag behaviour seen in practice: day 1 of each month
+  // uses the summer n-factor (nfactor_s). N-factor background: Klene et al. (2001), Arct.
+  // Antarct. Alp. Res. 33:140-148, doi:10.1080/15230430.2001.12003416 [Klene2001 in
+  // daily-mode-REFERENCES.md].
+  double tdrv = 1.0;
+  double daylength;
   BOOST_LOG_NAMED_SCOPE("D") {
   for(int id = 0; id < dinmcurr; id++) {
     int doy = temutil::day_of_year(currmind, id);
