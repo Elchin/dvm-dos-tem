@@ -991,6 +991,21 @@ bool Ground::constructSnowLayers(const double & dsmass, const double & tdrv) {
     }
   }
 
+  // FIX (ported from hpc-tvc daily-climate-mode e3fcc91c, hpc-tvc agent scratch@local, 2026-10-20;
+  // layer-index invariant, prevents a hang, no published source -- daily-mode-REFERENCES.md).
+  // On the RTS branch water fix 2/4 is NOT ported, so melt still reaches the ablation branch
+  // above and this loop is a defensive no-op for normal days; it guarantees that no empty
+  // snow layer survives to shift soil indices (see the Richards guard, 7a7fe61a).
+  // Hang fix: drop snow layers that melting has emptied (no ice, no liquid left).
+  // Before water fix 2/4 the melt was subtracted a second time through extramass, so the
+  // ablation branch above always ran on melt days and removed such layers. Now that only
+  // sublimation is passed in, on a day with full melt and zero sublimation the emptied layers
+  // stayed in the column (dz -> 0) and shifted the soil layer indices.
+  while(toplayer != NULL && toplayer->isSnow && toplayer->ice <= 0. && toplayer->liq <= 0.) {
+    removeFront();
+    layerchanged = true;
+  }
+
   return layerchanged;
 };
 
