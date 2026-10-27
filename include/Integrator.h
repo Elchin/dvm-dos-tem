@@ -127,6 +127,35 @@ public :
   // tolerance by the gross flux/pool size ptol*max(|NMIN|, |NIMMOB|, |AVLN|).
   static int nmin_tol_fix;
   // Refs (C1): no published source for the fix; standard restored: step-size error scaled by a magnitude that cannot pass through zero (Press et al. 2007, Numerical Recipes 3rd ed., sec. 17.2; Hairer, Norsett & Wanner 1993, doi:10.1007/978-3-540-78862-1).
+  // Fix L1 (v5m), OFF by default: model_settings.n_safetynet_conserve.
+  // When adapt() gives up, the soil state is reset to month fraction t0 and
+  // applySoilSafetyNet() delivers the remaining inputs, but the root N
+  // extraction for the remaining (1 - t0) of the month is not applied, although
+  // the vegetation integrator has already added the WHOLE month's N uptake to
+  // the plants (Cohort: veg is integrated before soil). Each event therefore
+  // creates (1 - t0) * sum(rtnextract) g N/m2 (N leak; verified: N closure is
+  // exactly 0 in every year without an event). 1 = debit that N from the soil:
+  // first from ORGN of the layers the roots extracted from (in proportion to
+  // rtnextract, capped at each layer's ORGN), then from ORGN of any layer (in
+  // proportion to the remaining ORGN), then from AVLN; anything still unpaid
+  // (all donor pools empty) is carried and debited at the start of the next
+  // soil month. Also delivers the remaining N deposition exactly where
+  // Soil_Bgc::deltastate() would (rooted top layer, or any top layer when
+  // n_rootless_fix == 2). Total N is then conserved to float round-off.
+  // Carbon: no leak (the veg does not remove soil C; all litter C delivered).
+  static int n_safetynet_conserve;
+  // Refs (L1): no published source for the fix (code: Integrator::applySoilSafetyNet, be8a62fa); principle restored: closed N mass balance of the TEM / DOS-TEM N cycle, plant N uptake debited from the soil N pools (McGuire et al. 1992, doi:10.1029/92GB00219; Raich et al. 1991, doi:10.2307/1941899; Euskirchen et al. 2009, doi:10.1890/08-0806.1; Yuan et al. 2012, doi:10.1890/11-1957.1); donor = ORGN first: boreal/arctic plants take up organic N (Nasholm et al. 1998, doi:10.1038/31921; Schimel & Bennett 2004, doi:10.1890/03-8002); clipping/resetting a stiff ODE state is not mass-conserving unless the removed mass is booked (Shampine et al. 2005, doi:10.1016/j.amc.2004.12.011); unclosed N biases long C-N spin-ups (Thornton & Rosenbloom 2005, doi:10.1016/j.ecolmodel.2005.04.008).
+  double safetynet_ndebit;  // L1: N debited from soil by the last event (g/m2)
+  double safetynet_nneed;   // L1: N the last event had to debit (g/m2)
+  double n_debt;            // L1: N still owed (donors empty), paid next month
+  double n_debit_total;     // L1: cumulative N debited (g/m2), diagnostic
+  // L1 helper (pure function, unit-tested): remove up to 'need' (>0) from
+  // pool[0..n-1], first in proportion to weights w (if w != NULL; only entries
+  // with w > 0 and pool > 0), then the remainder in proportion to the
+  // remaining positive pool. Pools never go below 0; negative pools are left
+  // unchanged. Returns the amount actually removed (sum of float changes).
+  static double debitProportional(double need, float pool[], const int n,
+                                  const double w[]);
   float safetynet_t0;     // month fraction already integrated when it gave up
   double safetynet_c;     // C delivered by the last safety net (g/m2)
   double safetynet_n;     // N delivered by the last safety net (g/m2)
@@ -134,6 +163,8 @@ public :
 private:
 
   void applySoilSafetyNet();
+  double conserveSafetyNetN(const double frac);  // L1 (v5m)
+  void payNDebt();                                 // L1 (v5m)
   float bh_t0;            // time at which adapt() saved oldstate
 
   int numsl;  // actual number of soil layers
