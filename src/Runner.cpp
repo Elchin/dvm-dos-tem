@@ -147,6 +147,11 @@ void Runner::report_safetynet(const int year, const int month, const std::string
             << " t0=" << si.safetynet_t0
             << " C_delivered=" << si.safetynet_c
             << " N_delivered=" << si.safetynet_n << std::endl;
+  if (Integrator::n_safetynet_conserve == 1) {  // Fix L1 (v5m), stderr only (CSV format unchanged)
+    std::cerr << "  n_safetynet_conserve: root N extraction to debit=" << si.safetynet_nneed
+              << " debited=" << si.safetynet_ndebit << " carried_debt=" << si.n_debt
+              << " (g/m2)" << std::endl;
+  }
   boost::filesystem::path f = boost::filesystem::path(md.output_dir) / "integrator_safety_net.csv";
   bool isnew = !boost::filesystem::exists(f);
   std::ofstream out(f.string().c_str(), std::ios::app);

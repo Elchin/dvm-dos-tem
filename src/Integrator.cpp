@@ -51,6 +51,7 @@ float Integrator::b64 =   0.45297271;
 float Integrator::b65 =  -0.275;
 
 int Integrator::nmin_tol_fix = 0; // Fix C1 (v5k), default off (legacy)
+int Integrator::n_safetynet_conserve = 0; // Fix L1 (v5m), default off (legacy)
 
 int REJECT = 0;
 int ACCEPT = 1;
@@ -68,6 +69,10 @@ Integrator::Integrator() {
   safetynet_t0 = 0.0;
   safetynet_c = 0.0;
   safetynet_n = 0.0;
+  safetynet_ndebit = 0.0;
+  safetynet_nneed = 0.0;
+  n_debt = 0.0;
+  n_debit_total = 0.0;
 
   //vegetation C & N state variables
   for(int i =0; i<NUM_PFT_PART; i++) { //Yuan: here is the reason that the "temconst.h" is needed
@@ -232,6 +237,11 @@ void Integrator::updateMonthlySbgc(const int & numsoillayer) {
 
   // initialize the state from 'bd';
   c2ystate_soi(y);
+  // Fix L1 (v5m): N owed by an earlier safety-net event whose donors were empty
+  // Refs (L1): see Integrator.h (n_safetynet_conserve).
+  if (n_safetynet_conserve == 1 && n_debt > 0.0) {
+    payNDebt();
+  }
   // integration
   report_array(y);
   safetynet_fired = false;
@@ -284,11 +294,19 @@ void Integrator::applySoilSafetyNet() {
     double on = frac * bd->m_a2soi.orgninput;
     y[I_L_ORGN] += on;
     dn += on;
-    if (bd->m_v2soi.rtlfalfrac[0] > 0.) {
+    // L1 (v5m, switch on): deposit where deltastate() does (n_rootless_fix 2
+    // also puts it into a rootless top layer); legacy: rooted top layer only.
+    if (bd->m_v2soi.rtlfalfrac[0] > 0. ||
+        (n_safetynet_conserve == 1 && ssl->n_rootless_fix == 2)) {
       double an = frac * bd->m_a2soi.avlninput;
       y[I_L_AVLN] += an;
       dn += an;
     }
+  }
+  // Fix L1 (v5m): debit the root N extraction the vegetation already took for
+  // the remaining (1 - t0) of the month. Refs (L1): see Integrator.h.
+  if (nf && n_safetynet_conserve == 1) {
+    safetynet_ndebit = conserveSafetyNetN(frac);
   }
   safetynet_fired = true;
   safetynet_t0 = bh_t0;
@@ -298,6 +316,102 @@ void Integrator::applySoilSafetyNet() {
   BOOST_LOG_SEV(glg, warn) << "Soil integrator safety net: gave up at month fraction "
                            << bh_t0 << "; delivered remaining inputs C=" << dc
                            << " N=" << dn << " (g/m2)";
+}
+
+/** Fix L1 (v5m), only called with n_safetynet_conserve == 1 and nfeed.
+*   N that must leave the soil = (1 - t0) of this month's root N extraction, in
+*   exactly the layers where Soil_Bgc::deltastate() applies it (rooted layers,
+*   or every layer with n_rootless_fix == 2). Donors: ORGN of those layers by
+*   extraction share, then ORGN of any layer, then AVLN; the rest is carried
+*   (n_debt). Cost: O(numsl), only in event months.
+*   Refs (L1): McGuire et al. 1992, doi:10.1029/92GB00219 (TEM N uptake from
+*   the soil N pool); Nasholm et al. 1998, doi:10.1038/31921 (organic N uptake);
+*   Shampine et al. 2005, doi:10.1016/j.amc.2004.12.011 (resets must book mass).
+*   Returns the N debited now (g/m2). */
+double Integrator::conserveSafetyNetN(const double frac) {
+  const int nsl = std::min(ssl->cd->m_soil.numsl, (int)MAX_SOI_LAY);
+  double w[MAX_SOI_LAY];
+  double need = 0.0;
+  for (int il = 0; il < MAX_SOI_LAY; il++) {
+    w[il] = 0.0;
+    if (il < nsl && (bd->m_v2soi.rtlfalfrac[il] > 0. || ssl->n_rootless_fix == 2)) {
+      w[il] = ssl->rtnextract[il];
+      need += frac * ssl->rtnextract[il];
+    }
+  }
+  safetynet_nneed = need;
+  if (!(need > 0.0)) {
+    return 0.0;
+  }
+  double got = debitProportional(need, &y[I_L_ORGN], nsl, w);
+  if (need - got > 0.0) {
+    got += debitProportional(need - got, &y[I_L_AVLN], nsl, NULL);
+  }
+  double rest = need - got;
+  if (rest > 1.0e-9) {      // donors empty: carry (below 1e-9 g = float round-off)
+    n_debt += rest;
+  }
+  n_debit_total += got;
+  return got;
+}
+
+/** Fix L1 (v5m): pay N owed by earlier events from ORGN, then AVLN. */
+void Integrator::payNDebt() {
+  const int nsl = std::min(ssl->cd->m_soil.numsl, (int)MAX_SOI_LAY);
+  double got = debitProportional(n_debt, &y[I_L_ORGN], nsl, NULL);
+  if (n_debt - got > 0.0) {
+    got += debitProportional(n_debt - got, &y[I_L_AVLN], nsl, NULL);
+  }
+  n_debit_total += got;
+  n_debt -= got;
+  if (n_debt <= 1.0e-9) {
+    n_debt = 0.0;
+  }
+}
+
+double Integrator::debitProportional(double need, float pool[], const int n,
+                                     const double w[]) {
+  if (!(need > 0.0) || n <= 0) {
+    return 0.0;
+  }
+  double done = 0.0;
+  if (w != NULL) {
+    double wsum = 0.0;
+    for (int i = 0; i < n; i++) {
+      if (w[i] > 0.0 && pool[i] > 0.0f) { wsum += w[i]; }
+    }
+    if (wsum > 0.0) {
+      for (int i = 0; i < n; i++) {
+        if (w[i] > 0.0 && pool[i] > 0.0f) {
+          double old = pool[i];
+          double want = need * w[i] / wsum;
+          float nv = (want >= old) ? 0.0f : (float)(old - want);
+          pool[i] = nv;
+          done += old - (double)nv;
+        }
+      }
+    }
+  }
+  double rem = need - done;
+  if (rem > 0.0) {
+    double avail = 0.0;
+    for (int i = 0; i < n; i++) {
+      if (pool[i] > 0.0f) { avail += pool[i]; }
+    }
+    if (avail > 0.0) {
+      double r = (rem >= avail) ? 1.0 : rem / avail;
+      for (int i = 0; i < n; i++) {
+        if (pool[i] > 0.0f) {
+          double old = pool[i];
+          float nv = (r >= 1.0) ? 0.0f : (float)(old * (1.0 - r));
+          if (nv < 0.0f) { nv = 0.0f; }
+          pool[i] = nv;
+          done += old - (double)nv;
+        }
+      }
+    }
+  }
+  return done;
 }
 
 void Integrator::c2ystate_veg(float y[]) {

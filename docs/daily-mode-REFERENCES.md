@@ -1,8 +1,8 @@
-# daily-climate-mode: references for every switch and fix (v5-daily … v5l)
+# daily-climate-mode: references for every switch and fix (v5-daily … v5l; v5m draft)
 
 Standing rule (Elchin, 2026-10-22): every code change carries its scientific references in three places: code comments, commit message and README. This file is the full bibliography. Code comments cite entries by `[Key]`.
 
-Every DOI was checked against Crossref or DataCite, and every URL was opened (HTTP 200), on 2026-10-22. Author, year, title and journal were compared with the registry record.
+Every DOI was checked against Crossref or DataCite, and every URL was opened (HTTP 200), on 2026-10-22 (v5m draft entries: Crossref, 2026-10-27). Author, year, title and journal were compared with the registry record.
 
 Where a fix is a code or numerics bug with no literature basis, it says **no published source**, followed by the code location, the original commit and the principle or standard it restores.
 
@@ -65,6 +65,7 @@ Switch defaults: every switch below is 0/off by default, which is legacy behavio
 | `n_rootless_fix` (N1, draft) | 29d72af8 | N mineralised in rootless layers left ORGN without reaching AVLN. | **No published source.** Code: Soil_Bgc::deltastate (upstream). Principle restored: N mass conservation. |
 | `n_som_move_fix` (N2, draft) | 20b2723e | SOM N moved down the profile was overwritten ('=' instead of '+='), shared wrongly among receivers, and taken from cumulative donor C. | **No published source.** Code: Soil_Bgc::deltastate (upstream). Principle restored: N moves with C (fixed C:N of moved SOM), N mass conservation. |
 | `n_nonvasc_extract` (N3, draft) | 20b2723e, d3d3fbba | Non-vascular N uptake had no soil extraction. 1 = extract from moss/fibric layers, capped at 95 % of available N. | Mass conservation (**no published source** for the scheme). Ecological basis that bryophytes take N from the moss/peat layer and deposition: [Turetsky2003]. |
+| `n_safetynet_conserve` (L1, v5m draft, branch v5m-nleak, not merged) | v5m-nleak | When adapt() gives up, the safety net (be8a62fa) delivered the remaining inputs but not the remaining (1 − t0) root N extraction, which the vegetation had already taken up: N was created at every event. 1 = debit it from soil ORGN (rooted layers by extraction share, then any layer), then AVLN, carry any rest to the next month; deposit the remaining N input where deltastate does. C unchanged (no C leak). | **No published source for the fix.** Code: Integrator::applySoilSafetyNet (be8a62fa). Principle restored: closed N mass balance of the TEM N cycle, with plant N uptake taken from the soil N pools [McGuire1992]; [Raich1991]; multi-PFT N competition in DVM-TEM [Euskirchen2009]; DOS-TEM soil N [Yuan2012]. Organic N as first donor: arctic/boreal plants take up organic N [Nasholm1998]; [SchimelBennett2004]. Numerics: resetting/clipping an ODE state is not mass-conserving unless the removed mass is booked [Shampine2005]. Why closure matters for spin-up: [ThorntonRosenbloom2005]. |
 
 ### ET partition (v5l, 798388f5)
 
@@ -104,7 +105,7 @@ Format: commit — code location — principle — references.
 - **Thermal diagnostics:** d2c7d35e — ALD from the 0 °C isotherm (old value kept as ALD_FLAG). Rationale: active-layer thickness is the maximum annual thaw depth, i.e. the depth of the 0 °C isotherm. Standard definition; no specific citation verified here.
 - **Carbon/nitrogen:**
   - 503bb21b, de49c6d5, ed28e049, e86633fe — root N extraction made N-conserving (Soil_Bgc) — N mass conservation — **no published source**.
-  - be8a62fa — soil integrator safety net delivers the remaining monthly inputs when adapt() gives up — C mass conservation — **no published source**.
+  - be8a62fa — soil integrator safety net delivers the remaining monthly inputs when adapt() gives up — C mass conservation — **no published source**. It does not apply the remaining root N extraction (N created per event); the switchable fix is `n_safetynet_conserve` (v5m draft, above).
   - fe93d93c — NLOST reports only the AVLN loss — diagnostic definition — **no published source**.
 - **Forcing and CO2:** 0e22205a — scenario CO2 indexed by calendar year, fail if not covered — correct time alignment — **no published source**.
 - **Output and runtime:**
@@ -131,6 +132,7 @@ Format: commit — code location — principle — references.
 - [Dickinson1993] Dickinson, R.E., Henderson-Sellers, A., Kennedy, P.J. (1993). Biosphere-Atmosphere Transfer Scheme (BATS) Version 1e as coupled to the NCAR Community Climate Model. NCAR Tech. Note NCAR/TN-387+STR. https://doi.org/10.5065/D67W6959
 - [Dyer1974] Dyer, A.J. (1974). A review of flux-profile relationships. Boundary-Layer Meteorol. 7, 363–372. https://doi.org/10.1007/BF00240838
 - [EOL-VP] NCAR/UCAR Earth Observing Laboratory. Water vapor pressure formulations (reproduces the WMO 2008 CIMO ice formula). https://www.eol.ucar.edu/data-software/conventions-and-standards/water-vapor-pressure-formulations
+- [Euskirchen2009] Euskirchen, E.S., McGuire, A.D., Chapin, F.S. III, Yi, S., Thompson, C.C. (2009). Changes in vegetation in northern Alaska under scenarios of climate change, 2003–2100: implications for climate feedbacks. Ecol. Appl. 19, 1022–1043. https://doi.org/10.1890/08-0806.1
 - [Farouki1981] Farouki, O.T. (1981). Thermal Properties of Soils. CRREL Monograph 81-1, U.S. Army CRREL, Hanover NH. https://doi.org/10.21236/ADA111734
 - [Genet2013] Genet, H. et al. (2013). Modeling the effects of fire severity and climate warming on active layer thickness and soil carbon storage of black spruce forests across the landscape in interior Alaska. Environ. Res. Lett. 8, 045016. https://doi.org/10.1088/1748-9326/8/4/045016
 - [Gerten2004] Gerten, D., Schaphoff, S., Haberlandt, U., Lucht, W., Sitch, S. (2004). Terrestrial vegetation and water balance — hydrological evaluation of a dynamic global vegetation model. J. Hydrol. 286, 249–270. https://doi.org/10.1016/j.jhydrol.2003.09.029
@@ -147,17 +149,23 @@ Format: commit — code location — principle — references.
 - [LeePielke1992] Lee, T.J., Pielke, R.A. (1992). Estimating the soil surface specific humidity. J. Appl. Meteorol. 31, 480–484. https://doi.org/10.1175/1520-0450(1992)031<0480:ETSSSH>2.0.CO;2
 - [Letts2000] Letts, M.G., Roulet, N.T., Comer, N.T., Skarupa, M.R., Verseghy, D.L. (2000). Parametrization of peatland hydraulic properties for the Canadian Land Surface Scheme. Atmos.-Ocean 38, 141–160. https://doi.org/10.1080/07055900.2000.9649643
 - [Louis1979] Louis, J.-F. (1979). A parametric model of vertical eddy fluxes in the atmosphere. Boundary-Layer Meteorol. 17, 187–202. https://doi.org/10.1007/BF00117978
+- [McGuire1992] McGuire, A.D., Melillo, J.M., Joyce, L.A., Kicklighter, D.W., Grace, A.L., Moore, B. III, Vorosmarty, C.J. (1992). Interactions between carbon and nitrogen dynamics in estimating net primary productivity for potential vegetation in North America. Global Biogeochem. Cycles 6, 101–124. https://doi.org/10.1029/92GB00219
 - [MonsiSaeki1953] Monsi, M., Saeki, T. (1953). Über den Lichtfaktor in den Pflanzengesellschaften und seine Bedeutung für die Stoffproduktion. Jpn. J. Bot. 14, 22–52. English translation: On the factor light in plant communities and its importance for matter production. Ann. Bot. 95, 549–567 (2005). https://doi.org/10.1093/aob/mci052
 - [Monteith1965] Monteith, J.L. (1965). Evaporation and environment. Symp. Soc. Exp. Biol. 19, 205–234. https://pubmed.ncbi.nlm.nih.gov/5321565/
 - [MurphyKoop2005] Murphy, D.M., Koop, T. (2005). Review of the vapour pressures of ice and supercooled water for atmospheric applications. Q. J. R. Meteorol. Soc. 131, 1539–1565. https://doi.org/10.1256/qj.04.94
+- [Nasholm1998] Näsholm, T., Ekblad, A., Nordin, A., Giesler, R., Högberg, M., Högberg, P. (1998). Boreal forest plants take up organic nitrogen. Nature 392, 914–916. https://doi.org/10.1038/31921
 - [Prata1996] Prata, A.J. (1996). A new long-wave formula for estimating downward clear-sky radiation at the surface. Q. J. R. Meteorol. Soc. 122, 1127–1151. https://doi.org/10.1002/qj.49712253306
 - [Press2007] Press, W.H., Teukolsky, S.A., Vetterling, W.T., Flannery, B.P. (2007). Numerical Recipes: The Art of Scientific Computing, 3rd ed. Cambridge Univ. Press. https://numerical.recipes/book.html
 - [QuintonMarsh1999] Quinton, W.L., Marsh, P. (1999). A conceptual framework for runoff generation in a permafrost environment. Hydrol. Process. 13, 2563–2581. https://doi.org/10.1002/(SICI)1099-1085(199911)13:16<2563::AID-HYP942>3.0.CO;2-D
+- [Raich1991] Raich, J.W., Rastetter, E.B., Melillo, J.M., Kicklighter, D.W., Steudler, P.A., Peterson, B.J., Grace, A.L., Moore, B. III, Vorosmarty, C.J. (1991). Potential net primary productivity in South America: application of a global model. Ecol. Appl. 1, 399–429. https://doi.org/10.2307/1941899
 - [Richards1931] Richards, L.A. (1931). Capillary conduction of liquids through porous mediums. Physics 1, 318–333. https://doi.org/10.1063/1.1745010
 - [Schaphoff2018] Schaphoff, S., von Bloh, W., Rammig, A., et al. (2018). LPJmL4 — a dynamic global vegetation model with managed land — Part 1: Model description. Geosci. Model Dev. 11, 1343–1375. https://doi.org/10.5194/gmd-11-1343-2018
+- [SchimelBennett2004] Schimel, J.P., Bennett, J. (2004). Nitrogen mineralization: challenges of a changing paradigm. Ecology 85, 591–602. https://doi.org/10.1890/03-8002
+- [Shampine2005] Shampine, L.F., Thompson, S., Kierzenka, J.A., Byrne, G.D. (2005). Non-negative solutions of ODEs. Appl. Math. Comput. 170, 556–569. https://doi.org/10.1016/j.amc.2004.12.011
 - [Sturm1997] Sturm, M., Holmgren, J., König, M., Morris, K. (1997). The thermal conductivity of seasonal snow. J. Glaciol. 43, 26–41. https://doi.org/10.3189/S0022143000002781
 - [Sturm2001] Sturm, M., Holmgren, J., McFadden, J.P., Liston, G.E., Chapin, F.S. III, Racine, C.H. (2001). Snow–shrub interactions in Arctic tundra: a hypothesis with climatic implications. J. Climate 14, 336–344. https://doi.org/10.1175/1520-0442(2001)014<0336:SSIIAT>2.0.CO;2
 - [Swenson2012] Swenson, S.C., Lawrence, D.M., Lee, H. (2012). Improved simulation of the terrestrial hydrological cycle in permafrost regions by the Community Land Model. J. Adv. Model. Earth Syst. 4. https://doi.org/10.1029/2012MS000165
+- [ThorntonRosenbloom2005] Thornton, P.E., Rosenbloom, N.A. (2005). Ecosystem model spin-up: estimating steady state conditions in a coupled terrestrial carbon and nitrogen cycle model. Ecol. Model. 189, 25–48. https://doi.org/10.1016/j.ecolmodel.2005.04.008
 - [Turetsky2003] Turetsky, M.R. (2003). The role of bryophytes in carbon and nitrogen cycling. The Bryologist 106, 395–409. https://doi.org/10.1639/05
 - [vanderKnijff2010] van der Knijff, J.M., Younis, J., de Roo, A.P.J. (2010). LISFLOOD: a GIS-based distributed model for river basin scale water balance and flood simulation. Int. J. Geogr. Inf. Sci. 24, 189–212. https://doi.org/10.1080/13658810802549154
 - [WallaceBaltzer2019] Wallace, C.A., Baltzer, J.L. (2020; online 2019). Tall shrubs mediate abiotic conditions and plant communities at the taiga–tundra ecotone. Ecosystems 23, 828–841. https://doi.org/10.1007/s10021-019-00435-0
@@ -167,4 +175,5 @@ Format: commit — code location — principle — references.
 - [Woo2004] Woo, M.-K., Arain, M.A., Mollinga, M., Yi, S. (2004). A two-directional freeze and thaw algorithm for hydrologic and land surface modelling. Geophys. Res. Lett. 31, 2004GL019475 (article number as registered). https://doi.org/10.1029/2004GL019475
 - [Yazbeck2025] Yazbeck, T., Bohrer, G., Sonnentag, O., et al. (2025). Shrub expansion can counteract carbon losses from warming tundra. J. Geophys. Res. Biogeosci. 130, e2024JG008721. https://doi.org/10.1029/2024JG008721
 - [Yi2009] Yi, S., McGuire, A.D., Harden, J., Kasischke, E., et al. (2009). Interactions between soil thermal and hydrological dynamics in the response of Alaska ecosystems to fire disturbance. J. Geophys. Res. Biogeosci. 114. https://doi.org/10.1029/2008JG000841
+- [Yuan2012] Yuan, F.-M., Yi, S.-H., McGuire, A.D., Johnson, K.D., Liang, J., Harden, J.W., Kasischke, E.S., Kurz, W.A. (2012). Assessment of boreal forest historical C dynamics in the Yukon River Basin: relative roles of warming and fire regime change. Ecol. Appl. 22, 2091–2109. https://doi.org/10.1890/11-1957.1
 - [Zwieback2019] Zwieback, S., Chang, Q., Marsh, P., Berg, A. (2019). Shrub tundra ecohydrology: rainfall interception is a major component of the water balance. Environ. Res. Lett. 14, 055005. https://doi.org/10.1088/1748-9326/ab1049

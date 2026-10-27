@@ -163,6 +163,12 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     std::cerr << "FATAL: model_settings soil_nmin_tol_fix must be 0 or 1" << std::endl;
     exit(EXIT_FAILURE);
   }
+  // Fix L1 (v5m), default 0 = off (legacy). Refs (L1): see Integrator.h.
+  n_safetynet_conserve = controldata["model_settings"].get("n_safetynet_conserve", 0).asInt();
+  if (n_safetynet_conserve < 0 || n_safetynet_conserve > 1) {
+    std::cerr << "FATAL: model_settings n_safetynet_conserve must be 0 or 1" << std::endl;
+    exit(EXIT_FAILURE);
+  }
   n_rootless_fix     = controldata["model_settings"].get("n_rootless_fix", 0).asInt(); // Fix N1 (v5k)
   n_som_move_fix     = controldata["model_settings"].get("n_som_move_fix", 0).asInt();     // Fix N2 (v5k)
   n_nonvasc_extract  = controldata["model_settings"].get("n_nonvasc_extract", 0).asInt();  // Fix N3 (v5k)
@@ -280,6 +286,7 @@ void ModelData::update(ArgHandler const * arghandler) {
 
 ModelData::ModelData():force_cmt(-1) {
   et_fpc_once_fix = 0; nv_snow_bury_fix = 0; rain_int_lai_fix = 0; nv_rain_surface = 0; // v5l (off)
+  n_safetynet_conserve = 0; // v5m L1 (off)
   nv_snow_bury_depth = 0.0;
   set_envmodule(false);
   set_bgcmodule(false);
