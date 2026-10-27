@@ -109,13 +109,30 @@ public:
   // (organic N uptake), so the total extraction (= vegetation uptake) and N
   // mass are unchanged. Applied only where deltastate() applies extraction.
   static int n_extract_limiter;
-  static double n_extract_tau;   // month fraction, default 0.05 (0 < tau <= 1)
+  static double n_extract_tau;   // month fraction, default 0.2 (v5n tests: 0.02, 0.05, 0.2) (0 < tau <= 1)
   // G2 (v5n draft, Integrator::soil_giveup_retry): limiter on for one retry month
   bool nx_limiter_active = false;
   bool nxLimiterOn() const { return n_extract_limiter == 1 || nx_limiter_active; }
   // G1 helper (pure, unit-tested): AVLN part of an extraction r (g/m2/month)
   // from a pool A (g/m2): r for r <= 0 or A >= tau*r, else r*max(A,0)/(tau*r).
   static double limitedExtraction(const double r, const double A, const double tau);
+  // Fix G3 (v5n draft), OFF by default: model_settings.n_netnmin_rescale_guard.
+  // deltan() closes the inorganic N budget, when supply (month-start AVLN of the
+  // drainage zone + input + net mineralisation) cannot cover the extraction, by
+  // multiplying every layer's net mineralisation by nscale = nminadj/totnetnmin.
+  // When the profile is net immobilising (totnetnmin < 0) and nminadj > 0,
+  // nscale < 0: the sign of every layer flips, so mineralising (rooted) layers
+  // are turned into immobilising ones and their AVLN is drained at a fixed
+  // rate. 1 = skip the rescale when nscale < 0 (net mineralisation unchanged);
+  // positive nscale is applied as in legacy. Meant to be used with G1.
+  // Refs (G3): no published source for the fix (code: Soil_Bgc::deltan, the N-budget rescale of net N mineralisation inherited from TEM / DOS-TEM); principle: a scale factor applied to a signed flux must be >= 0, otherwise mineralising layers become immobilising and vice versa; net N mineralisation / immobilisation as the balance of gross mineralisation and microbial uptake (Schimel & Bennett 2004, doi:10.1890/03-8002); immobilisation limited by available mineral N in CLM-CN (Thornton et al. 2007, doi:10.1029/2006GB002868).
+  static int n_netnmin_rescale_guard;
+  // G3 helper (pure, unit-tested): the legacy rescale; returns the raw nscale
+  // (1.0 if not computed); with guard == 1 a negative nscale is not applied.
+  static double rescaleNetNmin(double netnmin[], const int n, const double nminadj,
+                               const double totnetnmin, const int guard);
+  // v5n diagnostics (written by every deltan(); read only by the give-up diag)
+  double dg_nscale = 1.0, dg_totnetnmin_raw = 0.0, dg_totnextract = 0.0, dg_totdzavln = 0.0;
   // Refs (G1/G2): plant N uptake is a saturating (Michaelis-Menten) function of soil available N in TEM (Raich et al. 1991, doi:10.2307/1941899; McGuire et al. 1992, doi:10.1029/92GB00219); demand-based uptake is down-regulated when soil mineral N cannot supply it (Thornton et al. 2007, doi:10.1029/2006GB002868); arctic/boreal plants also take up organic N (Nasholm et al. 1998, doi:10.1038/31921; Schimel & Bennett 2004, doi:10.1890/03-8002); a zero-order sink drives a non-negative ODE state below zero in finite time, which no step-size reduction can avoid, positivity needs a state-dependent sink (Shampine et al. 2005, doi:10.1016/j.amc.2004.12.011; Burchard et al. 2003, doi:10.1016/S0168-9274(03)00101-6).
 private:
 

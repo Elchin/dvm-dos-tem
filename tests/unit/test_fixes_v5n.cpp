@@ -19,7 +19,7 @@
 namespace {
 struct G1Guard {   // static switches: always restore legacy after a test
   G1Guard(int on, double tau) { Soil_Bgc::n_extract_limiter = on; Soil_Bgc::n_extract_tau = tau; }
-  ~G1Guard() { Soil_Bgc::n_extract_limiter = 0; Soil_Bgc::n_extract_tau = 0.05; }
+  ~G1Guard() { Soil_Bgc::n_extract_limiter = 0; Soil_Bgc::n_extract_tau = 0.2; }
 };
 // same set-up as test_fixes_v5k.cpp SoilNFix (deltastate bookkeeping, no leaching)
 struct SoilNFix5n {
@@ -53,12 +53,12 @@ Json::Value ms(const char* k, Json::Value v) { Json::Value c; c["model_settings"
 TEST_SUITE("fixes_v5n") {
 
 TEST_CASE("v5n defaults are legacy (0) in the statics and ModelData(); ModelData(Json) parses, invalid exits") {
-  CHECK(Soil_Bgc::n_extract_limiter == 0); CHECK(Soil_Bgc::n_extract_tau == 0.05);
+  CHECK(Soil_Bgc::n_extract_limiter == 0); CHECK(Soil_Bgc::n_extract_tau == 0.2);
   CHECK(Integrator::soil_giveup_retry == 0); CHECK(Integrator::soil_giveup_diag == 0);
   ModelData md;
-  CHECK(md.n_extract_limiter == 0); CHECK(md.soil_giveup_retry == 0); CHECK(md.soil_giveup_diag == 0); CHECK(md.n_extract_tau == 0.05);
+  CHECK(md.n_extract_limiter == 0); CHECK(md.soil_giveup_retry == 0); CHECK(md.soil_giveup_diag == 0); CHECK(md.n_extract_tau == 0.2);
   ModelData m0(ms("svp_ice_fix", 0));
-  CHECK(m0.n_extract_limiter == 0); CHECK(m0.soil_giveup_retry == 0); CHECK(m0.soil_giveup_diag == 0); CHECK(m0.n_extract_tau == 0.05);
+  CHECK(m0.n_extract_limiter == 0); CHECK(m0.soil_giveup_retry == 0); CHECK(m0.soil_giveup_diag == 0); CHECK(m0.n_extract_tau == 0.2);
   CHECK(ModelData(ms("n_extract_limiter", 1)).n_extract_limiter == 1);
   CHECK(ModelData(ms("soil_giveup_retry", 1)).soil_giveup_retry == 1);
   CHECK(ModelData(ms("soil_giveup_diag", 1)).soil_giveup_diag == 1);
@@ -158,6 +158,49 @@ TEST_CASE("G2 per-month flag: nx_limiter_active turns the limiter on with the sw
     CHECK(b.sb.del_sois.avln[i] == c.sb.del_sois.avln[i]); CHECK(b.sb.del_sois.orgn[i] == c.sb.del_sois.orgn[i]);
     CHECK(b.sb.del_sois.avln[i] != a.sb.del_sois.avln[i]);
   }
+}
+
+
+// ---- Fix G3 (v5n draft): model_settings.n_netnmin_rescale_guard -> Soil_Bgc::n_netnmin_rescale_guard
+// Refs (G3): no published source for the fix (code: Soil_Bgc::deltan rescale); Schimel & Bennett 2004,
+//   doi:10.1890/03-8002; Thornton et al. 2007, doi:10.1029/2006GB002868.
+TEST_CASE("G3 default off; parses; invalid exits") {
+  CHECK(Soil_Bgc::n_netnmin_rescale_guard == 0);
+  CHECK(ModelData().n_netnmin_rescale_guard == 0);
+  CHECK(ModelData(ms("n_netnmin_rescale_guard", 1)).n_netnmin_rescale_guard == 1);
+  CHECK(ut::exit_status_of([] { ModelData m(ms("n_netnmin_rescale_guard", 2)); }) == EXIT_FAILURE);
+  CHECK(ut::exit_status_of([] { ModelData m(ms("n_netnmin_rescale_guard", -1)); }) == EXIT_FAILURE);
+}
+
+TEST_CASE("G3 rescaleNetNmin: guard 0 is the legacy loop bit for bit (incl. negative scale)") {
+  const double base[5] = {0.013, -0.2, 0.0071, -0.05, 0.3};
+  const double cases[4][2] = {{0.5, 0.0701}, {-0.3, 0.0701}, {0.12, -0.2298}, {0.0, 0.1}};  // nminadj, totnetnmin
+  for (auto& c : cases) {
+    double a[5], b[5];
+    for (int i = 0; i < 5; ++i) { a[i] = b[i] = base[i]; }
+    // legacy block of Soil_Bgc::deltan (419a4eb3 + NaN guard)
+    if (c[1] != 0.0) { double nscale = c[0] / c[1]; if (std::isfinite(nscale)) { for (int i = 0; i < 5; i++) { a[i] *= nscale; } } }
+    double s = Soil_Bgc::rescaleNetNmin(b, 5, c[0], c[1], 0);
+    for (int i = 0; i < 5; ++i) { CHECK(a[i] == b[i]); }
+    CHECK(s == c[0] / c[1]);
+  }
+  double z[2] = {0.1, -0.1};
+  CHECK(Soil_Bgc::rescaleNetNmin(z, 2, 0.3, 0.0, 0) == 1.0); CHECK(z[0] == 0.1); CHECK(z[1] == -0.1);
+}
+
+TEST_CASE("G3 guard 1: a negative scale is not applied (no sign flip); positive scale as legacy") {
+  // net immobilising profile (sum < 0), demand needs supply (nminadj > 0) -> nscale < 0
+  double n1[3] = {0.02, -0.08, 0.01};   // sum -0.05
+  double s = Soil_Bgc::rescaleNetNmin(n1, 3, 0.04, -0.05, 1);
+  CHECK(s < 0.0);
+  CHECK(n1[0] == 0.02); CHECK(n1[1] == -0.08); CHECK(n1[2] == 0.01);
+  double l1[3] = {0.02, -0.08, 0.01};
+  Soil_Bgc::rescaleNetNmin(l1, 3, 0.04, -0.05, 0);   // legacy: signs flip, rooted layer 0 becomes immobilising
+  CHECK(l1[0] < 0.0); CHECK(l1[1] > 0.0);
+  double n2[3] = {0.02, -0.08, 0.01}, l2[3] = {0.02, -0.08, 0.01};
+  Soil_Bgc::rescaleNetNmin(n2, 3, -0.03, -0.05, 1); Soil_Bgc::rescaleNetNmin(l2, 3, -0.03, -0.05, 0);
+  for (int i = 0; i < 3; ++i) { CHECK(n2[i] == l2[i]); }
+  CHECK(n2[0] > 0.0);   // positive scale keeps signs
 }
 
 } // TEST_SUITE

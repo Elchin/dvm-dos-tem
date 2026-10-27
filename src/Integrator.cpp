@@ -76,7 +76,7 @@ Integrator::Integrator() {
   n_debt = 0.0;
   n_debit_total = 0.0;
   retry_count = 0; retry_fail_count = 0; retry_fired = false;
-  rkf45_calls = 0; forced_months = 0; last_negpool = -1; diag_test = 0; diag_pool = -1; diag_t0 = 0.f; diag_dt = 0.f;
+  rkf45_calls = 0; forced_months = 0; last_negpool = -1; last_reject_test = -1; last_reject_pool = -1; diag_prevtest = -1; diag_prevpool = -1; diag_nscale = 1.0; diag_totnetnmin = 0.0; diag_totnextract = 0.0; diag_totdzavln = 0.0; diag_test = 0; diag_pool = -1; diag_t0 = 0.f; diag_dt = 0.f;
   for (int i = 0; i < NUMEQ; i++) { diag_y[i] = 0.f; }
   for (int i = 0; i < MAX_SOI_LAY; i++) { diag_rtn[i] = diag_netnmin[i] = diag_nimmob[i] = diag_avln0[i] = 0.0; }
   diag_avlnlost = 0.0;
@@ -485,6 +485,10 @@ void Integrator::recordGiveupDiag(const float pstate[], const int numeq,
     diag_avln0[il] = bd->m_sois.avln[il];
   }
   diag_avlnlost = ssl->del_soi2l.avlnlost;
+  diag_prevtest = last_reject_test;
+  diag_prevpool = last_reject_pool;
+  diag_nscale = ssl->dg_nscale; diag_totnetnmin = ssl->dg_totnetnmin_raw;
+  diag_totnextract = ssl->dg_totnextract; diag_totdzavln = ssl->dg_totdzavln;
 }
 
 /** Has some mechanism to check error and change step-size accordingly */
@@ -495,6 +499,7 @@ int Integrator::adapt(float pstate[], const int & numeq) {
   int mflag = 0;        // <--not sure what this is used for?
   int nintmon = 0;
   float oldstate[numeq];
+  last_reject_test = -1; last_reject_pool = -1;  // v5n diag only
   float  ptol = 0.01;
   blackhol = 0;
 
@@ -548,6 +553,8 @@ int Integrator::adapt(float pstate[], const int & numeq) {
             dt *= 2.0;
           }
         } else {
+          last_reject_test = test;  // v5n diag only (no effect on the integration)
+          last_reject_pool = (test == REJECT) ? last_negpool : test - 1;
           dt *= 0.500;
         }
 

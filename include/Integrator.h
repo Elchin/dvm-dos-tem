@@ -171,6 +171,9 @@ public :
   float diag_y[NUMEQ];      // diag: state at the first forced step
   double diag_rtn[MAX_SOI_LAY], diag_netnmin[MAX_SOI_LAY], diag_nimmob[MAX_SOI_LAY];
   double diag_avlnlost, diag_avln0[MAX_SOI_LAY];
+  int last_reject_test, last_reject_pool; // diag: last rejected step of this month (test, y index)
+  int diag_prevtest, diag_prevpool;       // diag: copies at the first forced step
+  double diag_nscale, diag_totnetnmin, diag_totnextract, diag_totdzavln; // diag: Soil_Bgc::deltan budget
   double safetynet_ndebit;  // L1: N debited from soil by the last event (g/m2)
   double safetynet_nneed;   // L1: N the last event had to debit (g/m2)
   double n_debt;            // L1: N still owed (donors empty), paid next month
