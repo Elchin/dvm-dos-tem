@@ -1,8 +1,8 @@
-# daily-climate-mode: references for every switch and fix (v5-daily … v5l; v5m draft)
+# daily-climate-mode: references for every switch and fix (v5-daily … v5m)
 
 Standing rule (Elchin, 2026-10-22): every code change carries its scientific references in three places: code comments, commit message and README. This file is the full bibliography. Code comments cite entries by `[Key]`.
 
-Every DOI was checked against Crossref or DataCite, and every URL was opened (HTTP 200), on 2026-10-22 (v5m draft entries: Crossref, 2026-10-27). Author, year, title and journal were compared with the registry record.
+Every DOI was checked against Crossref or DataCite, and every URL was opened (HTTP 200), on 2026-10-22 (v5m entries: Crossref, 2026-10-27). Author, year, title and journal were compared with the registry record.
 
 Where a fix is a code or numerics bug with no literature basis, it says **no published source**, followed by the code location, the original commit and the principle or standard it restores.
 
@@ -65,7 +65,7 @@ Switch defaults: every switch below is 0/off by default, which is legacy behavio
 | `n_rootless_fix` (N1, draft) | 29d72af8 | N mineralised in rootless layers left ORGN without reaching AVLN. | **No published source.** Code: Soil_Bgc::deltastate (upstream). Principle restored: N mass conservation. |
 | `n_som_move_fix` (N2, draft) | 20b2723e | SOM N moved down the profile was overwritten ('=' instead of '+='), shared wrongly among receivers, and taken from cumulative donor C. | **No published source.** Code: Soil_Bgc::deltastate (upstream). Principle restored: N moves with C (fixed C:N of moved SOM), N mass conservation. |
 | `n_nonvasc_extract` (N3, draft) | 20b2723e, d3d3fbba | Non-vascular N uptake had no soil extraction. 1 = extract from moss/fibric layers, capped at 95 % of available N. | Mass conservation (**no published source** for the scheme). Ecological basis that bryophytes take N from the moss/peat layer and deposition: [Turetsky2003]. |
-| `n_safetynet_conserve` (L1, v5m draft, branch v5m-nleak, not merged) | v5m-nleak | When adapt() gives up, the safety net (be8a62fa) delivered the remaining inputs but not the remaining (1 − t0) root N extraction, which the vegetation had already taken up: N was created at every event. 1 = debit it from soil ORGN (rooted layers by extraction share, then any layer), then AVLN, carry any rest to the next month; deposit the remaining N input where deltastate does. C unchanged (no C leak). | **No published source for the fix.** Code: Integrator::applySoilSafetyNet (be8a62fa). Principle restored: closed N mass balance of the TEM N cycle, with plant N uptake taken from the soil N pools [McGuire1992]; [Raich1991]; multi-PFT N competition in DVM-TEM [Euskirchen2009]; DOS-TEM soil N [Yuan2012]. Organic N as first donor: arctic/boreal plants take up organic N [Nasholm1998]; [SchimelBennett2004]. Numerics: resetting/clipping an ODE state is not mass-conserving unless the removed mass is booked [Shampine2005]. Why closure matters for spin-up: [ThorntonRosenbloom2005]. |
+| `n_safetynet_conserve` (L1, v5m) | 23e8077b (merge bf05797e) | When adapt() gives up, the safety net (be8a62fa) delivered the remaining inputs but not the remaining (1 − t0) root N extraction, which the vegetation had already taken up: N was created at every event. 1 = debit it from soil ORGN (rooted layers by extraction share, then any layer), then AVLN, carry any rest to the next month; deposit the remaining N input where deltastate does. C unchanged (no C leak). | **No published source for the fix.** Code: Integrator::applySoilSafetyNet (be8a62fa). Principle restored: closed N mass balance of the TEM N cycle, with plant N uptake taken from the soil N pools [McGuire1992]; [Raich1991]; multi-PFT N competition in DVM-TEM [Euskirchen2009]; DOS-TEM soil N [Yuan2012]. Organic N as first donor: arctic/boreal plants take up organic N [Nasholm1998]; [SchimelBennett2004]. Numerics: resetting/clipping an ODE state is not mass-conserving unless the removed mass is booked [Shampine2005]. Why closure matters for spin-up: [ThorntonRosenbloom2005]. |
 
 ### ET partition (v5l, 798388f5)
 
@@ -105,7 +105,7 @@ Format: commit — code location — principle — references.
 - **Thermal diagnostics:** d2c7d35e — ALD from the 0 °C isotherm (old value kept as ALD_FLAG). Rationale: active-layer thickness is the maximum annual thaw depth, i.e. the depth of the 0 °C isotherm. Standard definition; no specific citation verified here.
 - **Carbon/nitrogen:**
   - 503bb21b, de49c6d5, ed28e049, e86633fe — root N extraction made N-conserving (Soil_Bgc) — N mass conservation — **no published source**.
-  - be8a62fa — soil integrator safety net delivers the remaining monthly inputs when adapt() gives up — C mass conservation — **no published source**. It does not apply the remaining root N extraction (N created per event); the switchable fix is `n_safetynet_conserve` (v5m draft, above).
+  - be8a62fa — soil integrator safety net delivers the remaining monthly inputs when adapt() gives up — C mass conservation — **no published source**. It does not apply the remaining root N extraction (N created per event); the switchable fix is `n_safetynet_conserve` (v5m, above).
   - fe93d93c — NLOST reports only the AVLN loss — diagnostic definition — **no published source**.
 - **Forcing and CO2:** 0e22205a — scenario CO2 indexed by calendar year, fail if not covered — correct time alignment — **no published source**.
 - **Output and runtime:**

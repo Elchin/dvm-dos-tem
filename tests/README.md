@@ -47,7 +47,7 @@ How the tests are written:
 | seb | test_seb.cpp | v5j SEB scheme 2 (Soil_Env::solveSEB): energy closure, melt, brackets, vp units |
 | fixes_v5k | test_fixes_v5k.cpp | v5k switches: B1 svp over ice (+SEB esat), B2 Richards early-return infiltration, B3 combineExtraFronts termination, B4 snow albedo cap; N1-N3 soil N conservation (deltastate), non-vascular N extraction; C1 soil integrator NMIN tolerance |
 | fixes_v5l | test_fixes_v5l.cpp | v5l ET-split switches: key defaults/validation/parsing (+ death tests), S1 per-cover stomatal light, S2 buried non-vascular snow interception, S3 LAI-based rain interception with storage, S4 moss rain as surface water (relabel / to ground), evap_moss accumulation |
-| fixes_v5m | test_fixes_v5m.cpp | v5m draft L1 `n_safetynet_conserve`: default/parsing (+ death tests); legacy (off) state unchanged; on: soil N change = remaining inputs − (1 − t0)·root extraction (veg + soil N conserved), donor order ORGN (by extraction share) → ORGN → AVLN, rootless layers as in deltastate, zero pools → debt carried and paid, negative pools untouched, `debitProportional` bookkeeping |
+| fixes_v5m | test_fixes_v5m.cpp | v5m L1 `n_safetynet_conserve`: default/parsing (+ death tests); legacy (off) state unchanged; on: soil N change = remaining inputs − (1 − t0)·root extraction (veg + soil N conserved), donor order ORGN (by extraction share) → ORGN → AVLN, rootless layers as in deltastate, zero pools → debt carried and paid, negative pools untouched, `debitProportional` bookkeeping |
 
 Tests in `test_seb.cpp` need the v5j commits (9dae595b and d41c7f79), which are cherry-picked onto this branch.
 
@@ -122,9 +122,9 @@ New outputs (output_spec.csv, off by default; monthly/yearly cohort totals, mm/t
 
 Proof of neutrality: `run_regression.sh` A = bin_v5k1 vs B = bin_v5l (rc and merged), all new switches off, on calib8 and on the 8 V-Nall baseline cases (with determinism), plus V-Nall with all new keys written explicitly as 0: bit-identical, closure OK (see /workspace/v5l/V5L_REPORT.md).
 
-## Switchable fix (v5m draft, branch v5m-nleak, NOT merged; default 0 = legacy, bit-identical to v5l1 when off)
+## Switchable fix (v5m, merged bf05797e from v5m-nleak 23e8077b; default 0 = legacy, bit-identical to v5l1 when off)
 
-Soil N leak in the integrator safety net (be8a62fa). Unit tests: suite `fixes_v5m` (8 cases). Report: /workspace/v5m/NLEAK_REPORT.md.
+Soil N leak in the integrator safety net (be8a62fa). Unit tests: suite `fixes_v5m` (8 cases). Report: /workspace/v5m/NLEAK_REPORT.md (archived on the VM in ~/box_archive/v5m/).
 
 | key (model_settings) | values | fixes | tests | references |
 |---|---|---|---|---|
@@ -153,4 +153,4 @@ Standing rule since 2026-10-22: every code change carries its scientific referen
 | `soil_evap_beta` | Lee & Pielke 1992 [doi:10.1175/1520-0450(1992)031<0480:ETSSSH>2.0.CO;2](https://doi.org/10.1175/1520-0450(1992)031<0480:ETSSSH>2.0.CO;2); Clapp & Hornberger 1978 [doi:10.1029/WR014i004p00601](https://doi.org/10.1029/WR014i004p00601) |
 | TVC Sedges klai (parameter test, not adopted) | Wallace & Baltzer 2019 [doi:10.1007/s10021-019-00435-0](https://doi.org/10.1007/s10021-019-00435-0), data [doi:10.5683/SP2/F4PQRY](https://doi.org/10.5683/SP2/F4PQRY); Grünberg & Boike 2019 [doi:10.1594/PANGAEA.904270](https://doi.org/10.1594/PANGAEA.904270); Yazbeck et al. 2025 [doi:10.1029/2024JG008721](https://doi.org/10.1029/2024JG008721); Chang et al. 2022 [doi:10.1016/j.rse.2021.112747](https://doi.org/10.1016/j.rse.2021.112747); Zwieback et al. 2019 [doi:10.1088/1748-9326/ab1049](https://doi.org/10.1088/1748-9326/ab1049) |
 
-The v5k, v5l and v5m (draft) switches are referenced in the "references" column of their tables above.
+The v5k, v5l and v5m switches are referenced in the "references" column of their tables above.
