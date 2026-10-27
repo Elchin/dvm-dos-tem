@@ -105,6 +105,10 @@ void Runner::run_years(int start_year, int end_year, const std::string& stage) {
         if (this->cohort.get_solintegrator().safetynet_fired) {
           this->report_safetynet(iy, im, stage);
         }
+        if ((Integrator::soil_giveup_diag == 1 && this->cohort.get_solintegrator().safetynet_fired)
+            || this->cohort.get_solintegrator().retry_fired) {
+          this->report_giveup_diag(iy, im, stage);  // v5n draft (G2 / diagnostics)
+        }
 
         this->monthly_output(iy, im, stage, end_year);
 
@@ -135,6 +139,61 @@ void Runner::run_years(int start_year, int end_year, const std::string& stage) {
             << " cell(y,x)=(" << this->y << "," << this->x << ")"
             << " soil_safetynet_events=" << sn_n
             << " veg_integrator_giveups=" << vbh_n << std::endl;
+  if (Integrator::soil_giveup_retry == 1 || Integrator::soil_giveup_diag == 1) {  // v5n draft
+    const Integrator& si = this->cohort.get_solintegrator();
+    std::cerr << "Soil integrator v5n summary (cumulative over the run): stage=" << stage
+              << " retries=" << si.retry_count << " retry_failures=" << si.retry_fail_count
+              << " forced_months=" << si.forced_months << " rkf45_calls=" << si.rkf45_calls << std::endl;
+  }
+}
+
+/** v5n draft: why the soil integrator gave up / was retried (G2) this month.
+*   stderr and <output_dir>/integrator_giveup_diag.csv; the diagnostic fields
+*   are filled only with soil_giveup_diag = 1. */
+void Runner::report_giveup_diag(const int year, const int month, const std::string& stage) {
+  const Integrator& si = this->cohort.get_solintegrator();
+  const int p = si.diag_pool;
+  std::string pname = "unknown";
+  int lay = -1;
+  const int bases[6] = {Integrator::I_L_RAWC, Integrator::I_L_SOMA, Integrator::I_L_SOMPR,
+                        Integrator::I_L_SOMCR, Integrator::I_L_ORGN, Integrator::I_L_AVLN};
+  const char* names[6] = {"RAWC", "SOMA", "SOMPR", "SOMCR", "ORGN", "AVLN"};
+  for (int k = 0; k < 6; k++) {
+    if (p >= bases[k] && p < bases[k] + MAX_SOI_LAY) { pname = names[k]; lay = p - bases[k]; }
+  }
+  if (p == Integrator::I_WDEBRISC) { pname = "WDEBRISC"; }
+  if (p == Integrator::I_WDEBRISN) { pname = "WDEBRISN"; }
+  if (p >= NUM_SOI_STATE) { pname = "flux_var"; lay = p; }
+  const int l = (lay >= 0 && lay < MAX_SOI_LAY) ? lay : 0;
+  double srtn = 0.0, savln = 0.0, savln0 = 0.0;
+  for (int il = 0; il < MAX_SOI_LAY; il++) {
+    srtn += si.diag_rtn[il]; savln += si.diag_y[Integrator::I_L_AVLN + il]; savln0 += si.diag_avln0[il];
+  }
+  const char* kind = (si.diag_test == 0) ? "negative_pool" : "error_test";
+  std::cerr << "GIVEUP_DIAG: stage=" << stage << " year_index=" << year << " month=" << month
+            << " giveup=" << (si.safetynet_fired ? 1 : 0) << " retried=" << (si.retry_fired ? 1 : 0)
+            << " reason=" << kind << " pool=" << pname << " layer=" << lay
+            << " t0=" << si.diag_t0 << " avln=" << si.diag_y[Integrator::I_L_AVLN + l]
+            << " avln_monthstart=" << si.diag_avln0[l] << " orgn=" << si.diag_y[Integrator::I_L_ORGN + l]
+            << " rtnextract=" << si.diag_rtn[l] << " netnmin=" << si.diag_netnmin[l]
+            << " nimmob=" << si.diag_nimmob[l] << " sum_rtnextract=" << srtn
+            << " sum_avln=" << savln << " sum_avln_monthstart=" << savln0 << std::endl;
+  boost::filesystem::path f = boost::filesystem::path(md.output_dir) / "integrator_giveup_diag.csv";
+  bool isnew = !boost::filesystem::exists(f);
+  std::ofstream out(f.string().c_str(), std::ios::app);
+  if (out) {
+    if (isnew) {
+      out << "stage,y,x,year_index,month,giveup,retried,reason,pool,layer,t0,dt,avln,avln_monthstart,orgn,"
+             "rtnextract,netnmin,nimmob,sum_rtnextract,sum_avln,sum_avln_monthstart,avlnlost\n";
+    }
+    out << stage << "," << this->y << "," << this->x << "," << year << "," << month << ","
+        << (si.safetynet_fired ? 1 : 0) << "," << (si.retry_fired ? 1 : 0) << "," << kind << ","
+        << pname << "," << lay << "," << si.diag_t0 << "," << si.diag_dt << ","
+        << si.diag_y[Integrator::I_L_AVLN + l] << "," << si.diag_avln0[l] << ","
+        << si.diag_y[Integrator::I_L_ORGN + l] << "," << si.diag_rtn[l] << ","
+        << si.diag_netnmin[l] << "," << si.diag_nimmob[l] << "," << srtn << "," << savln << ","
+        << savln0 << "," << si.diag_avlnlost << "\n";
+  }
 }
 
 /** One soil integrator safety-net event: warning on stderr and a row in

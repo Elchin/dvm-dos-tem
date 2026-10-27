@@ -52,6 +52,8 @@ float Integrator::b65 =  -0.275;
 
 int Integrator::nmin_tol_fix = 0; // Fix C1 (v5k), default off (legacy)
 int Integrator::n_safetynet_conserve = 0; // Fix L1 (v5m), default off (legacy)
+int Integrator::soil_giveup_retry = 0;    // Fix G2 (v5n draft), default off (legacy)
+int Integrator::soil_giveup_diag = 0;     // v5n diagnostics, default off
 
 int REJECT = 0;
 int ACCEPT = 1;
@@ -73,6 +75,11 @@ Integrator::Integrator() {
   safetynet_nneed = 0.0;
   n_debt = 0.0;
   n_debit_total = 0.0;
+  retry_count = 0; retry_fail_count = 0; retry_fired = false;
+  rkf45_calls = 0; forced_months = 0; last_negpool = -1; diag_test = 0; diag_pool = -1; diag_t0 = 0.f; diag_dt = 0.f;
+  for (int i = 0; i < NUMEQ; i++) { diag_y[i] = 0.f; }
+  for (int i = 0; i < MAX_SOI_LAY; i++) { diag_rtn[i] = diag_netnmin[i] = diag_nimmob[i] = diag_avln0[i] = 0.0; }
+  diag_avlnlost = 0.0;
 
   //vegetation C & N state variables
   for(int i =0; i<NUM_PFT_PART; i++) { //Yuan: here is the reason that the "temconst.h" is needed
@@ -245,7 +252,26 @@ void Integrator::updateMonthlySbgc(const int & numsoillayer) {
   // integration
   report_array(y);
   safetynet_fired = false;
-  adapt(y, NUMEQ_SOI);
+  retry_fired = false;
+  if (soil_giveup_retry == 1) {
+    // Fix G2 (v5n draft): legacy attempt; only if it gives up, redo the month
+    // from its start with the G1 extraction limiter (this month only).
+    // Refs (G2): see Integrator.h (soil_giveup_retry).
+    float y0[NUMEQ];
+    for (int iv = 0; iv < NUMEQ; iv++) { y0[iv] = y[iv]; }
+    adapt(y, NUMEQ_SOI);
+    if (blackhol) {
+      for (int iv = 0; iv < NUMEQ; iv++) { y[iv] = y0[iv]; }
+      ++retry_count;
+      retry_fired = true;
+      ssl->nx_limiter_active = true;
+      adapt(y, NUMEQ_SOI);
+      ssl->nx_limiter_active = false;
+      if (blackhol) { ++retry_fail_count; }
+    }
+  } else {
+    adapt(y, NUMEQ_SOI);
+  }
   if (blackhol) {
     applySoilSafetyNet();
   }
@@ -440,6 +466,27 @@ void Integrator::c2ystate_soi(float y[]) {
 };
 
 
+/** v5n diagnostics (soil_giveup_diag == 1 only; outputs unchanged): why the
+*   soil integrator is about to force a step at dt_min (the first one of a
+*   possible give-up). test == 0: a pool went negative (last_negpool); test > 1:
+*   error test failed for variable test (boundcon). */
+void Integrator::recordGiveupDiag(const float pstate[], const int numeq,
+                                  const int ptest, const float ptime, const float pdt) {
+  diag_test = ptest;
+  diag_pool = (ptest == REJECT) ? last_negpool : ptest - 1;  // boundcon returns index+1
+  ++forced_months;
+  diag_t0 = ptime;
+  diag_dt = pdt;
+  for (int i = 0; i < numeq && i < NUMEQ; i++) { diag_y[i] = pstate[i]; }
+  for (int il = 0; il < MAX_SOI_LAY; il++) {
+    diag_rtn[il] = ssl->rtnextract[il];
+    diag_netnmin[il] = ssl->del_soi2soi.netnmin[il];
+    diag_nimmob[il] = ssl->del_soi2soi.nimmob[il];
+    diag_avln0[il] = bd->m_sois.avln[il];
+  }
+  diag_avlnlost = ssl->del_soi2l.avlnlost;
+}
+
 /** Has some mechanism to check error and change step-size accordingly */
 int Integrator::adapt(float pstate[], const int & numeq) {
   int i;
@@ -470,6 +517,9 @@ int Integrator::adapt(float pstate[], const int & numeq) {
 
         // Step size is already super small - accept the result
         if ( dt <= pow(0.5, maxit) ) { // w/ maxit=20 --> ~0.00000095357
+          if (nintmon == 0 && soibgc && soil_giveup_diag == 1) {
+            recordGiveupDiag(pstate, numeq, test, time, dt);  // v5n diagnostics only
+          }
           test = ACCEPT;
           mflag = 1;
 
@@ -522,6 +572,7 @@ bool Integrator::rkf45( const int& numeq, float pstate[], float& pdt) {
   int negativepool = -1;
   int i;
   float ptdt = 0;
+  if (soil_giveup_diag == 1 && soibgc) { ++rkf45_calls; }  // v5n diagnostics only
 
   // initialize stuff to zero
   for ( i = 0; i < numeq; i++ ) {
@@ -538,6 +589,7 @@ bool Integrator::rkf45( const int& numeq, float pstate[], float& pdt) {
   step( numeq,dum4,f11,ydum,ptdt );
 
   negativepool = checkPools();
+  if (negativepool >= 0) { last_negpool = negativepool; }
   if(negativepool >= 0) {
     return false;
   }
@@ -551,6 +603,7 @@ bool Integrator::rkf45( const int& numeq, float pstate[], float& pdt) {
   step( numeq,dum4,f13,ydum,pdt );
 
   negativepool = checkPools();
+  if (negativepool >= 0) { last_negpool = negativepool; }
   if(negativepool>=0) {
     return false;
   }
@@ -566,6 +619,7 @@ bool Integrator::rkf45( const int& numeq, float pstate[], float& pdt) {
   step( numeq,dum4,f14,ydum,pdt );
 
   negativepool = checkPools();
+  if (negativepool >= 0) { last_negpool = negativepool; }
   if(negativepool>=0) {
     return false;
   }
@@ -581,6 +635,7 @@ bool Integrator::rkf45( const int& numeq, float pstate[], float& pdt) {
   step( numeq,dum4,f15,ydum,pdt );
 
   negativepool = checkPools();
+  if (negativepool >= 0) { last_negpool = negativepool; }
   if(negativepool>=0) {
     return false;
   }
@@ -596,6 +651,7 @@ bool Integrator::rkf45( const int& numeq, float pstate[], float& pdt) {
   step( numeq,dum4,f16,ydum,pdt );
 
   negativepool = checkPools();
+  if (negativepool >= 0) { last_negpool = negativepool; }
   if(negativepool>=0) {
     return false;
   }

@@ -74,6 +74,10 @@ Cohort::Cohort(int y, int x, ModelData* modeldatapointer):
   Snow_Env::albedo_fix = modeldatapointer->snow_albedo_fix; // Fix B4 (v5k)
   Integrator::nmin_tol_fix = modeldatapointer->soil_nmin_tol_fix; // Fix C1 (v5k)
   Integrator::n_safetynet_conserve = modeldatapointer->n_safetynet_conserve; // Fix L1 (v5m)
+  Soil_Bgc::n_extract_limiter = modeldatapointer->n_extract_limiter;  // Fix G1 (v5n draft)
+  Soil_Bgc::n_extract_tau = modeldatapointer->n_extract_tau;          // G1 time scale
+  Integrator::soil_giveup_retry = modeldatapointer->soil_giveup_retry; // Fix G2 (v5n draft)
+  Integrator::soil_giveup_diag = modeldatapointer->soil_giveup_diag;   // v5n diagnostics
 
   //On construction we assume historic climate, which will be
   // overwritten by projected climate later when necessary.

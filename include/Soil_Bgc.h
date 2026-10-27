@@ -95,6 +95,28 @@ public:
   // dcaddfrac share to receivers, export accumulated (+=).
   int n_som_move_fix = 0;
   // Refs (N2): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 20b2723e); restores N mass conservation (N moves with C).
+  // Fix G1 (v5n draft), OFF by default: model_settings.n_extract_limiter.
+  // The root N extraction rtnextract[il] is fixed for the whole month (it equals
+  // the vegetation N uptake, computed from the month-start AVLN and integrated
+  // before the soil), so inside the soil integrator it is a zero-order sink on
+  // AVLN. When AVLN runs out part-way through the month (immobilisation,
+  // leaching, warm-month uptake ~ the whole pool) AVLN crosses zero in finite
+  // time; RKF45 rejects every step that makes a pool negative, halves dt down to
+  // 0.5^20 and finally gives up (blackhole -> safety net). 1 = flux limiter:
+  // the AVLN part of the extraction is r*min(1, AVLN/(tau*r)) (tau =
+  // n_extract_tau, month fraction), i.e. unchanged while AVLN covers tau months
+  // of demand, and the rest r - that is taken from ORGN of the same layer
+  // (organic N uptake), so the total extraction (= vegetation uptake) and N
+  // mass are unchanged. Applied only where deltastate() applies extraction.
+  static int n_extract_limiter;
+  static double n_extract_tau;   // month fraction, default 0.05 (0 < tau <= 1)
+  // G2 (v5n draft, Integrator::soil_giveup_retry): limiter on for one retry month
+  bool nx_limiter_active = false;
+  bool nxLimiterOn() const { return n_extract_limiter == 1 || nx_limiter_active; }
+  // G1 helper (pure, unit-tested): AVLN part of an extraction r (g/m2/month)
+  // from a pool A (g/m2): r for r <= 0 or A >= tau*r, else r*max(A,0)/(tau*r).
+  static double limitedExtraction(const double r, const double A, const double tau);
+  // Refs (G1/G2): plant N uptake is a saturating (Michaelis-Menten) function of soil available N in TEM (Raich et al. 1991, doi:10.2307/1941899; McGuire et al. 1992, doi:10.1029/92GB00219); demand-based uptake is down-regulated when soil mineral N cannot supply it (Thornton et al. 2007, doi:10.1029/2006GB002868); arctic/boreal plants also take up organic N (Nasholm et al. 1998, doi:10.1038/31921; Schimel & Bennett 2004, doi:10.1890/03-8002); a zero-order sink drives a non-negative ODE state below zero in finite time, which no step-size reduction can avoid, positivity needs a state-dependent sink (Shampine et al. 2005, doi:10.1016/j.amc.2004.12.011; Burchard et al. 2003, doi:10.1016/S0168-9274(03)00101-6).
 private:
 
   // NOTE: seems like these 3 variables are supposed to shadow the
