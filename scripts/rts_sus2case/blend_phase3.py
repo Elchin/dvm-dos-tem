@@ -15,8 +15,17 @@ windows 2021-2040 / 2041-2060 / 2061-2080 / 2081-2100, 20 yr each):
   * Case A: F_k = mf (s_k - 0.5)/0.5 (cell-mean s; gt050 as sensitivity), mf 7.5e-4 [1.3e-4, 2e-3];
     expected initiations N_k = F_k cell_area / a_event over the window.
   * Case B: A0 = Nesterova et al. 2025 count (doi:10.1594/PANGAEA.974406) x 1.44 ha / cell_area as a
-    legacy cohort initiating Aug 2021 (pre-2016 scars); new initiations RATE_k = count x r_k / 20 yr,
-    r_k = SSP5 gt050_k / gt050_2030, 3x3 smoothed (cell-table case_b_ratio_s3_k).
+    legacy cohort placed in Aug 2021 (pre-2016 scars); new initiations RATE_k = count x r_k / 20 yr,
+    r_k = SSP5 gt050_k / gt050_2030, 3x3 smoothed (cell-table case_b_ratio_s3_k). This base rate (one
+    Nesterova inventory's worth of area per 20-yr window x r_k) is the main Case B assumption.
+  * Legacy cohort without initiation pulse (default; --legacy-pulse restores v1): the legacy scars already
+    slumped before 2016, so their initiation-month response (TKLATC export, the non-lateral TKNETC part and
+    the ECOC step) is dropped and only the response from month+1 on (post-initiation exposure/erosion and
+    regrowth) is kept: fluxes K_leg(t) = K(t) for t > t0, 0 for t <= t0; pools K_leg(t) = K(t) - K(t0) for
+    t >= t0, 0 before. dECOC = -TKNETC therefore still closes month by month; the ECOC anomaly of the legacy
+    cohort is the change since Aug 2021 (its pre-2016 loss is outside the 2016-2100 accounting).
+Limitation: responses for initiation years between run start years reuse the lower start-year run
+(time-shifted, i.e. the climate of up to 9 yr earlier).
 Timing: T1 uniform hazard within each window (deterministic = expected counts; stochastic = Poisson
 draws per year, fixed seeds); T2 hazard proportional to the exceedance of the baseline ALD over its
 1950-1979 maximum (stage 2a), renormalised per window (uniform fallback if no exceedance).
@@ -72,10 +81,27 @@ def kernels(base, runs, taus=TAUS):
     return K
 
 
-def blend(base, K, frac):
-    """frac (..., len(taus)) area fractions per initiation year -> blended series (..., NM)."""
+def legacy_kernel(K, tau=2021, pools=POOLS):
+    """Unit-area response of a cohort initiating in Aug tau with its initiation month dropped."""
+    i = list(TAUS).index(tau); m0 = 12 * (tau - FIRST) + AUG
+    L = {}
+    for v, k in K.items():
+        x = np.array(k[i], float)
+        if v in pools: x[m0:] -= x[m0]
+        x[:m0 + (0 if v in pools else 1)] = 0.0
+        L[v] = x
+    return L
+
+
+def blend(base, K, frac, legacy=0.0, KL=None):
+    """frac (..., len(taus)) area fractions per initiation year -> blended series (..., NM);
+    legacy (...,) area fraction of the legacy cohort with kernel KL (legacy_kernel)."""
     frac = np.asarray(frac, float)
-    return {v: base[v] + frac @ K[v] for v in base}
+    out = {v: base[v] + frac @ K[v] for v in base}
+    if KL is not None:
+        leg = np.asarray(legacy, float)
+        for v in base: out[v] = out[v] + leg[..., None] * KL[v]
+    return out
 
 
 def area_series(frac, taus=TAUS):
@@ -132,24 +158,27 @@ def poisson(lam, members, case_code, cell_idx):
                     dtype=float)
 
 
-def scenarios(row, cell_idx, ald_base, ald_ref, members):
-    """name -> (folr tag, counts (M, len(TAUS)))."""
+def scenarios(row, cell_idx, ald_base, ald_ref, members, legacy_pulse=False):
+    """name -> (folr tag, new-initiation counts (M, len(TAUS)), legacy count). With legacy_pulse (v1) the
+    legacy count is folded into the 2021 initiations (full kernel incl. the initiation pulse)."""
     out = {}; fbs = {}
     NA = case_a_N(row); NB, n0 = case_b_N(row)
-    legacy = np.zeros(len(TAUS)); legacy[0] = n0
+    legacy = np.zeros(len(TAUS)); L0 = 0.0
+    if legacy_pulse: legacy[0] = n0
+    else: L0 = n0
     lamA, lamB = window_rates(NA), window_rates(NB)
     for f in ('f08', 'f05'):
-        out[f'A_T1_{f}'] = (f, poisson(lamA, members, 1, cell_idx))
-        out[f'B_T1_{f}'] = (f, legacy + poisson(lamB, members, 2, cell_idx))
-        out[f'A_det_{f}'] = (f, lamA[None])
-        out[f'B_det_{f}'] = (f, (legacy + lamB)[None])
+        out[f'A_T1_{f}'] = (f, poisson(lamA, members, 1, cell_idx), 0.0)
+        out[f'B_T1_{f}'] = (f, legacy + poisson(lamB, members, 2, cell_idx), L0)
+        out[f'A_det_{f}'] = (f, lamA[None], 0.0)
+        out[f'B_det_{f}'] = (f, (legacy + lamB)[None], L0)
     for b in ('low', 'high'):
-        out[f'A_det_mf{b}_f08'] = ('f08', window_rates(case_a_N(row, mf=MF[b]))[None])
-    out['A_det_gt050_f08'] = ('f08', window_rates(case_a_N(row, 'gt050'))[None])
-    out['A_T1_gt050_f08'] = ('f08', poisson(window_rates(case_a_N(row, 'gt050')), members, 3, cell_idx))
+        out[f'A_det_mf{b}_f08'] = ('f08', window_rates(case_a_N(row, mf=MF[b]))[None], 0.0)
+    out['A_det_gt050_f08'] = ('f08', window_rates(case_a_N(row, 'gt050'))[None], 0.0)
+    out['A_T1_gt050_f08'] = ('f08', poisson(window_rates(case_a_N(row, 'gt050')), members, 3, cell_idx), 0.0)
     la, fbs['A'] = t2_rates(NA, ald_base, ald_ref); lb, fbs['B'] = t2_rates(NB, ald_base, ald_ref)
-    out['A_T2_f08'] = ('f08', la[None]); out['B_T2_f08'] = ('f08', (legacy + lb)[None])
-    out['B_legacy_f08'] = ('f08', legacy[None])
+    out['A_T2_f08'] = ('f08', la[None], 0.0); out['B_T2_f08'] = ('f08', (legacy + lb)[None], L0)
+    out['B_legacy_f08'] = ('f08', legacy[None], L0)
     return out, fbs
 
 
@@ -168,19 +197,21 @@ def load_cell(cdir):
 
 
 def do_cell(args):
-    cdir, row, cell_idx, members = args
+    cdir, row, cell_idx, members, legacy_pulse = args
     S, ald, ald_h = load_cell(cdir)
     ald_ref = float(ald_h[:30].max())
     K = {f: kernels(*S[f]) for f in S}
-    sc, fbs = scenarios(row, cell_idx, ald, ald_ref, members)
+    KL = {f: legacy_kernel(K[f]) for f in S}
+    sc, fbs = scenarios(row, cell_idx, ald, ald_ref, members, legacy_pulse)
     a_ev = ANCHOR_M2 / (row['cell_area_km2'] * 1e6); ca = row['cell_area_km2'] * 1e6
     res = dict(cell=row['cell'], ald_ref=ald_ref, t2_fallback=fbs, sc={})
     worst = [0.0, 0.0]
-    for name, (f, counts) in sc.items():
-        base = S[f][0]; frac = counts * a_ev
-        Bl = blend(base, K[f], frac)
+    for name, (f, counts, L0) in sc.items():
+        base = S[f][0]; frac = counts * a_ev; leg = np.full(counts.shape[0], L0 * a_ev)
+        Bl = blend(base, K[f], frac, leg, KL[f])
         cm, cc = closure(Bl['ECOC'], Bl['TKNETC']); worst = [max(worst[0], cm), max(worst[1], cc)]
-        r = dict(area_frac=area_series(frac), n_events=counts.sum(-1))
+        fr_all = frac.copy(); fr_all[:, 0] += leg
+        r = dict(area_frac=area_series(fr_all), n_events=counts.sum(-1) + L0)
         for v in VARS:
             anom = Bl[v] - base[v]
             r[f'd{v}'] = yearly(anom, v in POOLS) * ca          # g per cell, per year (pool: Dec)
@@ -224,6 +255,7 @@ def main():
     ap.add_argument('root'); ap.add_argument('table'); ap.add_argument('-o', '--out', required=True)
     ap.add_argument('--members', type=int, default=50); ap.add_argument('-j', '--jobs', type=int, default=16)
     ap.add_argument('--cells', default=None)
+    ap.add_argument('--legacy-pulse', action='store_true', help='v1: legacy cohort keeps its initiation pulse')
     a = ap.parse_args()
     import csv
     rows = list(csv.DictReader(open(a.table)))
@@ -234,7 +266,7 @@ def main():
     cells = a.cells.split(',') if a.cells else [r['cell'] for r in rows]
     os.makedirs(a.out, exist_ok=True)
     t0 = time.time()
-    jobs = [(os.path.join(a.root, c), table[c], int(c[1:]), a.members) for c in cells]
+    jobs = [(os.path.join(a.root, c), table[c], int(c[1:]), a.members, a.legacy_pulse) for c in cells]
     with Pool(a.jobs) as p: results = p.map(do_cell, jobs)
     t1 = time.time()
     D = summarize(results, table)
@@ -255,13 +287,16 @@ def main():
                     dTKNETC_cum_Tg=stats(d['dTKNETC'].sum(-1) / 1e12),
                     dNEE_cum_Tg=stats(d['dNEE'].sum(-1) / 1e12),
                     dECOC_2100_Tg=stats(d['dECOC'][..., -1] / 1e12))
+        cum = np.median(np.cumsum(np.atleast_2d(d['dTKNETC']), -1), 0) / 1e12; ip = int(np.argmax(cum))
+        S[n]['dTKNETC_cum_peak'] = dict(Tg=float(cum[ip]), year=FIRST + ip,
+                                        from_peak_to_2100_Tg=float(cum[-1] - cum[ip]))
     base = {f: dict(ECOC_2016_Tg=sum(r[f'base_{f}']['ECOC_2016'] for r in results) / 1e12,
                     ECOC_2100_Tg=sum(r[f'base_{f}']['ECOC_2100'] for r in results) / 1e12,
                     TKNETC_cum_Tg=sum(r[f'base_{f}']['TKNETC_cum'] for r in results) / 1e12) for f in ('f08', 'f05')}
     pos = [r['cell'] for r in results if r['y2021_effect_f08']['dECOC_2100_gm2'] > 0]
     pos_alt = [c for c in pos if percell[c]['base_ALT_2091_2100'] >= 3.0]
     alt3 = [r['cell'] for r in results if r['base_ALT_2091_2100'] >= 3.0]
-    summ = dict(cells=len(results), members=a.members, seconds_cells=t1 - t0, seconds_total=time.time() - t0,
+    summ = dict(cells=len(results), members=a.members, legacy_pulse=a.legacy_pulse, seconds_cells=t1 - t0, seconds_total=time.time() - t0,
                 closure=dict(c_month_max=max(r['closure']['c_month_max'] for r in results),
                              c_cum_absmax=max(r['closure']['c_cum_absmax'] for r in results)),
                 t2_fallback_windows=dict(A=sum(r['t2_fallback']['A'] for r in results),
