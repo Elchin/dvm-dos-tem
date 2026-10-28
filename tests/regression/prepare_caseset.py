@@ -3,6 +3,9 @@
 
 usage: prepare_caseset.py OUTDIR [--set calib8] [--cases C1,C2,...] [--ms key=value ...]
   --ms overrides/adds model_settings (e.g. --ms nfactor_sameday=1 --ms vp_hpa_fix=1) to test switches.
+  v5o: the N conservation fixes are written explicitly into every case (N_FIXES: n_rootless_fix=2,
+  n_som_move_fix=1, n_nonvasc_extract=1) so the N balance closes with any binary >= v5k; for the
+  legacy N code pass --ms n_rootless_fix=0 --ms n_som_move_fix=0 --ms n_nonvasc_extract=0.
 
 calib8 = the 8 calibrated daily-mode cases {HPC,TVC}_{Warming,NoWarming}_{nfeed,nonfeed}
 exactly as the v5i experiments (/workspace/v5i/scripts/exp5i.py) set them up:
@@ -27,13 +30,14 @@ import vrun_seb as V      # noqa: E402  (read-only use)
 import exp5i as X          # noqa: E402  (read-only use: BASE params / model_settings / restarts)
 
 CASESETS = {"calib8": X.CASES["all8"]}
+N_FIXES = {"n_rootless_fix": 2, "n_som_move_fix": 1, "n_nonvasc_extract": 1}   # v5o defaults, explicit
 
 def prepare(out, case, ms_over=None):
     site = case[:3]; base = X.BASE[site]
     d = out / case
     if d.exists(): shutil.rmtree(d)
     d.mkdir(parents=True)
-    params = copy.deepcopy(base["params"]); ms = dict(base["ms"]); ms.update(ms_over or {})
+    params = copy.deepcopy(base["params"]); ms = dict(base["ms"]); ms.update(N_FIXES); ms.update(ms_over or {})
     pdir = d / "parameters"; shutil.copytree(V.T / case / "spinup/parameters", pdir)
     for f, kv in params.items():
         kv2 = {k.split(":", 1)[-1]: v for k, v in kv.items() if ":" not in k or k.startswith(site + ":")}

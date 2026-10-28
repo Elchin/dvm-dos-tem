@@ -7,19 +7,47 @@ Formulas as /workspace/v5h/seb_explore/scripts/metrics_tvc.py:
   nitrogen (yearly): d(VEGNTOT + ORGN + AVLN + DEADN + DWDN) - (NINPUT - NLOST)  [gN/m2/yr]
                      PASS if |mean residual| < ntol (default 1.0 gN/m2/yr: a coarse absolute
                      bound; summarize.py also requires B to be no worse than A).
+                     v5o: the N tolerance is enforced (pass/fail) ONLY when all three N
+                     conservation fixes are on in the run (n_rootless_fix 1|2, n_som_move_fix 1,
+                     n_nonvasc_extract 1; read from main/config/config.js, missing keys take the
+                     binary default: v5o = 2/1/1, or legacy 0/0/0 with --n-defaults legacy or
+                     REG_N_DEFAULTS=legacy for pre-v5o binaries). Otherwise the N residual is
+                     only reported as a warning (closure_warn) naming the three bugs.
                      NLOST must be the AVLN leaching loss only (v5i); the old NLOST, which added the
                      never-removed baseline 'orgnlost' every month, gave residuals of order
                      10-1000s gN/m2/yr. NOTE: the N budget does not close exactly from the
-                     outputs in the nfeed calibration cases: mean residual about -0.22 (HPC) and
-                     +0.01..+0.05 (TVC) gN/m2/yr, single years up to ~0.9, identical in v5h and v5i
-                     (unbooked N flux; not diagnosed here). Hence the coarse absolute bound.
-usage: closure.py RUNDIR [--wtol 1.0] [--ctol 0.5] [--ntol 1.0]   (prints JSON; exit 0 if PASS)"""
-import argparse, json, sys
+                     outputs in the nfeed calibration cases with the legacy N code: mean residual about -0.22
+                     (HPC) and +0.01..+0.05 (TVC) gN/m2/yr, single years up to ~0.9 (6 in the
+                     2025-2100 part). Diagnosed (v5n NFEED_RESIDUAL_REPORT.md): a real N mass error
+                     from the known deltastate/uptake bugs N1 (rootless-layer netnmin lost), N2 (SOM
+                     N move overwritten, sink) and N3 (moss N uptake not extracted, source); with
+                     all three fixes on it closes to <= 2e-4 gN/m2/yr (float output round-off).
+usage: closure.py RUNDIR [--wtol 1.0] [--ctol 0.5] [--ntol 1.0] [--n-defaults v5o|legacy]   (prints JSON; exit 0 if PASS)"""
+import argparse, json, os, re, sys
 from pathlib import Path
 import numpy as np, netCDF4 as nc
 
 def ma(x): return np.ma.filled(np.ma.masked_invalid(np.ma.asarray(x, dtype=float)), np.nan)
 def tot(a): a = a.reshape(a.shape[0], -1); return np.nansum(np.where(np.abs(a) < 1e20, a, 0), 1)
+
+N_FIX_DEFAULTS = {"v5o": dict(n_rootless_fix=2, n_som_move_fix=1, n_nonvasc_extract=1),
+                  "legacy": dict(n_rootless_fix=0, n_som_move_fix=0, n_nonvasc_extract=0)}
+N_BUGS = ("N1 n_rootless_fix (rootless-layer net mineralisation N lost), N2 n_som_move_fix (SOM N moved "
+          "shallow->deep overwritten: N sink), N3 n_nonvasc_extract (non-vascular N uptake not extracted "
+          "from the soil: N source)")
+
+def n_fixes(rundir, defaults=None):
+    """Effective N1-N3 switch values of a run (main/config/config.js; missing keys -> binary defaults)."""
+    defaults = defaults or os.environ.get("REG_N_DEFAULTS", "v5o")
+    eff = dict(N_FIX_DEFAULTS[defaults]); src = {k: "default:" + defaults for k in eff}
+    c = Path(rundir) / "main/config/config.js"
+    if c.exists():
+        txt = re.sub(r"(?m)//.*$", "", c.read_text())
+        ms = json.loads(txt).get("model_settings", {})
+        for k in eff:
+            if k in ms: eff[k] = int(ms[k]); src[k] = "config"
+    on = eff["n_rootless_fix"] in (1, 2) and eff["n_som_move_fix"] == 1 and eff["n_nonvasc_extract"] == 1
+    return eff, src, on
 
 def closure(rundir):
     o = Path(rundir) / "main/output"
@@ -56,26 +84,35 @@ def closure(rundir):
         r["N_resid_mean_gm2yr"] = None
     return r
 
-def evaluate(rundir, wtol=1.0, ctol=0.5, ntol=1.0):
+def evaluate(rundir, wtol=1.0, ctol=0.5, ntol=1.0, n_defaults=None):
     meta = json.loads((Path(rundir) / "meta.json").read_text())
     r = dict(run=str(rundir), case=meta["case"], status=meta["status"])
     for s in ("spin", "main"):
         if s in meta:
             ck = meta[s]; r[f"{s}_run_status"] = ck["run_status"]; r[f"{s}_fail_logs"] = len(ck["fail_logs"])
             r[f"{s}_safetynet"] = max(ck["soil_safetynet_events"], ck["safetynet_csv_rows"]); r[f"{s}_veg_giveups"] = ck["veg_giveups"]
-    fails = []
+    fails = []; warns = []
+    eff, src, n_on = n_fixes(rundir, n_defaults); r["N_fixes"] = eff; r["N_fixes_source"] = src
+    r["N_check"] = "enforced" if n_on else "warn"
     if meta["status"] != "OK": fails.append("status " + meta["status"])
     else:
         r.update(closure(rundir))
         if abs(r["W_resid_pctP"]) >= wtol: fails.append(f"water |resid| {r['W_resid_pctP']:.3f}% P >= {wtol}%")
         if r["C_resid_max_abs_annual"] >= ctol: fails.append(f"C max |annual resid| {r['C_resid_max_abs_annual']:.3g} >= {ctol}")
         if r["N_resid_mean_gm2yr"] is None: fails.append("N closure outputs missing")
-        elif abs(r["N_resid_mean_gm2yr"]) >= ntol: fails.append(f"N |mean resid| {r['N_resid_mean_gm2yr']:.3g} >= {ntol} gN/m2/yr")
-    r["closure_fail"] = fails; r["closure_pass"] = not fails
+        elif n_on:
+            if abs(r["N_resid_mean_gm2yr"]) >= ntol: fails.append(f"N |mean resid| {r['N_resid_mean_gm2yr']:.3g} >= {ntol} gN/m2/yr")
+        else:   # legacy N code: known mass errors, report only
+            warns.append(f"N closure not enforced (N1-N3 fixes not all on: {eff}); N mean resid "
+                         f"{r['N_resid_mean_gm2yr']:.3g}, max |annual| {r['N_resid_max_abs_annual']:.3g} gN/m2/yr; "
+                         f"known N mass-conservation bugs: {N_BUGS}")
+    r["closure_fail"] = fails; r["closure_warn"] = warns; r["closure_pass"] = not fails
     return r
 
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(); ap.add_argument("rundir"); ap.add_argument("--wtol", type=float, default=1.0)
     ap.add_argument("--ctol", type=float, default=0.5); ap.add_argument("--ntol", type=float, default=1.0)
-    a = ap.parse_args(); r = evaluate(a.rundir, a.wtol, a.ctol, a.ntol); print(json.dumps(r))
+    ap.add_argument("--n-defaults", choices=sorted(N_FIX_DEFAULTS), default=None,
+                    help="defaults of the binary for missing N1-N3 keys (default $REG_N_DEFAULTS or v5o)")
+    a = ap.parse_args(); r = evaluate(a.rundir, a.wtol, a.ctol, a.ntol, a.n_defaults); print(json.dumps(r))
     sys.exit(0 if r["closure_pass"] else 1)

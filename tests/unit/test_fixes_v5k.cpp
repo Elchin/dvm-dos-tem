@@ -9,6 +9,7 @@
 #include "doctest.h"
 #include "test_helpers.h"
 #include <unistd.h>
+#include <json/json.h>
 
 using ut::make_soil_layer;
 
@@ -243,9 +244,13 @@ TEST_CASE("N2 n_som_move_fix=1: SOM N movement conserves N (soil dN = litter N -
 }
 
 // KNOWN BUG N2 (pre-existing, found by the v5k N trace): legacy deltastate() loses the
-// shallow->deep organic N transfer (see Soil_Bgc.h n_som_move_fix).
-TEST_CASE("N2 legacy (n_som_move_fix=0): SOM N movement conserves N [KNOWN BUG: xfail]" * doctest::should_fail(true)) {
-  SoilNFix f(PROFILE, PROFILE_DZ); f.sb.n_som_move_fix = 0;
+// shallow->deep organic N transfer (see Soil_Bgc.h n_som_move_fix). v5o: the fix is the
+// default, so this former xfail ("N2 legacy (n_som_move_fix=0): SOM N movement conserves N")
+// now runs with the default and passes; the legacy loss (explicit n_som_move_fix=0, still
+// selectable) is documented by the next test.
+TEST_CASE("N2 default (v5o, no explicit setting): SOM N movement conserves N [former KNOWN BUG xfail]") {
+  SoilNFix f(PROFILE, PROFILE_DZ);
+  REQUIRE(f.sb.n_som_move_fix == 1);
   f.sb.deltastate();
   CHECK(f.dN() == doctest::Approx(f.expected()).epsilon(1e-9));
 }
@@ -294,6 +299,65 @@ TEST_CASE("N3 n_nonvasc_extract=1: non-vascular N uptake is extracted from moss/
     }
   }
 }
+
+
+// ------------------------------------------------------------------ v5o: N1-N3 fixes on by default
+// Refs (v5o): no published source for the fixes (code bugs); closed TEM N cycle: McGuire et al. 1992,
+//   doi:10.1029/92GB00219; Raich et al. 1991, doi:10.2307/1941899. Legacy (0) stays selectable.
+namespace {
+Json::Value ms5o(const char* k, Json::Value v) { Json::Value c; c["model_settings"][k] = v; return c; }
+}
+TEST_SUITE("fixes_v5o") {
+
+TEST_CASE("v5o defaults: N1-N3 on in Soil_Bgc/Vegetation_Bgc, ModelData() and ModelData(Json) without the keys") {
+  Soil_Bgc sb; Vegetation_Bgc vb;
+  CHECK(sb.n_rootless_fix == 2); CHECK(sb.n_som_move_fix == 1); CHECK(vb.n_nonvasc_extract == 1);
+  ModelData md;
+  CHECK(md.n_rootless_fix == 2); CHECK(md.n_som_move_fix == 1); CHECK(md.n_nonvasc_extract == 1);
+  ModelData mj(ms5o("svp_ice_fix", 0));   // model_settings without the N keys
+  CHECK(mj.n_rootless_fix == 2); CHECK(mj.n_som_move_fix == 1); CHECK(mj.n_nonvasc_extract == 1);
+  // the give-up switches (L1/G1/G2/G3, diag) stay off by default
+  CHECK(mj.n_safetynet_conserve == 0); CHECK(mj.n_extract_limiter == 0); CHECK(mj.soil_giveup_retry == 0);
+  CHECK(mj.n_netnmin_rescale_guard == 0); CHECK(mj.soil_giveup_diag == 0);
+}
+
+TEST_CASE("v5o: legacy values stay selectable (explicit 0), other values parse, invalid exits") {
+  CHECK(ModelData(ms5o("n_rootless_fix", 0)).n_rootless_fix == 0);
+  CHECK(ModelData(ms5o("n_rootless_fix", 1)).n_rootless_fix == 1);
+  CHECK(ModelData(ms5o("n_som_move_fix", 0)).n_som_move_fix == 0);
+  CHECK(ModelData(ms5o("n_nonvasc_extract", 0)).n_nonvasc_extract == 0);
+  ModelData only_n1(ms5o("n_rootless_fix", 0));   // setting one key leaves the others at the new default
+  CHECK(only_n1.n_som_move_fix == 1); CHECK(only_n1.n_nonvasc_extract == 1);
+  CHECK(ut::exit_status_of([] { ModelData m(ms5o("n_rootless_fix", 3)); }) == EXIT_FAILURE);
+  CHECK(ut::exit_status_of([] { ModelData m(ms5o("n_som_move_fix", 2)); }) == EXIT_FAILURE);
+  CHECK(ut::exit_status_of([] { ModelData m(ms5o("n_nonvasc_extract", -1)); }) == EXIT_FAILURE);
+}
+
+TEST_CASE("v5o default N1 (no explicit setting): rootless layer conserves N, mineralised N goes to AVLN") {
+  SoilNFix f({3, 3, 3}, {0.1, 0.1, 0.1});
+  f.bd.m_v2soi.rtlfalfrac[2] = 0.0; f.sb.rtnextract[2] = 0.0;       // layer 2 has no roots
+  f.sb.deltastate();
+  CHECK(f.dN() == doctest::Approx(f.expected()).epsilon(1e-9));
+  CHECK(f.sb.del_sois.avln[2] == doctest::Approx(0.05));
+  SoilNFix l({3, 3, 3}, {0.1, 0.1, 0.1}); l.sb.n_rootless_fix = 0;   // explicit legacy: netnmin lost
+  l.bd.m_v2soi.rtlfalfrac[2] = 0.0; l.sb.rtnextract[2] = 0.0; l.sb.deltastate();
+  CHECK(l.dN() == doctest::Approx(l.expected() - 0.05).epsilon(1e-9));
+}
+
+TEST_CASE("v5o default N3 (no explicit setting): non-vascular N uptake is extracted from the soil") {
+  CohortData cd; BgcData bd; EnvData ed; Vegetation_Bgc vb;
+  vb.setCohortData(&cd); vb.setBgcData(&bd); vb.setEnvData(&ed); vb.set_nfeed(true);
+  vb.ipft = 0; cd.m_veg.nonvascular[0] = 1;
+  cd.m_soil.numsl = 4; int ty[4] = {0, 1, 2, 3}; double av[4] = {0.1, 0.2, 0.3, 0.4};
+  for (int i = 0; i < MAX_SOI_LAY; ++i) { cd.m_soil.type[i] = i < 4 ? ty[i] : 3; bd.m_sois.avln[i] = i < 4 ? av[i] : 0; ed.m_sois.liq[i] = 10; vb.fracnuptake[i] = 0; }
+  for (int i = 0; i < NUM_PFT_PART; ++i) { bd.m_vegs.c[i] = 1; bd.m_vegs.strn[i] = 0.1; bd.m_soi2v.snuptake[i] = 0; bd.m_v2soi.ltrfalc[i] = 0; bd.m_v2soi.ltrfaln[i] = 0; bd.m_a2v.ingpp[i] = 0; bd.m_a2v.innpp[i] = 0; bd.m_a2v.gpp[i] = 0; bd.m_a2v.npp[i] = 0; bd.m_v2a.rg[i] = 0; bd.m_v2a.rm[i] = 0; bd.m_v2v.nmobil[i] = 0; bd.m_v2v.nresorb[i] = 0; }
+  bd.m_vegs.labn = 0.1; bd.m_soi2v.lnuptake = 0.3;
+  vb.afterIntegration();
+  double tot = 0; for (int i = 0; i < 4; ++i) tot += bd.m_soi2v.nextract[i];
+  CHECK(tot == doctest::Approx(0.3));
+}
+
+} // TEST_SUITE fixes_v5o
 
 // ---------------------------------------------------------------------------
 // Fix C1 (v5k): soil integrator NMIN error tolerance (model_settings.soil_nmin_tol_fix)

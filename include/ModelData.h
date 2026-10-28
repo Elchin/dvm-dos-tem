@@ -186,10 +186,10 @@ public:
   double n_extract_tau;
   // Refs (L1): no published source for the fix; N mass conservation of the TEM N cycle (McGuire et al. 1992, doi:10.1029/92GB00219; Yuan et al. 2012, doi:10.1890/11-1957.1); organic N as donor (Nasholm et al. 1998, doi:10.1038/31921); see docs/daily-mode-REFERENCES.md.
   // Refs (C1): no published source for the fix; standard restored: step-size error scaled by a magnitude that cannot pass through zero (Press et al. 2007, Numerical Recipes 3rd ed., sec. 17.2; Hairer, Norsett & Wanner 1993, doi:10.1007/978-3-540-78862-1).
-  // Fix N1 (v5k), default 0: see Soil_Bgc.h (n_rootless_fix 0/1/2).
+  // Fix N1 (v5k), default 2 since v5o (0 = legacy, selectable): see Soil_Bgc.h (n_rootless_fix 0/1/2).
   int n_rootless_fix;
   // Refs (N1): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 29d72af8); restores N mass conservation.
-  // Fixes N2/N3 (v5k), default 0: see Soil_Bgc.h (n_som_move_fix) and Vegetation_Bgc.h (n_nonvasc_extract).
+  // Fixes N2/N3 (v5k), default 1 since v5o (0 = legacy, selectable): see Soil_Bgc.h (n_som_move_fix) and Vegetation_Bgc.h (n_nonvasc_extract).
   int n_som_move_fix, n_nonvasc_extract;
   // Refs (N2): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 20b2723e); restores N mass conservation (N moves with C).
   // Refs (N3): no published source for the scheme; restores N mass conservation; bryophyte N uptake from the moss/peat layer: Turetsky 2003, doi:10.1639/05.

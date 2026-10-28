@@ -83,8 +83,8 @@ Checks, in `summarize.py` (results in `out_dir/report.txt` and `report.json`):
 | run health | exit 0, `run_status == 100`, no `fail_log*`, for both A and B. |
 | water closure (B) | \|P − EET − QRUNOFF − QDRAINAGE − ΔS\| < 1 % of P over 1951-2024 (ΔS = layer LWC+IWC plus SWE). |
 | C closure (B) | max over years of \|Δ(SOC+VEGC+DEADC+DWDC) + NEE\| < 0.5 gC/m²/yr. |
-| N closure (B) | \|mean Δ(VEGNTOT+ORGN+AVLN+DEADN+DWDN) − (NINPUT − NLOST)\| < 1 gN/m²/yr. A coarse bound: it catches NLOST double counting (10-1000s gN/m²/yr), but the nfeed cases carry an unexplained ~0.2 gN/m²/yr residual (see REPORT). |
-| WARN | B has more integrator safety-net or veg give-up events than A; B's water or N closure is worse than A's. These become FAILs with `--strict`. |
+| N closure (B) | \|mean Δ(VEGNTOT+ORGN+AVLN+DEADN+DWDN) − (NINPUT − NLOST)\| < 1 gN/m²/yr, **enforced only when N1-N3 are all on** in B (`n_rootless_fix` 1/2, `n_som_move_fix` 1, `n_nonvasc_extract` 1; read from B's main config.js, missing keys = binary default: v5o 2/1/1, or 0/0/0 with `closure.py --n-defaults legacy` / `REG_N_DEFAULTS=legacy` for pre-v5o binaries). Otherwise a WARN reports the residual and names the three bugs (legacy nfeed residual ~0.2 gN/m²/yr mean, single years up to ~0.9). With the fixes on the nfeed cases close to ≤ 2.7e-4 gN/m²/yr in every year (float32 output round-off). Logic tested by `python3 tests/regression/test_closure.py`. |
+| WARN | B has more integrator safety-net or veg give-up events than A; B's water or N closure is worse than A's; B's N closure is not enforced (N1-N3 not all on). These become FAILs with `--strict`. |
 
 **Bit-identity needs a fixed environment.** On the GCP VM, outputs were seen to depend on the size of the inherited environment. Run the harness on the box with `REG_LD_LIBRARY_PATH` left at its default `/workspace/wf4-runtime/lib`, and compare only runs made on the same machine with the same runtime libraries. The VM-built binaries carry an rpath to the conda env, which the box does not have, so `LD_LIBRARY_PATH` supplies the libraries there.
 
@@ -92,7 +92,7 @@ Checks, in `summarize.py` (results in `out_dir/report.txt` and `report.json`):
 
 * `include/NFactorSelect.h`: `nfactor_sel::selector_tair`, `nfactor_sel::select_nfactor` and `TDRV_MONTH_START`. This is the n-factor selection code from `Cohort::updateMonthly_Env`, moved unchanged. Proven bit-identical on all 8 calibration cases (spin-up and main, every variable) with `nfactor_sameday` = 0 and = 1.
 
-## Switchable fixes (v5k: merged in daily-climate-mode, tags v5k (B1-B4, N1-N3) and v5k1 (+C1); all default 0 = legacy, bit-identical when off)
+## Switchable fixes (v5k: merged in daily-climate-mode, tags v5k (B1-B4, N1-N3) and v5k1 (+C1); all default 0 = legacy, bit-identical when off. **Since v5o N1-N3 default ON (2/1/1)**, see the v5o section)
 
 | key (model_settings) | values | fixes | tests (switch on) | legacy xfail kept | references |
 |---|---|---|---|---|---|
@@ -100,10 +100,10 @@ Checks, in `summarize.py` (results in `out_dir/report.txt` and `report.json`):
 | `richards_infil_fix` | 0/1 | B2: `Richards::update` early return put the infiltration into Richards' private EnvData (lost); 1 = `Soil_Env::rebookUnappliedRichards` sends it to the puddle (<= ponding_max_mm) and runoff, books evaporation as unapplied, uptake as not applied | flag, closure soil+puddle+runoff, over-full puddle | test_stefan_water.cpp | no published source; code bug (upstream 419a4eb3, fix 07f6c8d0); restores water mass conservation (Richards 1931 [doi:10.1063/1.1745010](https://doi.org/10.1063/1.1745010)) |
 | `stefan_fronts_fix` | 0/1 | B3: `Stefan::combineExtraFronts` set `mindz` once (hang with > 1 surplus pair); 1 = reset per pass | termination (fork+alarm), nearest pair removed, rebuild with > MAX_NUM_FNT+2 boundaries | test_stefan_water.cpp | no published source; loop termination (upstream 419a4eb3, fix 07f6c8d0); algorithm Woo et al. 2004 [doi:10.1029/2004GL019475](https://doi.org/10.1029/2004GL019475) |
 | `snow_albedo_fix` | 0/1 | B4: `Snow_Env::getAlbedoVis` returned 0.9 below -10 C; 1 = snwalbmax | cap, continuity at -10 C | test_seb.cpp | no published source; consistency with snwalbmax / continuity (upstream 419a4eb3, fix 07f6c8d0); cf. Warren 1982 [doi:10.1029/RG020i001p00067](https://doi.org/10.1029/RG020i001p00067) |
-| `n_rootless_fix` | 0/1/2 | N1 (draft): rootless layers lost their net mineralisation N (and ignored extraction); 1 = no mineralisation there, 2 = mineralised N to AVLN (extraction applied) | deltastate conservation | (documented in the N1 test, fx = 0) | no published source; N mass conservation (Soil_Bgc::deltastate, fix 29d72af8) |
-| `n_som_move_fix` | 0/1 | N2 (draft): SOM N moved shallow->deep was overwritten ('=' not '+=') in the top humic layers (main HPC N sink), receivers got the full instead of the thickness share, donors gave N for the cumulative C | deltastate conservation, equal donors | N2 legacy xfail | no published source; N mass conservation, N moves with C (Soil_Bgc::deltastate, fix 20b2723e) |
+| `n_rootless_fix` | 0/1/2 (**default 2 since v5o**) | N1: rootless layers lost their net mineralisation N (and ignored extraction); 1 = no mineralisation there, 2 = mineralised N to AVLN (extraction applied) | deltastate conservation | (documented in the N1 test, fx = 0) | no published source; N mass conservation (Soil_Bgc::deltastate, fix 29d72af8) |
+| `n_som_move_fix` | 0/1 (**default 1 since v5o**) | N2: SOM N moved shallow->deep was overwritten ('=' not '+=') in the top humic layers (main HPC N sink), receivers got the full instead of the thickness share, donors gave N for the cumulative C | deltastate conservation, equal donors | legacy loss documented with explicit 0 (former xfail now a passing default test, v5o) | no published source; N mass conservation, N moves with C (Soil_Bgc::deltastate, fix 20b2723e) |
 | `soil_nmin_tol_fix` | 0/1 | C1: the soil step control tested the signed net-N-mineralisation accumulator NMIN against ptol*\|NMIN\|; when NMIN ~ 0 every doubled step is rejected, adapt() crawls at dt ~ 2^-19 (264k steps, TVC_B W nfeed Nov 2012 with B1+B2+B4) and the float soil state loses the tiny C decrements to rounding (+2.74 gC unbooked, runtime 29 s vs 16 s); 1 = tolerance ptol*max(\|NMIN\|, \|NIMMOB\|, \|AVLN\|) | boundcon accept/reject cases | legacy-behaviour test (reject on NMIN ~ 0) | no published source for the fix; error scaling: Press et al. 2007 ([Numerical Recipes 3rd ed.](https://numerical.recipes/book.html)) §17.2; Hairer et al. 1993 [doi:10.1007/978-3-540-78862-1](https://doi.org/10.1007/978-3-540-78862-1) |
-| `n_nonvasc_extract` | 0/1 | N3 (draft): non-vascular N uptake had no soil extraction (implicit N source); 1 = extracted from moss/fibric layers by avln*liq and capped at 95 % of that avln | afterIntegration extraction | (documented, fx = 0) | no published source for the scheme; N mass conservation; bryophyte N uptake Turetsky 2003 [doi:10.1639/05](https://doi.org/10.1639/05) |
+| `n_nonvasc_extract` | 0/1 (**default 1 since v5o**) | N3: non-vascular N uptake had no soil extraction (implicit N source); 1 = extracted from moss/fibric layers by avln*liq and capped at 95 % of that avln | afterIntegration extraction | (documented, fx = 0) | no published source for the scheme; N mass conservation; bryophyte N uptake Turetsky 2003 [doi:10.1639/05](https://doi.org/10.1639/05) |
 
 Proof of neutrality: `run_regression.sh` A = bin_v5j vs B = bin_v5k / bin_v5k1, all new switches 0, on the 8 calib8 cases (with determinism) and on TVC_B + HPC_H1 with the v5j combined-round settings: bit-identical (see /workspace/v5k/V5K_REPORT.md).
 
@@ -147,6 +147,20 @@ Soil-integrator give-ups (adapt() reaching dt_min 100 times in a month, then the
 Result (n_safetynet_conserve = 1, 1950-2099, 5 cases): G1 (τ 0.2) + G3 = 0 give-ups in every case (legacy 45 in total), RKF45 calls on S2 HPC 9398 (legacy) → 3250, run time unchanged; see the report.
 
 All-8 test (2026-10-27, 28 cases: calib8, V-Nall, adopted v5l, v5l+H9; 1950-2099): L1+G1+G3 = 0 give-ups (main and spin) vs 4 main + 2 spin for legacy and L1 alone; nonfeed cases bit-identical in all configs; differences from L1 alone at noise level (soil-T bias ≤ 0.003 °C, GPP ≤ 0.04 %). Switches off: bit-identical to v5m on calib8 and V-Nall (run_regression.sh). Report: /workspace/v5n/ALL8_REPORT.md (VM ~/box_archive/v5n/).
+
+## v5o: N conservation fixes N1-N3 on by default (commit 5812ff19, tag v5o)
+
+New defaults: `n_rootless_fix` = 2, `n_som_move_fix` = 1, `n_nonvasc_extract` = 1 (ModelData Json parse and default constructor, Soil_Bgc / Vegetation_Bgc members). The give-up switches L1 `n_safetynet_conserve`, G1 `n_extract_limiter`, G2 `soil_giveup_retry`, G3 `n_netnmin_rescale_guard` and `soil_giveup_diag` stay default 0. Legacy stays selectable: `"n_rootless_fix": 0, "n_som_move_fix": 0, "n_nonvasc_extract": 0` reproduces v5n bit-for-bit. Breaks bit-identity with v5m/v5n for configs that did not set the keys (only the nfeed cases change; nonfeed cases are bit-identical).
+
+Why: with the legacy N code N does not close in the nfeed cases (closed N system, NINPUT = NLOST = 0): mean −0.24 gN/m²/yr at HPC NoWarming nfeed, single years up to 0.9 gN/m² (n75) and up to 6 gN/m² in 2025-2100 (v5n NFEED_RESIDUAL_REPORT.md: N2 sink, N3 source, N1).
+
+Configs: `config/config.js` and `prepare_caseset.py` (constant `N_FIXES`) write the three keys explicitly; for the legacy code pass `--ms n_rootless_fix=0 --ms n_som_move_fix=0 --ms n_nonvasc_extract=0`. Unit tests: suite `fixes_v5o` (4 cases: defaults in members / ModelData() / ModelData(Json), legacy selectable and invalid values exit, default N1 and N3 conserve); the former N2 legacy xfail now runs with the default and passes (the legacy loss is still documented with explicit 0). Harness: `test_closure.py` (6 cases).
+
+Proof (box, calib8, spin 20 + main 75, `run_regression.sh -j 4 --no-repeat`):
+* explicit legacy 0/0/0: bin_v5n vs bin_v5o **bit-identical on all 8 cases** (RESULT PASS; N closure reported as WARN, not enforced).
+* new defaults (no keys) vs bin_v5n: nonfeed 4 bit-identical, nfeed 4 differ (intended); RESULT PASS, N enforced. N residual mean ≤ 5.3e-5, max |annual| ≤ 1.7e-4 gN/m²/yr (legacy: mean −0.24…+0.05, max 0.86).
+* defaults == explicit 2/1/1 (calib8 copy with the keys): data-identical on all 8 cases (spin-up and main).
+* V-Nall nfeed (keys already explicit): bin_v5o data-identical to bin_v5n; N mean ≤ 3.2e-5, max |annual| ≤ 2.7e-4 gN/m²/yr (one TVC NoWarming year at 2.68e-4 ≈ 1 float32 ulp of the 2932 gN/m² total N).
 
 ## References for every daily-mode switch (v5-daily … v5n)
 

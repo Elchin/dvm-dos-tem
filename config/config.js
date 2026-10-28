@@ -125,6 +125,9 @@
   "model_settings": {
     "cell_timelimit": 0, //Run time limit per cell in seconds. 0 for no limit.
     "dynamic_lai": 1,                   // from model (1) or from input (0)
+    "n_rootless_fix": 2,                // N1 fix (v5o default 2; 0 = legacy: rootless-layer net mineralisation N lost)
+    "n_som_move_fix": 1,                // N2 fix (v5o default 1; 0 = legacy: SOM N moved shallow->deep overwritten)
+    "n_nonvasc_extract": 1,             // N3 fix (v5o default 1; 0 = legacy: moss N uptake not extracted from soil)
     "baseline_start": 1901,  //start year for baseline EQ climate
     "baseline_end": 1931     //end year for baseline EQ climate
 //    //"dynamic_climate": 0,

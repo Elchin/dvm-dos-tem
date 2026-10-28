@@ -21,6 +21,7 @@ def main():
         r["A"] = ea; r["B"] = eb
         if ea["status"] != "OK" or eb["status"] != "OK": fails.append(f"{c}: run status A={ea['status']} B={eb['status']}")
         if not eb["closure_pass"]: fails.append(f"{c}: B closure: {'; '.join(eb['closure_fail'])}")
+        for w in eb.get("closure_warn", []): warns.append(f"{c}: B {w}")
         if ea["status"] == "OK" and eb["status"] == "OK":   # closure must not get worse than the reference
             if abs(eb["W_resid_pctP"]) > abs(ea["W_resid_pctP"]) + 0.1: soft.append(f"{c}: water closure worse than A ({eb['W_resid_pctP']:.3f} vs {ea['W_resid_pctP']:.3f} % P)")
             if eb.get("N_resid_mean_gm2yr") is not None and ea.get("N_resid_mean_gm2yr") is not None and \
