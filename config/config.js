@@ -175,7 +175,10 @@
                                          // rest r - rx from ORGN of the same layer (total uptake unchanged);
                                          // removes most soil-solver give-ups but lowers GPP (hpc-tvc 904a4a7c/
                                          // 5c597aec; Thornton 2007 doi:10.1029/2006GB002868, Shampine 2005)
-    "n_extract_tau": 0.2                 // G1 time scale, month fraction in (0, 1] (used only with the limiter on)
+    "n_extract_tau": 0.2,                // G1 time scale, month fraction in (0, 1] (used only with the limiter on)
+    "soil_giveup_diag": false            // report soil-solver give-ups/retries (counters always on, no effect on
+                                         // results): stderr SOIL_GIVEUP_DIAG / SOIL_GIVEUP_SUMMARY lines and
+                                         // soil_giveup_diag.csv + soil_giveup_diag_yearly.csv in output_dir
 //    //"dynamic_climate": 0,
 //    //"varied_co2": 0,
 //    //"fire_severity_as_input": 0,    // fire sev. as input or ??

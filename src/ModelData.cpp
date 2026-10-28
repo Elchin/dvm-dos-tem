@@ -141,6 +141,7 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     if (ms.isMember("n_nonvasc_extract")) n_nonvasc_extract = ms["n_nonvasc_extract"].asBool();
     if (ms.isMember("n_extract_limiter")) n_extract_limiter = ms["n_extract_limiter"].asBool();
     if (ms.isMember("n_extract_tau")) n_extract_tau = ms["n_extract_tau"].asDouble();
+    if (ms.isMember("soil_giveup_diag")) soil_giveup_diag = ms["soil_giveup_diag"].asBool();
     if (!(n_extract_tau > 0.0 && n_extract_tau <= 1.0)) {
       throw std::invalid_argument("model_settings n_extract_tau must be in (0, 1] (month fraction)");
     }

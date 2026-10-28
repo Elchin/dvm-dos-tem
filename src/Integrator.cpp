@@ -226,7 +226,11 @@ void Integrator::updateMonthlySbgc(const int & numsoillayer) {
   // integration
   report_array(y);
   adapt(y, NUMEQ_SOI);
+  // give-up counters (diagnostic only, see Integrator.h)
+  sbgc_months++;
+  sbgc_last = 0; sbgc_last_bh_time = 1.0f; sbgc_last_bh_time_retry = 1.0f;
   if (blackhol) {
+    sbgc_giveups++; sbgc_last = 1; sbgc_last_bh_time = bh_time;
     // 'blackhole' fallback (step size underflow, usually a mineral AVLN pool
     // overdrawn late in the growing season) discards the month's soil C/N
     // update while litter and RH are still reported -> C leak (e.g. ~-11 g/month
@@ -240,6 +244,7 @@ void Integrator::updateMonthlySbgc(const int & numsoillayer) {
     sbgc_retry = false;
     n_avln_retries++;
     if (blackhol) {
+      sbgc_retry_fails++; sbgc_last = 2; sbgc_last_bh_time_retry = bh_time;  // diagnostic only
       // the retry also fell back: the pools (and integrated RH) stop at
       // bh_time, but the whole month's litter/debris input is reported, so the
       // rest of the input was lost (e.g. -11..-14 gC in Aug, Gydan CMT21 RTS).
@@ -322,6 +327,7 @@ int Integrator::adapt(float pstate[], const int & numeq) {
 
         // false indicates that some pool went negative....
         bool testavln = rkf45(numeq, pstate, dt);
+        if (soibgc) { sbgc_rkf_calls++; }  // give-up diagnostic only
 
         if(testavln) {
           test = boundcon(dum4, error, ptol);
@@ -335,6 +341,7 @@ int Integrator::adapt(float pstate[], const int & numeq) {
         if ( dt <= pow(0.5, maxit) ) { // w/ maxit=20 --> ~0.00000095357
           test = ACCEPT;
           mflag = 1;
+          if (soibgc) { sbgc_forced_steps++; }  // give-up diagnostic only
 
           if ( nintmon == 0 ) {
             for( i = 0; i < numeq; i++ ) {

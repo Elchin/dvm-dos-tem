@@ -141,6 +141,7 @@ public:
   bool n_nonvasc_extract = false; // N3: moss/lichen N uptake extracted from soil AVLN (Vegetation_Bgc)
   bool n_extract_limiter = false;  // G1: AVLN part of root N extraction r*min(1, AVLN/(tau*r)), rest from ORGN (Soil_Bgc)
   double n_extract_tau = 0.2;      // G1 time scale (month fraction, 0 < tau <= 1)
+  bool soil_giveup_diag = false;   // report soil-solver give-up/retry counts (stderr + CSV; counters always on)
 
   int cell_timelimit; //Time limit in seconds for cell computation time
   time_t cell_stime; //Start time per cell. Move to Runner?

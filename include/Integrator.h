@@ -42,6 +42,23 @@ public :
   int n_avln_retries = 0;   // months re-integrated after a blackhole (diagnostic)
   bool sbgc_retry = false;  // set only while re-integrating a blackholed month
 
+  // Soil-solver give-up counters (adapted from hpc-tvc daily-climate-mode 904a4a7c / 5c597aec (soil_giveup_diag)):
+  // always on -- plain integer bookkeeping that never touches a state, a flux or
+  // an output, so model results are bit-identical. Reported (stderr lines and
+  // CSV files in the output dir) only with model_settings "soil_giveup_diag"
+  // (see Runner::run_years). A give-up is a monthly soil integration that ends
+  // in the 'blackhole' fallback of adapt() (maxitmon steps forced at
+  // dt <= 0.5^maxit); updateMonthlySbgc then retries the month (sbgc_retry),
+  // and a retry failure is a retry that blackholes too (remainder path).
+  long sbgc_months = 0;        // monthly soil integrations
+  long sbgc_giveups = 0;       // months whose first integration gave up (-> retried)
+  long sbgc_retry_fails = 0;   // retries that gave up as well (-> remainder path)
+  long sbgc_rkf_calls = 0;     // rkf45 calls (attempted steps) in soil integrations, retries included
+  long sbgc_forced_steps = 0;  // soil steps accepted only because dt <= 0.5^maxit
+  int sbgc_last = 0;           // last month: 0 ok, 1 gave up + retry ok, 2 retry gave up too
+  float sbgc_last_bh_time = 1.0f;       // month fraction integrated before the first give-up
+  float sbgc_last_bh_time_retry = 1.0f; // ... before the retry's give-up (1 if it did not)
+
   // Cover negative layer ORGN (left by the AVLN-deficit borrow in y2cstate_soi
   // or a tolerated negative step) from other layers' positive ORGN: first
   // root-zone layers (rootfrac>0), then any layer, in proportion to their ORGN.

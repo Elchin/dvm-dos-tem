@@ -1,5 +1,8 @@
 #include <string>
 #include <algorithm>
+#include <fstream>
+#include <iostream>
+#include <sstream>
 #include <json/writer.h>
 
 
@@ -15,6 +18,18 @@
 #include "../include/tbc-debug-util.h"
 
 extern src::severity_logger< severity_level > glg;
+
+// Soil-solver give-up diagnostic (model_settings "soil_giveup_diag"; adapted
+// from hpc-tvc daily-climate-mode 904a4a7c / 5c597aec (soil_giveup_diag)). Appends one CSV row; writes the header into a new file.
+static void giveup_diag_csv(const std::string & path, const std::string & header,
+                            const std::string & row) {
+  std::ifstream probe(path.c_str());
+  const bool fresh = !probe.good() || probe.peek() == std::ifstream::traits_type::eof();
+  probe.close();
+  std::ofstream f(path.c_str(), std::ios::app);
+  if (fresh) { f << header << "\n"; }
+  f << row << "\n";
+}
 
 Runner::Runner(ModelData mdldata, bool cal_mode, int y, int x):
     calibrationMode(false), y(y), x(x) {
@@ -57,8 +72,17 @@ Runner::~Runner() {};
 void Runner::run_years(int start_year, int end_year, const std::string& stage) {
 
   /** YEAR TIMESTEP LOOP */
+  // soil-solver give-up diagnostic (reporting only; the counters are always on)
+  const Integrator & gsi = this->cohort.soil_integrator();
+  const long g0_months = gsi.sbgc_months, g0_giveups = gsi.sbgc_giveups,
+             g0_fails = gsi.sbgc_retry_fails, g0_rkf = gsi.sbgc_rkf_calls,
+             g0_forced = gsi.sbgc_forced_steps;
+
   BOOST_LOG_NAMED_SCOPE("Y") {
   for (int iy = start_year; iy < end_year; ++iy) {
+    const long gy_months = gsi.sbgc_months, gy_giveups = gsi.sbgc_giveups,
+               gy_fails = gsi.sbgc_retry_fails, gy_rkf = gsi.sbgc_rkf_calls,
+               gy_forced = gsi.sbgc_forced_steps;
     BOOST_LOG_SEV(glg, debug) << "(Beginning of year loop) " << cohort.ground.layer_report_string("depth thermal CN");
     BOOST_LOG_SEV(glg, warn) << "y: "<<this->y<<" x: "<<this->x<<" Year: "<<iy;
 
@@ -98,7 +122,17 @@ void Runner::run_years(int start_year, int end_year, const std::string& stage) {
       for (int im = 0; im < 12; ++im) {
         BOOST_LOG_SEV(glg, info) << "(Beginning of month loop, iy:"<<iy<<", im:"<<im<<") " << cohort.ground.layer_report_string("depth thermal CN desc");
 
+        const long gm_months = gsi.sbgc_months;
         this->cohort.updateMonthly(iy, im, DINM[im], stage);
+        if (md.soil_giveup_diag && gsi.sbgc_months > gm_months && gsi.sbgc_last > 0) {
+          std::ostringstream row;
+          row << stage << "," << this->y << "," << this->x << "," << iy << "," << im << ","
+              << (gsi.sbgc_last >= 2 ? 1 : 0) << "," << gsi.sbgc_last_bh_time << ","
+              << gsi.sbgc_last_bh_time_retry;
+          std::cerr << "SOIL_GIVEUP_DIAG " << row.str() << std::endl;
+          giveup_diag_csv(md.output_dir + "soil_giveup_diag.csv",
+                          "stage,y,x,year,month,retry_failed,bh_time,bh_time_retry", row.str());
+        }
 
         this->monthly_output(iy, im, stage, end_year);
 
@@ -117,11 +151,31 @@ void Runner::run_years(int start_year, int end_year, const std::string& stage) {
 
     this->yearly_output(iy, stage, start_year, end_year);
 
+    if (md.soil_giveup_diag) {
+      std::ostringstream row;
+      row << stage << "," << this->y << "," << this->x << "," << iy << ","
+          << gsi.sbgc_months - gy_months << "," << gsi.sbgc_giveups - gy_giveups << ","
+          << gsi.sbgc_retry_fails - gy_fails << "," << gsi.sbgc_rkf_calls - gy_rkf << ","
+          << gsi.sbgc_forced_steps - gy_forced;
+      giveup_diag_csv(md.output_dir + "soil_giveup_diag_yearly.csv",
+                      "stage,y,x,year,months,giveups,retry_failed,rkf_calls,forced_steps", row.str());
+    }
+
     BOOST_LOG_SEV(glg, info) << "(END OF YEAR) " << cohort.ground.layer_report_string("depth thermal CN ptr");
 
     BOOST_LOG_SEV(glg, info) << "Completed year " << iy << " for cohort/cell (row,col): (" << this->y << "," << this->x << ")";
 
   }} // end year loop (and named scope
+
+  if (md.soil_giveup_diag) {
+    std::cerr << "SOIL_GIVEUP_SUMMARY stage=" << stage << " cell=(" << this->y << "," << this->x << ")"
+              << " years=" << end_year - start_year
+              << " months=" << gsi.sbgc_months - g0_months
+              << " giveups=" << gsi.sbgc_giveups - g0_giveups
+              << " retry_failed=" << gsi.sbgc_retry_fails - g0_fails
+              << " rkf_calls=" << gsi.sbgc_rkf_calls - g0_rkf
+              << " forced_steps=" << gsi.sbgc_forced_steps - g0_forced << std::endl;
+  }
 }
 
 void Runner::monthly_output(const int year, const int month, const std::string& runstage, int endyr) {

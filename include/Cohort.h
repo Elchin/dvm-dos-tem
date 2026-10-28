@@ -38,7 +38,10 @@ public :
   Cohort();
   Cohort(int y, int x, ModelData* modeldatapointer);
   ~Cohort();
-  
+
+  // read-only access to the soil integrator's give-up counters (soil_giveup_diag)
+  const Integrator & soil_integrator() const { return solintegrator; }
+
   int y;
   int x;
 
