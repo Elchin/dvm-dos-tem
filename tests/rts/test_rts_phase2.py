@@ -96,3 +96,27 @@ def test_end_to_end_one_cell(tmp_path):
     assert q.returncode == 0, q.stdout[-3000:]
     S = json.load(open(out / 'checks.json'))['summary']
     assert S['finished'] == 6 and S['ab_tests'] == 5 and not S['ab_fail']
+
+
+def _fake_run(d, scale):
+    d.mkdir(parents=True)
+    n = 85 * 12
+    for v in ('VEGC', 'SOC', 'SHLWC', 'DEEPC', 'DEADC', 'DWDC', 'TKNETC', 'RG', 'RM', 'RHSOM', 'RHDWD', 'GPP'):
+        _nc(d / f'{v}_monthly_sc.nc', v, np.full(n, scale * (2.0 if v == 'SOC' else 1.0)))
+    _nc(d / 'ALD_yearly_sc.nc', 'ALD', np.full(85, 0.5 * scale))
+
+
+def test_compare_runs_effects(tmp_path):
+    from rts_sus2case import compare_runs as cr
+    for root, s in (('a', 1.0), ('b', 2.0)):
+        for run, k in (('base_f08', 1.0), ('y2021_f08', 1.5)):
+            _fake_run(tmp_path / root / 'c55' / run / 'stage2b_x', s * k)
+            (tmp_path / root / 'c55' / run / 'timings.json').write_text('{}')
+    res = cr.compare(str(tmp_path / 'a'), str(tmp_path / 'b'))['c55']
+    assert abs(res['base_f08']['SOC_end']['d'] - 2.0) < 1e-12 and abs(res['base_f08']['MINEC_end']['a']) < 1e-12
+    # ECOC = VEGC+SOC+DEADC+DWDC = 5*scale; NEE = RG+RM+RHSOM+RHDWD-GPP = 3*scale
+    assert abs(res['base_f08']['ECOC_end']['a'] - 5.0) < 1e-12
+    assert abs(res['base_f08']['NEE_2016_2025_yr']['a'] - 36.0) < 1e-9
+    e = res['effect_y2021_f08']['ECOC_end']
+    assert abs(e['a'] - 2.5) < 1e-12 and abs(e['b'] - 5.0) < 1e-12
+    assert '| c55 |' in cr.to_md({'c55': res}, 'e1000', 'e2000')
