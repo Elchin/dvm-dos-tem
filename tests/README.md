@@ -48,7 +48,7 @@ How the tests are written:
 | fixes_v5k | test_fixes_v5k.cpp | v5k switches: B1 svp over ice (+SEB esat), B2 Richards early-return infiltration, B3 combineExtraFronts termination, B4 snow albedo cap; N1-N3 soil N conservation (deltastate), non-vascular N extraction; C1 soil integrator NMIN tolerance |
 | fixes_v5l | test_fixes_v5l.cpp | v5l ET-split switches: key defaults/validation/parsing (+ death tests), S1 per-cover stomatal light, S2 buried non-vascular snow interception, S3 LAI-based rain interception with storage, S4 moss rain as surface water (relabel / to ground), evap_moss accumulation |
 | fixes_v5m | test_fixes_v5m.cpp | v5m L1 `n_safetynet_conserve`: default/parsing (+ death tests); legacy (off) state unchanged; on: soil N change = remaining inputs − (1 − t0)·root extraction (veg + soil N conserved), donor order ORGN (by extraction share) → ORGN → AVLN, rootless layers as in deltastate, zero pools → debt carried and paid, negative pools untouched, `debitProportional` bookkeeping |
-| fixes_v5n | test_fixes_v5n.cpp | v5n draft G1 `n_extract_limiter` (+ `n_extract_tau`), G2 `soil_giveup_retry`, G3 `n_netnmin_rescale_guard`, `soil_giveup_diag`: defaults/parsing (+ death tests); G1 limiter shape, zero-order sink drives AVLN < 0 / limiter keeps it ≥ 0, off and ample-AVLN bit-identical, AVLN/ORGN split with soil N change unchanged, rooted/rootless application; G2 per-month flag; G3 guard 0 = legacy loop bit for bit, guard 1 skips a negative scale and applies a positive one, zero denominator |
+| fixes_v5n | test_fixes_v5n.cpp | v5n G1 `n_extract_limiter` (+ `n_extract_tau`), G2 `soil_giveup_retry`, G3 `n_netnmin_rescale_guard`, `soil_giveup_diag`: defaults/parsing (+ death tests); G1 limiter shape, zero-order sink drives AVLN < 0 / limiter keeps it ≥ 0, off and ample-AVLN bit-identical, AVLN/ORGN split with soil N change unchanged, rooted/rootless application; G2 per-month flag; G3 guard 0 = legacy loop bit for bit, guard 1 skips a negative scale and applies a positive one, zero denominator |
 
 Tests in `test_seb.cpp` need the v5j commits (9dae595b and d41c7f79), which are cherry-picked onto this branch.
 
@@ -133,9 +133,9 @@ Soil N leak in the integrator safety net (be8a62fa). Unit tests: suite `fixes_v5
 
 Diagnostics with the switch on (stderr only; `integrator_safety_net.csv` format unchanged): a line `n_safetynet_conserve: root N extraction to debit=… debited=… carried_debt=…` after each safety-net warning.
 
-## Switchable fixes (v5n draft, branch v5n-giveup, NOT merged; all default 0 = legacy, bit-identical to v5m when off)
+## Switchable fixes (v5n: commits 904a4a7c, 5c597aec, merge 4bb7cd99, tag v5n; all default 0 = legacy, bit-identical to v5m when off)
 
-Soil-integrator give-ups (adapt() reaching dt_min 100 times in a month, then the safety net). Unit tests: suite `fixes_v5n` (11 cases). Report: /workspace/v5n/GIVEUP_REPORT.md (archived on the VM in ~/box_archive/v5n/). Meant to be used with `n_safetynet_conserve` = 1.
+Soil-integrator give-ups (adapt() reaching dt_min 100 times in a month, then the safety net). Unit tests: suite `fixes_v5n` (11 cases). Report: /workspace/v5n/GIVEUP_REPORT.md (archived on the VM in ~/box_archive/v5n/). Meant to be used with `n_safetynet_conserve` = 1. Defaults: `n_extract_limiter` = 0, `soil_giveup_retry` = 0, `n_netnmin_rescale_guard` = 0, `soil_giveup_diag` = 0; `n_extract_tau` = 0.2 is read only when G1 (or a G2 retry month) is on.
 
 | key (model_settings) | values | fixes | tests | references |
 |---|---|---|---|---|
@@ -146,7 +146,9 @@ Soil-integrator give-ups (adapt() reaching dt_min 100 times in a month, then the
 
 Result (n_safetynet_conserve = 1, 1950-2099, 5 cases): G1 (τ 0.2) + G3 = 0 give-ups in every case (legacy 45 in total), RKF45 calls on S2 HPC 9398 (legacy) → 3250, run time unchanged; see the report.
 
-## References for every daily-mode switch (v5-daily … v5l)
+All-8 test (2026-10-27, 28 cases: calib8, V-Nall, adopted v5l, v5l+H9; 1950-2099): L1+G1+G3 = 0 give-ups (main and spin) vs 4 main + 2 spin for legacy and L1 alone; nonfeed cases bit-identical in all configs; differences from L1 alone at noise level (soil-T bias ≤ 0.003 °C, GPP ≤ 0.04 %). Switches off: bit-identical to v5m on calib8 and V-Nall (run_regression.sh). Report: /workspace/v5n/ALL8_REPORT.md (VM ~/box_archive/v5n/).
+
+## References for every daily-mode switch (v5-daily … v5n)
 
 Standing rule since 2026-10-22: every code change carries its scientific references in the code comment at the switch site, in the commit message and here. The full bibliography is in `docs/daily-mode-REFERENCES.md`, including the non-switch fixes, the SEB formulation details and the switches without a published source. All DOIs and URLs were checked on 2026-10-22.
 

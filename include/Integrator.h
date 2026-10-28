@@ -145,7 +145,7 @@ public :
   // Carbon: no leak (the veg does not remove soil C; all litter C delivered).
   static int n_safetynet_conserve;
   // Refs (L1): no published source for the fix (code: Integrator::applySoilSafetyNet, be8a62fa); principle restored: closed N mass balance of the TEM / DOS-TEM N cycle, plant N uptake debited from the soil N pools (McGuire et al. 1992, doi:10.1029/92GB00219; Raich et al. 1991, doi:10.2307/1941899; Euskirchen et al. 2009, doi:10.1890/08-0806.1; Yuan et al. 2012, doi:10.1890/11-1957.1); donor = ORGN first: boreal/arctic plants take up organic N (Nasholm et al. 1998, doi:10.1038/31921; Schimel & Bennett 2004, doi:10.1890/03-8002); clipping/resetting a stiff ODE state is not mass-conserving unless the removed mass is booked (Shampine et al. 2005, doi:10.1016/j.amc.2004.12.011); unclosed N biases long C-N spin-ups (Thornton & Rosenbloom 2005, doi:10.1016/j.ecolmodel.2005.04.008).
-  // Fix G2 (v5n draft), OFF by default: model_settings.soil_giveup_retry.
+  // Fix G2 (v5n), OFF by default: model_settings.soil_giveup_retry.
   // 1 = event-only retry: the soil month is first integrated exactly as in
   // legacy; only if adapt() gives up (100 steps forced at the minimum step
   // size), the month is integrated again from its start with the G1 extraction
@@ -154,7 +154,7 @@ public :
   // give-up are bit-identical to legacy (same code path, same arithmetic).
   static int soil_giveup_retry;
   // Refs (G1/G2): plant N uptake is a saturating (Michaelis-Menten) function of soil available N in TEM (Raich et al. 1991, doi:10.2307/1941899; McGuire et al. 1992, doi:10.1029/92GB00219); demand-based uptake is down-regulated when soil mineral N cannot supply it (Thornton et al. 2007, doi:10.1029/2006GB002868); arctic/boreal plants also take up organic N (Nasholm et al. 1998, doi:10.1038/31921; Schimel & Bennett 2004, doi:10.1890/03-8002); a zero-order sink drives a non-negative ODE state below zero in finite time, which no step-size reduction can avoid, positivity needs a state-dependent sink (Shampine et al. 2005, doi:10.1016/j.amc.2004.12.011; Burchard et al. 2003, doi:10.1016/S0168-9274(03)00101-6).
-  // Diagnostics (v5n draft), OFF by default: model_settings.soil_giveup_diag.
+  // Diagnostics (v5n), OFF by default: model_settings.soil_giveup_diag.
   // 1 = record why adapt() gave up (first step forced at dt_min: the negative
   // pool or the error-test variable, with the soil N state of that layer) and
   // count rkf45 calls; reported on stderr only (outputs unchanged).

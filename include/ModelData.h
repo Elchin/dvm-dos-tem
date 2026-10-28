@@ -179,7 +179,7 @@ public:
   // Fix L1 (v5m), OFF by default (0 = legacy): the soil integrator safety net
   // debits the root N extraction it skips, see Integrator.h (n_safetynet_conserve).
   int n_safetynet_conserve;
-  // v5n draft, all OFF by default (0 = legacy): G1 n_extract_limiter (+ n_extract_tau),
+  // v5n, all OFF by default (0 = legacy): G1 n_extract_limiter (+ n_extract_tau),
   // see Soil_Bgc.h; G2 soil_giveup_retry and soil_giveup_diag, see Integrator.h.
   int n_extract_limiter, soil_giveup_retry, soil_giveup_diag;
   int n_netnmin_rescale_guard;  // G3, see Soil_Bgc.h

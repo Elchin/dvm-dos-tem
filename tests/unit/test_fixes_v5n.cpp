@@ -1,4 +1,4 @@
-// v5n draft: soil-integrator give-up fixes (all default OFF = legacy).
+// v5n: soil-integrator give-up fixes (all default OFF = legacy).
 //   G1 model_settings.n_extract_limiter (+ n_extract_tau) -> Soil_Bgc::n_extract_limiter / n_extract_tau
 //   G2 model_settings.soil_giveup_retry -> Integrator::soil_giveup_retry
 //   diagnostics model_settings.soil_giveup_diag -> Integrator::soil_giveup_diag (stderr/csv only)
@@ -161,7 +161,7 @@ TEST_CASE("G2 per-month flag: nx_limiter_active turns the limiter on with the sw
 }
 
 
-// ---- Fix G3 (v5n draft): model_settings.n_netnmin_rescale_guard -> Soil_Bgc::n_netnmin_rescale_guard
+// ---- Fix G3 (v5n): model_settings.n_netnmin_rescale_guard -> Soil_Bgc::n_netnmin_rescale_guard
 // Refs (G3): no published source for the fix (code: Soil_Bgc::deltan rescale); Schimel & Bennett 2004,
 //   doi:10.1890/03-8002; Thornton et al. 2007, doi:10.1029/2006GB002868.
 TEST_CASE("G3 default off; parses; invalid exits") {

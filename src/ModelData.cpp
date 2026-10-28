@@ -169,7 +169,7 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     std::cerr << "FATAL: model_settings n_safetynet_conserve must be 0 or 1" << std::endl;
     exit(EXIT_FAILURE);
   }
-  // v5n draft (G1, G2, diagnostics), default 0 = off (legacy). Refs: see Soil_Bgc.h / Integrator.h.
+  // v5n (G1, G2, diagnostics), default 0 = off (legacy). Refs: see Soil_Bgc.h / Integrator.h.
   n_extract_limiter = controldata["model_settings"].get("n_extract_limiter", 0).asInt();
   n_extract_tau     = controldata["model_settings"].get("n_extract_tau", 0.2).asDouble();
   soil_giveup_retry = controldata["model_settings"].get("soil_giveup_retry", 0).asInt();

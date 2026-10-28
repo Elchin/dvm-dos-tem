@@ -30,11 +30,11 @@
 extern src::severity_logger< severity_level > glg;
 
 /** New constructor. Build it complete! Build it right! */
-int Soil_Bgc::n_extract_limiter = 0;     // Fix G1 (v5n draft), default off (legacy)
+int Soil_Bgc::n_extract_limiter = 0;     // Fix G1 (v5n), default off (legacy)
 double Soil_Bgc::n_extract_tau = 0.2;    // G1 limiter time scale (month fraction)
-int Soil_Bgc::n_netnmin_rescale_guard = 0;  // Fix G3 (v5n draft), default off (legacy)
+int Soil_Bgc::n_netnmin_rescale_guard = 0;  // Fix G3 (v5n), default off (legacy)
 
-/** Fix G3 (v5n draft): legacy N-budget rescale of net N mineralisation, with an
+/** Fix G3 (v5n): legacy N-budget rescale of net N mineralisation, with an
 *   optional guard against a negative (sign-flipping) scale factor.
 *   Refs (G3): no published source for the fix (code: Soil_Bgc::deltan, the N-budget rescale of net N mineralisation inherited from TEM / DOS-TEM); principle: a scale factor applied to a signed flux must be >= 0, otherwise mineralising layers become immobilising and vice versa; net N mineralisation / immobilisation as the balance of gross mineralisation and microbial uptake (Schimel & Bennett 2004, doi:10.1890/03-8002); immobilisation limited by available mineral N in CLM-CN (Thornton et al. 2007, doi:10.1029/2006GB002868). */
 double Soil_Bgc::rescaleNetNmin(double netnmin[], const int n, const double nminadj,
@@ -54,7 +54,7 @@ double Soil_Bgc::rescaleNetNmin(double netnmin[], const int n, const double nmin
   return 1.0;
 }
 
-/** Fix G1 (v5n draft): AVLN part of the root N extraction r from a pool A.
+/** Fix G1 (v5n): AVLN part of the root N extraction r from a pool A.
 *   Refs (G1/G2): plant N uptake is a saturating (Michaelis-Menten) function of soil available N in TEM (Raich et al. 1991, doi:10.2307/1941899; McGuire et al. 1992, doi:10.1029/92GB00219); demand-based uptake is down-regulated when soil mineral N cannot supply it (Thornton et al. 2007, doi:10.1029/2006GB002868); arctic/boreal plants also take up organic N (Nasholm et al. 1998, doi:10.1038/31921; Schimel & Bennett 2004, doi:10.1890/03-8002); a zero-order sink drives a non-negative ODE state below zero in finite time, which no step-size reduction can avoid, positivity needs a state-dependent sink (Shampine et al. 2005, doi:10.1016/j.amc.2004.12.011; Burchard et al. 2003, doi:10.1016/S0168-9274(03)00101-6). */
 double Soil_Bgc::limitedExtraction(const double r, const double A, const double tau) {
   if (!(r > 0.0)) {
@@ -776,7 +776,7 @@ void Soil_Bgc::deltan() {
     // total equals the vegetation N uptake.
     totnextract = 0.;
 
-    if (nxLimiterOn()) {  // Fix G1 (v5n draft): AVLN part of the extraction (see deltastate)
+    if (nxLimiterOn()) {  // Fix G1 (v5n): AVLN part of the extraction (see deltastate)
       for (int il=0; il<cd->m_soil.numsl; il++) {
         if (bd->m_v2soi.rtlfalfrac[il] > 0. || n_rootless_fix == 2) {
           totnextract += limitedExtraction(rtnextract[il], tmp_sois.avln[il], n_extract_tau);
@@ -819,7 +819,7 @@ void Soil_Bgc::deltan() {
         // Skip it when total net mineralization is zero (nothing to scale;
         // dividing would give Inf, and 0*Inf = NaN) or the factor is not
         // finite, otherwise NaN propagates into the N pools.
-        // Fix G3 (v5n draft, n_netnmin_rescale_guard): see Soil_Bgc.h; guard 0 = legacy.
+        // Fix G3 (v5n, n_netnmin_rescale_guard): see Soil_Bgc.h; guard 0 = legacy.
         dg_nscale = rescaleNetNmin(del_soi2soi.netnmin, cd->m_soil.numsl, nminadj,
                                    totnetnmin, n_netnmin_rescale_guard);
       }
@@ -1117,7 +1117,7 @@ void Soil_Bgc::deltastate() {
         }
       }
       if (nxLimiterOn() && (bd->m_v2soi.rtlfalfrac[il] > 0. || n_rootless_fix == 2)) {
-        // Fix G1 (v5n draft): AVLN supplies r*min(1, AVLN/(tau*r)), ORGN the rest.
+        // Fix G1 (v5n): AVLN supplies r*min(1, AVLN/(tau*r)), ORGN the rest.
         // Refs (G1): see Soil_Bgc.h (n_extract_limiter).
         const double rx = limitedExtraction(rtnextract[il], tmp_sois.avln[il], n_extract_tau);
         del_sois.avln[il] = ninput + del_soi2soi.netnmin[il] - ndrain - rx;

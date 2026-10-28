@@ -52,7 +52,7 @@ float Integrator::b65 =  -0.275;
 
 int Integrator::nmin_tol_fix = 0; // Fix C1 (v5k), default off (legacy)
 int Integrator::n_safetynet_conserve = 0; // Fix L1 (v5m), default off (legacy)
-int Integrator::soil_giveup_retry = 0;    // Fix G2 (v5n draft), default off (legacy)
+int Integrator::soil_giveup_retry = 0;    // Fix G2 (v5n), default off (legacy)
 int Integrator::soil_giveup_diag = 0;     // v5n diagnostics, default off
 
 int REJECT = 0;
@@ -254,7 +254,7 @@ void Integrator::updateMonthlySbgc(const int & numsoillayer) {
   safetynet_fired = false;
   retry_fired = false;
   if (soil_giveup_retry == 1) {
-    // Fix G2 (v5n draft): legacy attempt; only if it gives up, redo the month
+    // Fix G2 (v5n): legacy attempt; only if it gives up, redo the month
     // from its start with the G1 extraction limiter (this month only).
     // Refs (G2): see Integrator.h (soil_giveup_retry).
     float y0[NUMEQ];

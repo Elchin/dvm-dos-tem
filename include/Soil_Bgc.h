@@ -95,7 +95,7 @@ public:
   // dcaddfrac share to receivers, export accumulated (+=).
   int n_som_move_fix = 0;
   // Refs (N2): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 20b2723e); restores N mass conservation (N moves with C).
-  // Fix G1 (v5n draft), OFF by default: model_settings.n_extract_limiter.
+  // Fix G1 (v5n), OFF by default: model_settings.n_extract_limiter.
   // The root N extraction rtnextract[il] is fixed for the whole month (it equals
   // the vegetation N uptake, computed from the month-start AVLN and integrated
   // before the soil), so inside the soil integrator it is a zero-order sink on
@@ -110,13 +110,13 @@ public:
   // mass are unchanged. Applied only where deltastate() applies extraction.
   static int n_extract_limiter;
   static double n_extract_tau;   // month fraction, default 0.2 (v5n tests: 0.02, 0.05, 0.2) (0 < tau <= 1)
-  // G2 (v5n draft, Integrator::soil_giveup_retry): limiter on for one retry month
+  // G2 (v5n, Integrator::soil_giveup_retry): limiter on for one retry month
   bool nx_limiter_active = false;
   bool nxLimiterOn() const { return n_extract_limiter == 1 || nx_limiter_active; }
   // G1 helper (pure, unit-tested): AVLN part of an extraction r (g/m2/month)
   // from a pool A (g/m2): r for r <= 0 or A >= tau*r, else r*max(A,0)/(tau*r).
   static double limitedExtraction(const double r, const double A, const double tau);
-  // Fix G3 (v5n draft), OFF by default: model_settings.n_netnmin_rescale_guard.
+  // Fix G3 (v5n), OFF by default: model_settings.n_netnmin_rescale_guard.
   // deltan() closes the inorganic N budget, when supply (month-start AVLN of the
   // drainage zone + input + net mineralisation) cannot cover the extraction, by
   // multiplying every layer's net mineralisation by nscale = nminadj/totnetnmin.

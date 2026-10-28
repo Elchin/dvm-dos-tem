@@ -107,7 +107,7 @@ void Runner::run_years(int start_year, int end_year, const std::string& stage) {
         }
         if ((Integrator::soil_giveup_diag == 1 && this->cohort.get_solintegrator().safetynet_fired)
             || this->cohort.get_solintegrator().retry_fired) {
-          this->report_giveup_diag(iy, im, stage);  // v5n draft (G2 / diagnostics)
+          this->report_giveup_diag(iy, im, stage);  // v5n (G2 / diagnostics)
         }
 
         this->monthly_output(iy, im, stage, end_year);
@@ -139,7 +139,7 @@ void Runner::run_years(int start_year, int end_year, const std::string& stage) {
             << " cell(y,x)=(" << this->y << "," << this->x << ")"
             << " soil_safetynet_events=" << sn_n
             << " veg_integrator_giveups=" << vbh_n << std::endl;
-  if (Integrator::soil_giveup_retry == 1 || Integrator::soil_giveup_diag == 1) {  // v5n draft
+  if (Integrator::soil_giveup_retry == 1 || Integrator::soil_giveup_diag == 1) {  // v5n
     const Integrator& si = this->cohort.get_solintegrator();
     std::cerr << "Soil integrator v5n summary (cumulative over the run): stage=" << stage
               << " retries=" << si.retry_count << " retry_failures=" << si.retry_fail_count
@@ -147,7 +147,7 @@ void Runner::run_years(int start_year, int end_year, const std::string& stage) {
   }
 }
 
-/** v5n draft: why the soil integrator gave up / was retried (G2) this month.
+/** v5n: why the soil integrator gave up / was retried (G2) this month.
 *   stderr and <output_dir>/integrator_giveup_diag.csv; the diagnostic fields
 *   are filled only with soil_giveup_diag = 1. */
 void Runner::report_giveup_diag(const int year, const int month, const std::string& stage) {
