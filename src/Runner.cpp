@@ -3688,6 +3688,24 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
   }//end NINPUT
   map_itr = netcdf_outputs.end();
 
+  // v5q BNF: biological N fixation, total (0 when bnf_scheme = 0). Refs: see Bnf.h.
+  map_itr = netcdf_outputs.find("BNF");
+  if(map_itr != netcdf_outputs.end()){
+    BOOST_LOG_SEV(glg, debug)<<"NetCDF output: BNF";
+    curr_spec = map_itr->second;
+    #pragma omp critical(outputBNF)
+    {
+      if(!curr_spec.layer){
+        if(curr_spec.monthly){
+          output_nc_3dim(&curr_spec, file_stage_suffix, &cohort.bdall->m_a2soi.bnf, 1, month_timestep, 1);
+        } else if(curr_spec.yearly){
+          output_nc_3dim(&curr_spec, file_stage_suffix, &cohort.bdall->y_a2soi.bnf, 1, year, 1);
+        }
+      }
+    }//end critical(outputBNF)
+  }//end BNF
+  map_itr = netcdf_outputs.end();
+
 
   //NLOST
   map_itr = netcdf_outputs.find("NLOST");

@@ -1,6 +1,7 @@
 #ifndef SOIL_BGC_H_
 #define SOIL_BGC_H_
 
+#include "Bnf.h"
 #include "errorcode.h"
 
 #include "CohortData.h"
@@ -140,6 +141,19 @@ public:
   // soil layer, rhmoist*rhq10 as in deltac (rhmoistfrozen when ts < 0).
   // Refs: see DailyCSplit.h; no published source for the exact method.
   double ds_rh_weight(double ts, double sws);
+  // v5q: biological N fixation (model_settings.bnf_scheme, 0 = off): see Bnf.h.
+  // bnfBeginMonth() (Cohort, before the vegetation) computes this month's BNF
+  // from the previous model year; prepareIntegration() puts it into
+  // m_a2soi.avlninput (AVLN of the top layer, needs n_rootless_fix = 2);
+  // bnfRecordMonth() (Cohort, after the soil) stores this month's NPP / ET.
+  // Nothing of this runs with bnf_scheme = 0.
+  // Refs: Meyerholt et al. 2016, doi:10.5194/bg-13-1491-2016; Cleveland et al. 1999,
+  //   doi:10.1029/1999GB900014; Thornton et al. 2007, doi:10.1029/2006GB002868 (BNF to soil mineral N).
+  bnf::Params bnfp;
+  bnf::YearMemory bnfmem;
+  double bnf_soil_month = 0.0;   // g/m2/month into AVLN
+  void bnfBeginMonth(const int m, const bool nfeedon);
+  void bnfRecordMonth(const int m, const double npp, const double et);
 
 private:
 

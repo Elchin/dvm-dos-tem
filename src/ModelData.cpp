@@ -214,6 +214,14 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     }
     daily_c_split = dcs.asInt();
   }
+  // v5q: biological N fixation (bnf_scheme 0 = off, default). Refs: see Bnf.h.
+  {
+    std::string err = bnf::parse(controldata["model_settings"], n_rootless_fix, bnf);
+    if (!err.empty()) {
+      std::cerr << err << std::endl;
+      exit(EXIT_FAILURE);
+    }
+  }
   // ET-split fixes S1-S4 (v5l), default 0 = off (legacy); see ModelData.h / Vegetation_Env.h
   et_fpc_once_fix    = controldata["model_settings"].get("et_fpc_once_fix", 0).asInt();
   nv_snow_bury_fix   = controldata["model_settings"].get("nv_snow_bury_fix", 0).asInt();

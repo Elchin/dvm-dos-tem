@@ -322,8 +322,11 @@ void Integrator::applySoilSafetyNet() {
     dn += on;
     // L1 (v5m, switch on): deposit where deltastate() does (n_rootless_fix 2
     // also puts it into a rootless top layer); legacy: rooted top layer only.
+    // v5q: with bnf_scheme > 0 (needs n_rootless_fix 2) the BNF input is always
+    // deposited as deltastate() does. Refs: see Bnf.h.
     if (bd->m_v2soi.rtlfalfrac[0] > 0. ||
-        (n_safetynet_conserve == 1 && ssl->n_rootless_fix == 2)) {
+        (n_safetynet_conserve == 1 && ssl->n_rootless_fix == 2) ||
+        (ssl->bnfp.scheme > 0 && ssl->n_rootless_fix == 2)) {
       double an = frac * bd->m_a2soi.avlninput;
       y[I_L_AVLN] += an;
       dn += an;

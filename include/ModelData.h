@@ -1,5 +1,6 @@
 #ifndef MODELDATA_H_
 #define MODELDATA_H_
+#include "Bnf.h"
 #include <string>
 #include <iostream>
 #include <fstream>
@@ -200,6 +201,11 @@ public:
   //   Denton 1971, doi:10.1080/01621459.1971.10482227; Chow & Lin 1971, doi:10.2307/1928739.
   //   No published source for the exact method.
   int daily_c_split;
+  // v5q: biological N fixation, model_settings.bnf_scheme (0 = off, default;
+  // 1 PRO, 2 AET, 3 CONST) and the optional bnf_* parameters; see Bnf.h.
+  // Refs: Meyerholt et al. 2016, doi:10.5194/bg-13-1491-2016; Cleveland et al. 1999,
+  //   doi:10.1029/1999GB900014; Thornton et al. 2007, doi:10.1029/2006GB002868.
+  bnf::Params bnf;
   // Refs (N2): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 20b2723e); restores N mass conservation (N moves with C).
   // Refs (N3): no published source for the scheme; restores N mass conservation; bryophyte N uptake from the moss/peat layer: Turetsky 2003, doi:10.1639/05.
   // ET-split fixes (v5l), all OFF by default (0 = legacy, bit-identical); see

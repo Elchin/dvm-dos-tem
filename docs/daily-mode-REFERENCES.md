@@ -1,4 +1,4 @@
-# daily-climate-mode: references for every switch and fix (v5-daily … v5p)
+# daily-climate-mode: references for every switch and fix (v5-daily … v5q)
 
 Standing rule (Elchin, 2026-10-22): every code change carries its scientific references in three places: code comments, commit message and README. This file is the full bibliography. Code comments cite entries by `[Key]`.
 
@@ -88,6 +88,14 @@ Switch defaults: every switch below is 0/off by default, which is legacy behavio
 |---|---|---|
 | `daily_c_split` | Output only, no feedback: each monthly C flux (per PFT, per soil layer) is split over the days of its calendar month with the model's own environmental scalar of that day as weight, X_d = M·w_d/Σw (GPP: the day-varying part of getGPP; RM: Raq10(Ta); RG: max(GPP_d−RM_d, 0); RH: rhmoist·rhq10 of the layer; NEE_d = RECO_d − GPP_d), giving `*_DS` daily outputs whose calendar-month sums equal the monthly values (no smoothing across months). All-zero weights → uniform, flagged in `DS_FALLBACK`. A statistical split, not daily physics. | **No published source for this exact method.** Spreading coarse model fluxes over finer time steps with driver-based weights: [OlsenRanderson2004] (3-hourly fluxes from monthly CASA fluxes), [Fisher2016] (3-hourly downscaling of monthly MsTMIP NEE). Exact preservation of the coarse (monthly) total, temporal disaggregation — cited for the principle only, their regression/quadratic-minimisation methods are not used: [Denton1971], [ChowLin1971]. |
 
+### Biological N fixation (v5q, branch v5q-bnf)
+
+| switch | what it does | references |
+|---|---|---|
+| `bnf_scheme` (0 off / 1 PRO / 2 AET / 3 CONST) + `bnf_pro_c`, `bnf_pro_d`, `bnf_aet_a`, `bnf_aet_b`, `bnf_const` | Annual BNF from the previous model year into AVLN of the top soil layer (`NINPUT`), monthly by the previous-year NPP shape; PRO B = 1.8·(1 − exp(−0.003·NPP)), AET B = max(0, 0.00234·ET − 0.0172) with ET = transpiration + canopy evaporation; needs `n_rootless_fix` = 2; output `BNF`. | PRO Eq. A2, AET Eq. A1, parameters Table A1 of [Meyerholt2016]; regressions from [Cleveland1999]; BNF into soil mineral N as in CLM-CN [Thornton2007]; caveat: no significant BNF–ET/NPP relation in field data, free-living ≥ 1/3 of the total [DaviesBarnard2020]. |
+| `bnf_asym` | Constant free-living term (no climate modulation). | [Meyerholt2016] (asymbiotic BNF to soil); moss-associated cyanobacterial fixation: [DeLuca2002], [Stewart2011], [Rousk2013]. |
+| `bnf_avln_cap` | Linear taper max(0, 1 − AVLN/cap). | **No published source for the linear form**; FOR scheme converges to 0 above 2 gN/m2 inorganic N [Meyerholt2016]. |
+
 ### Parameter test (not a switch)
 
 | change | status | references |
@@ -139,12 +147,15 @@ Format: commit — code location — principle — references.
 - [Chang2021data] Chang, Q., Zwieback, S., Berg, A., DeVries, B. (2021). Shrub aboveground biomass and Leaf Area Index maps, Trail Valley Creek Watershed, Northwest Territories. Borealis (dataset). https://doi.org/10.5683/SP2/O7MCCR
 - [ChowLin1971] Chow, G.C., Lin, A. (1971). Best linear unbiased interpolation, distribution, and extrapolation of time series by related series. Rev. Econ. Stat. 53, 372–375. https://doi.org/10.2307/1928739
 - [ClappHornberger1978] Clapp, R.B., Hornberger, G.M. (1978). Empirical equations for some soil hydraulic properties. Water Resour. Res. 14, 601–604. https://doi.org/10.1029/WR014i004p00601
+- [Cleveland1999] Cleveland, C.C., Townsend, A.R., Schimel, D.S., Fisher, H., Howarth, R.W., Hedin, L.O., Perakis, S.S., Latty, E.F., Von Fischer, J.C., Elseroad, A., Wasson, M.F. (1999). Global patterns of terrestrial biological nitrogen (N2) fixation in natural ecosystems. Global Biogeochem. Cycles 13, 623–645. https://doi.org/10.1029/1999GB900014
 - [CLM5] Lawrence, D.M. et al. (2019). The Community Land Model Version 5: Description of new features, benchmarking, and impact of forcing uncertainty. J. Adv. Model. Earth Syst. 11, 4245–4287. https://doi.org/10.1029/2018MS001583
 - [CLM5-Hydro] CLM5.0 Technical Note, ch. 2.7 Hydrology. https://escomp.github.io/CTSM/release-clm5.0/tech_note/Hydrology/CLM50_Tech_Note_Hydrology.html
 - [CLM5-Fluxes] CLM5.0 Technical Note, ch. 2.5 Momentum, Sensible Heat, and Latent Heat Fluxes. https://escomp.github.io/CTSM/release-clm5.0/tech_note/Fluxes/CLM50_Tech_Note_Fluxes.html
 - [CLM5-SoilT] CLM5.0 Technical Note, ch. 2.6 Soil and Snow Temperatures. https://escomp.github.io/CTSM/release-clm5.0/tech_note/Soil_Snow_Temperatures/CLM50_Tech_Note_Soil_Snow_Temperatures.html
 - [CoteKonrad2005] Côté, J., Konrad, J.-M. (2005). A generalized thermal conductivity model for soils and construction materials. Can. Geotech. J. 42, 443–458. https://doi.org/10.1139/t04-106
 - [CrawfordDuchon1999] Crawford, T.M., Duchon, C.E. (1999). An improved parameterization for estimating effective atmospheric emissivity for use in calculating daytime downwelling longwave radiation. J. Appl. Meteorol. 38, 474–480. https://doi.org/10.1175/1520-0450(1999)038<0474:AIPFEE>2.0.CO;2
+- [DaviesBarnard2020] Davies-Barnard, T., Friedlingstein, P. (2020). The global distribution of biological nitrogen fixation in terrestrial natural ecosystems. Global Biogeochem. Cycles 34, e2019GB006387. https://doi.org/10.1029/2019GB006387
+- [DeLuca2002] DeLuca, T.H., Zackrisson, O., Nilsson, M.-C., Sellstedt, A. (2002). Quantifying nitrogen-fixation in feather moss carpets of boreal forests. Nature 419, 917–920. https://doi.org/10.1038/nature01051
 - [Denton1971] Denton, F.T. (1971). Adjustment of monthly or quarterly series to annual totals: an approach based on quadratic minimization. J. Am. Stat. Assoc. 66, 99–102. https://doi.org/10.1080/01621459.1971.10482227
 - [Dickinson1993] Dickinson, R.E., Henderson-Sellers, A., Kennedy, P.J. (1993). Biosphere-Atmosphere Transfer Scheme (BATS) Version 1e as coupled to the NCAR Community Climate Model. NCAR Tech. Note NCAR/TN-387+STR. https://doi.org/10.5065/D67W6959
 - [Dyer1974] Dyer, A.J. (1974). A review of flux-profile relationships. Boundary-Layer Meteorol. 7, 363–372. https://doi.org/10.1007/BF00240838
@@ -168,6 +179,7 @@ Format: commit — code location — principle — references.
 - [Letts2000] Letts, M.G., Roulet, N.T., Comer, N.T., Skarupa, M.R., Verseghy, D.L. (2000). Parametrization of peatland hydraulic properties for the Canadian Land Surface Scheme. Atmos.-Ocean 38, 141–160. https://doi.org/10.1080/07055900.2000.9649643
 - [Louis1979] Louis, J.-F. (1979). A parametric model of vertical eddy fluxes in the atmosphere. Boundary-Layer Meteorol. 17, 187–202. https://doi.org/10.1007/BF00117978
 - [McGuire1992] McGuire, A.D., Melillo, J.M., Joyce, L.A., Kicklighter, D.W., Grace, A.L., Moore, B. III, Vorosmarty, C.J. (1992). Interactions between carbon and nitrogen dynamics in estimating net primary productivity for potential vegetation in North America. Global Biogeochem. Cycles 6, 101–124. https://doi.org/10.1029/92GB00219
+- [Meyerholt2016] Meyerholt, J., Zaehle, S., Smith, M.J. (2016). Variability of projected terrestrial biosphere responses to elevated levels of atmospheric CO2 due to uncertainty in biological nitrogen fixation. Biogeosciences 13, 1491–1518. https://doi.org/10.5194/bg-13-1491-2016
 - [MonsiSaeki1953] Monsi, M., Saeki, T. (1953). Über den Lichtfaktor in den Pflanzengesellschaften und seine Bedeutung für die Stoffproduktion. Jpn. J. Bot. 14, 22–52. English translation: On the factor light in plant communities and its importance for matter production. Ann. Bot. 95, 549–567 (2005). https://doi.org/10.1093/aob/mci052
 - [Monteith1965] Monteith, J.L. (1965). Evaporation and environment. Symp. Soc. Exp. Biol. 19, 205–234. https://pubmed.ncbi.nlm.nih.gov/5321565/
 - [MurphyKoop2005] Murphy, D.M., Koop, T. (2005). Review of the vapour pressures of ice and supercooled water for atmospheric applications. Q. J. R. Meteorol. Soc. 131, 1539–1565. https://doi.org/10.1256/qj.04.94
@@ -178,9 +190,11 @@ Format: commit — code location — principle — references.
 - [QuintonMarsh1999] Quinton, W.L., Marsh, P. (1999). A conceptual framework for runoff generation in a permafrost environment. Hydrol. Process. 13, 2563–2581. https://doi.org/10.1002/(SICI)1099-1085(199911)13:16<2563::AID-HYP942>3.0.CO;2-D
 - [Raich1991] Raich, J.W., Rastetter, E.B., Melillo, J.M., Kicklighter, D.W., Steudler, P.A., Peterson, B.J., Grace, A.L., Moore, B. III, Vorosmarty, C.J. (1991). Potential net primary productivity in South America: application of a global model. Ecol. Appl. 1, 399–429. https://doi.org/10.2307/1941899
 - [Richards1931] Richards, L.A. (1931). Capillary conduction of liquids through porous mediums. Physics 1, 318–333. https://doi.org/10.1063/1.1745010
+- [Rousk2013] Rousk, K., Jones, D.L., DeLuca, T.H. (2013). Moss-cyanobacteria associations as biogenic sources of nitrogen in boreal forest ecosystems. Front. Microbiol. 4, 150. https://doi.org/10.3389/fmicb.2013.00150
 - [Schaphoff2018] Schaphoff, S., von Bloh, W., Rammig, A., et al. (2018). LPJmL4 — a dynamic global vegetation model with managed land — Part 1: Model description. Geosci. Model Dev. 11, 1343–1375. https://doi.org/10.5194/gmd-11-1343-2018
 - [SchimelBennett2004] Schimel, J.P., Bennett, J. (2004). Nitrogen mineralization: challenges of a changing paradigm. Ecology 85, 591–602. https://doi.org/10.1890/03-8002
 - [Shampine2005] Shampine, L.F., Thompson, S., Kierzenka, J.A., Byrne, G.D. (2005). Non-negative solutions of ODEs. Appl. Math. Comput. 170, 556–569. https://doi.org/10.1016/j.amc.2004.12.011
+- [Stewart2011] Stewart, K.J., Coxson, D., Grogan, P. (2011). Nitrogen inputs by associative cyanobacteria across a low Arctic tundra landscape. Arct. Antarct. Alp. Res. 43, 267–278. https://doi.org/10.1657/1938-4246-43.2.267
 - [Sturm1997] Sturm, M., Holmgren, J., König, M., Morris, K. (1997). The thermal conductivity of seasonal snow. J. Glaciol. 43, 26–41. https://doi.org/10.3189/S0022143000002781
 - [Sturm2001] Sturm, M., Holmgren, J., McFadden, J.P., Liston, G.E., Chapin, F.S. III, Racine, C.H. (2001). Snow–shrub interactions in Arctic tundra: a hypothesis with climatic implications. J. Climate 14, 336–344. https://doi.org/10.1175/1520-0442(2001)014<0336:SSIIAT>2.0.CO;2
 - [Swenson2012] Swenson, S.C., Lawrence, D.M., Lee, H. (2012). Improved simulation of the terrestrial hydrological cycle in permafrost regions by the Community Land Model. J. Adv. Model. Earth Syst. 4. https://doi.org/10.1029/2012MS000165

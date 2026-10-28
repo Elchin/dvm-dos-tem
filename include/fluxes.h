@@ -279,7 +279,8 @@ struct atm2soi_bgc {
   double orgcinput;
   double orgninput;
   double avlninput;
-  atm2soi_bgc(): orgcinput(UIN_D), orgninput(UIN_D), avlninput(UIN_D) {}
+  double bnf;      // v5q: biological N fixation, total (g/m2/time), 0 when bnf_scheme = 0
+  atm2soi_bgc(): orgcinput(UIN_D), orgninput(UIN_D), avlninput(UIN_D), bnf(UIN_D) {}
 };
 
 struct soi2soi_bgc {
