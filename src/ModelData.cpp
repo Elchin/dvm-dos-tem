@@ -169,6 +169,25 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     std::cerr << "FATAL: model_settings n_safetynet_conserve must be 0 or 1" << std::endl;
     exit(EXIT_FAILURE);
   }
+  // v5n draft (G1, G2, diagnostics), default 0 = off (legacy). Refs: see Soil_Bgc.h / Integrator.h.
+  n_extract_limiter = controldata["model_settings"].get("n_extract_limiter", 0).asInt();
+  n_extract_tau     = controldata["model_settings"].get("n_extract_tau", 0.2).asDouble();
+  soil_giveup_retry = controldata["model_settings"].get("soil_giveup_retry", 0).asInt();
+  soil_giveup_diag  = controldata["model_settings"].get("soil_giveup_diag", 0).asInt();
+  n_netnmin_rescale_guard = controldata["model_settings"].get("n_netnmin_rescale_guard", 0).asInt(); // Fix G3
+  if (n_netnmin_rescale_guard < 0 || n_netnmin_rescale_guard > 1) {
+    std::cerr << "FATAL: model_settings n_netnmin_rescale_guard must be 0 or 1" << std::endl;
+    exit(EXIT_FAILURE);
+  }
+  if (n_extract_limiter < 0 || n_extract_limiter > 1 || soil_giveup_retry < 0 || soil_giveup_retry > 1
+      || soil_giveup_diag < 0 || soil_giveup_diag > 1) {
+    std::cerr << "FATAL: model_settings n_extract_limiter, soil_giveup_retry and soil_giveup_diag must be 0 or 1" << std::endl;
+    exit(EXIT_FAILURE);
+  }
+  if (!(n_extract_tau > 0.0 && n_extract_tau <= 1.0)) {
+    std::cerr << "FATAL: model_settings n_extract_tau must be in (0, 1] (month fraction)" << std::endl;
+    exit(EXIT_FAILURE);
+  }
   n_rootless_fix     = controldata["model_settings"].get("n_rootless_fix", 0).asInt(); // Fix N1 (v5k)
   n_som_move_fix     = controldata["model_settings"].get("n_som_move_fix", 0).asInt();     // Fix N2 (v5k)
   n_nonvasc_extract  = controldata["model_settings"].get("n_nonvasc_extract", 0).asInt();  // Fix N3 (v5k)
@@ -287,6 +306,7 @@ void ModelData::update(ArgHandler const * arghandler) {
 ModelData::ModelData():force_cmt(-1) {
   et_fpc_once_fix = 0; nv_snow_bury_fix = 0; rain_int_lai_fix = 0; nv_rain_surface = 0; // v5l (off)
   n_safetynet_conserve = 0; // v5m L1 (off)
+  n_extract_limiter = 0; soil_giveup_retry = 0; soil_giveup_diag = 0; n_extract_tau = 0.2; n_netnmin_rescale_guard = 0; // v5n (off)
   nv_snow_bury_depth = 0.0;
   set_envmodule(false);
   set_bgcmodule(false);

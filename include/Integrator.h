@@ -145,6 +145,35 @@ public :
   // Carbon: no leak (the veg does not remove soil C; all litter C delivered).
   static int n_safetynet_conserve;
   // Refs (L1): no published source for the fix (code: Integrator::applySoilSafetyNet, be8a62fa); principle restored: closed N mass balance of the TEM / DOS-TEM N cycle, plant N uptake debited from the soil N pools (McGuire et al. 1992, doi:10.1029/92GB00219; Raich et al. 1991, doi:10.2307/1941899; Euskirchen et al. 2009, doi:10.1890/08-0806.1; Yuan et al. 2012, doi:10.1890/11-1957.1); donor = ORGN first: boreal/arctic plants take up organic N (Nasholm et al. 1998, doi:10.1038/31921; Schimel & Bennett 2004, doi:10.1890/03-8002); clipping/resetting a stiff ODE state is not mass-conserving unless the removed mass is booked (Shampine et al. 2005, doi:10.1016/j.amc.2004.12.011); unclosed N biases long C-N spin-ups (Thornton & Rosenbloom 2005, doi:10.1016/j.ecolmodel.2005.04.008).
+  // Fix G2 (v5n draft), OFF by default: model_settings.soil_giveup_retry.
+  // 1 = event-only retry: the soil month is first integrated exactly as in
+  // legacy; only if adapt() gives up (100 steps forced at the minimum step
+  // size), the month is integrated again from its start with the G1 extraction
+  // limiter (Soil_Bgc::nx_limiter_active) for this month only. If the retry
+  // gives up too, the safety net is applied as before. Months without a
+  // give-up are bit-identical to legacy (same code path, same arithmetic).
+  static int soil_giveup_retry;
+  // Refs (G1/G2): plant N uptake is a saturating (Michaelis-Menten) function of soil available N in TEM (Raich et al. 1991, doi:10.2307/1941899; McGuire et al. 1992, doi:10.1029/92GB00219); demand-based uptake is down-regulated when soil mineral N cannot supply it (Thornton et al. 2007, doi:10.1029/2006GB002868); arctic/boreal plants also take up organic N (Nasholm et al. 1998, doi:10.1038/31921; Schimel & Bennett 2004, doi:10.1890/03-8002); a zero-order sink drives a non-negative ODE state below zero in finite time, which no step-size reduction can avoid, positivity needs a state-dependent sink (Shampine et al. 2005, doi:10.1016/j.amc.2004.12.011; Burchard et al. 2003, doi:10.1016/S0168-9274(03)00101-6).
+  // Diagnostics (v5n draft), OFF by default: model_settings.soil_giveup_diag.
+  // 1 = record why adapt() gave up (first step forced at dt_min: the negative
+  // pool or the error-test variable, with the soil N state of that layer) and
+  // count rkf45 calls; reported on stderr only (outputs unchanged).
+  static int soil_giveup_diag;
+  int retry_count;          // G2: soil months retried with the limiter
+  int retry_fail_count;     // G2: retries that still gave up
+  bool retry_fired;         // G2: set by the last updateMonthlySbgc()
+  int forced_months;        // diag: months with >= 1 step forced at dt_min
+  long long rkf45_calls;    // diag: cumulative rkf45 calls (soil integrator)
+  int last_negpool;         // diag: last pool index rkf45 found negative
+  int diag_test;            // diag: step test before forcing (0 = negative pool, >1 = error var)
+  int diag_pool;            // diag: failing y index (negative pool or error var)
+  float diag_t0, diag_dt;   // diag: month fraction and dt at the first forced step
+  float diag_y[NUMEQ];      // diag: state at the first forced step
+  double diag_rtn[MAX_SOI_LAY], diag_netnmin[MAX_SOI_LAY], diag_nimmob[MAX_SOI_LAY];
+  double diag_avlnlost, diag_avln0[MAX_SOI_LAY];
+  int last_reject_test, last_reject_pool; // diag: last rejected step of this month (test, y index)
+  int diag_prevtest, diag_prevpool;       // diag: copies at the first forced step
+  double diag_nscale, diag_totnetnmin, diag_totnextract, diag_totdzavln; // diag: Soil_Bgc::deltan budget
   double safetynet_ndebit;  // L1: N debited from soil by the last event (g/m2)
   double safetynet_nneed;   // L1: N the last event had to debit (g/m2)
   double n_debt;            // L1: N still owed (donors empty), paid next month
@@ -163,6 +192,8 @@ public :
 private:
 
   void applySoilSafetyNet();
+  void recordGiveupDiag(const float pstate[], const int numeq, const int ptest,
+                        const float ptime, const float pdt);  // v5n diagnostics
   double conserveSafetyNetN(const double frac);  // L1 (v5m)
   void payNDebt();                                 // L1 (v5m)
   float bh_t0;            // time at which adapt() saved oldstate

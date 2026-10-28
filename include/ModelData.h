@@ -179,6 +179,11 @@ public:
   // Fix L1 (v5m), OFF by default (0 = legacy): the soil integrator safety net
   // debits the root N extraction it skips, see Integrator.h (n_safetynet_conserve).
   int n_safetynet_conserve;
+  // v5n draft, all OFF by default (0 = legacy): G1 n_extract_limiter (+ n_extract_tau),
+  // see Soil_Bgc.h; G2 soil_giveup_retry and soil_giveup_diag, see Integrator.h.
+  int n_extract_limiter, soil_giveup_retry, soil_giveup_diag;
+  int n_netnmin_rescale_guard;  // G3, see Soil_Bgc.h
+  double n_extract_tau;
   // Refs (L1): no published source for the fix; N mass conservation of the TEM N cycle (McGuire et al. 1992, doi:10.1029/92GB00219; Yuan et al. 2012, doi:10.1890/11-1957.1); organic N as donor (Nasholm et al. 1998, doi:10.1038/31921); see docs/daily-mode-REFERENCES.md.
   // Refs (C1): no published source for the fix; standard restored: step-size error scaled by a magnitude that cannot pass through zero (Press et al. 2007, Numerical Recipes 3rd ed., sec. 17.2; Hairer, Norsett & Wanner 1993, doi:10.1007/978-3-540-78862-1).
   // Fix N1 (v5k), default 0: see Soil_Bgc.h (n_rootless_fix 0/1/2).
