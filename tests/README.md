@@ -179,6 +179,25 @@ Proof (box, wf4 runtime, calib8 = 8 cases, spin-up 20 + main 75):
 * Σ_days X_d − M over 900 months × 8 cases: |err| ≤ 5.7e-14 g/m2 (rel ≤ 2.5e-15) for GPP, RM, RG, RHSOM, RHDWD, RECO, NEE (vs RECO−GPP), INGPP, INNPP; NPP_DS sums to GPP−RM−RG to 5.7e-14, which differs from the model's NPP output by the model's own float32 identity residual (≤ 1.4e-5 g/m2/month).
 * Cost: compute of the split itself not measurable (switch 1 without DS rows: same run time as off); writing the 10 daily files: main run ~21 s → ~26 s (serial, TVC Warming nonfeed); +2.2 MB per 75-year main run (+0.67 MB spin-up).
 
+## Output metadata fix (branch v5p-transp-units, from v5p; metadata only, no switch, no numeric change)
+
+`config/output_spec.csv`: the units of `TRANSPIRATION` were `mm/day` at every resolution, but the stored values are sums over the output step: `EnvData::veg_endOfDay` adds the daily `d_v2a.tran` (mm/day) into `m_v2a.tran`, and `EnvData::veg_endOfMonth` adds that into `y_v2a.tran`. Runner writes d_/m_/y_ for daily/monthly/yearly files. The label is now `mm/time`, so the NetCDF `units` attribute reads mm/day, mm/month or mm/year (ModelData replaces `time`), as for EVAP_CANOPY/EVAP_SOIL/EVAP_MOSS/SUBL_* (v5l). Evidence, v5p binary, TVC Warming nfeed, 3-year diagnostic runs:
+* monthly July value 0.706 mm vs 0.0228 mm/day;
+* Σ monthly = yearly to 2.2e-16;
+* the monthly components add up to EET (v5o: T 29.1 + canopy evap 7.9 + soil evap 25.0 + moss evap 8.5 + canopy subl 5.7 + snow subl 13.2 = 89.3 mm/yr = EET 89.27).
+
+Checked and left unchanged:
+* `EET`, `PET` (`mm/m2/time`): the time part is correct at all three resolutions (Σ monthly = yearly). The `mm/m2` form is historic upstream wording and was not changed.
+* `EVAP_*`, `SUBL_*`, `*_INTERCEPT` (`mm/time`): correct.
+* `RAINFALL`/`SNOWFALL` (`mm`, step totals): no time unit, not wrong.
+
+Known data issues, not fixed here because they are numeric (see /workspace/bnf/units/check.txt):
+* daily `TRANSPIRATION` output holds one value per year (Runner TODO "single daily value");
+* daily `EET` is the per-PFT sum of `daily_eet`, which counts ground evaporation once per PFT (about 2.2× monthly at TVC);
+* daily `PET` sums differ from monthly in the shoulder months.
+
+Unit tests: suite `output_units` (2 cases: spec labels; day → month → year accumulation). Proof: run_regression bin_v5p vs bin_v5p_units on calib8: all data bit-identical; only the TRANSPIRATION `units` attribute differs (with the new spec). References: **no published source**; rationale: the units attribute must describe the stored value, CF Conventions v1.8 §3.1 "Units" [CF18](https://cfconventions.org/Data/cf-conventions/cf-conventions-1.8/cf-conventions.html).
+
 ## References for every daily-mode switch (v5-daily … v5n)
 
 Standing rule since 2026-10-22: every code change carries its scientific references in the code comment at the switch site, in the commit message and here. The full bibliography is in `docs/daily-mode-REFERENCES.md`, including the non-switch fixes, the SEB formulation details and the switches without a published source. All DOIs and URLs were checked on 2026-10-22.
