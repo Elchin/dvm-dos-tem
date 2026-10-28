@@ -86,8 +86,9 @@ def timeseries(D, out):
         if k in ('dTKNETC', 'dNEE'):
             yp = peak(D['B_T1_f08']['dTKNETC'])[0]
             a.axvline(yp, color='grey', lw=0.6, ls='--')
-            a.text(yp - 1, 0.97, f'{yp}: cum. loss peak;\nlater the unslumped baseline\nloses more (deep thaw, N cells)',
-                   transform=a.get_xaxis_transform(), ha='right', va='top', fontsize=6.5, color='0.3')
+            yt, va = (0.97, 'top') if k == 'dTKNETC' else (0.03, 'bottom')
+            a.text(yp - 1, yt, f'{yp}: cum. loss peak;\nlater the unslumped baseline\nloses more (deep thaw, N cells)',
+                   transform=a.get_xaxis_transform(), ha='right', va=va, fontsize=6.5, color='0.3')
         a.set_ylabel(lab, fontsize=9); a.axhline(0, color='k', lw=0.4)
     ax[0, 0].legend(fontsize=7)
     for a in ax[1]: a.set_xlabel('year')
@@ -111,7 +112,7 @@ def cumulative(D, out):
         yp, vp, ve = peak(D[f'{case}_T1_f08']['dTKNETC'] / 1e12)
         a.plot([yp], [vp], 'v', color=COL[case], ms=6)
         a.annotate(f'peak {vp:.2f} Tg ({yp})\n2100: {ve:.2f} Tg (headline)\nreversal: baseline deep thaw\nin N cells exceeds slumped',
-                   (yp, vp), xytext=(2030, vp * 0.92), fontsize=7, va='top',
+                   (yp, vp), xytext=(0.03, 0.97), textcoords='axes fraction', fontsize=7, va='top',
                    arrowprops=dict(arrowstyle='->', color='0.4', lw=0.6))
         a.set_title(f'Case {case}: cumulative RTS net C loss', fontsize=10); a.set_xlabel('year'); a.legend(fontsize=7, loc='lower right')
     ax[0].set_ylabel('Tg C (+ = loss)')
