@@ -72,7 +72,8 @@ public:
   int get_baseline();
   void set_baseline(int);
 
-  // Fix N1 (v5k), OFF by default: model_settings.n_rootless_fix. In soil layers
+  // Fix N1 (v5k), ON by default since v5o (default 2; 0 = legacy, still selectable):
+  // model_settings.n_rootless_fix. In soil layers
   // without roots (rtlfalfrac == 0) deltastate() sets the inorganic N change and
   // net mineralisation to 0, but only after the organic N change was computed with
   // the net mineralisation removed, so that N leaves ORGN and is never added to
@@ -81,9 +82,10 @@ public:
   //     with the zeroed NETNMIN and AVLN changes);
   // 2 = the mineralised N goes to AVLN of that layer (no root extraction there;
   //     leaching as for other layers).
-  int n_rootless_fix = 0;
+  int n_rootless_fix = 2;   // v5o default (was 0)
   // Refs (N1): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 29d72af8); restores N mass conservation.
-  // Fix N2 (v5k), OFF by default: model_settings.n_som_move_fix. deltastate()
+  // Fix N2 (v5k), ON by default since v5o (default 1; 0 = legacy, still selectable):
+  // model_settings.n_som_move_fix. deltastate()
   // moves organic N with the SOM C that is moved down the profile, but (a) the N
   // added to the top humic layer(s) is overwritten ('=' instead of '+=') when the
   // mobile part of the humic layer's own decomposition products is exported, so
@@ -93,7 +95,7 @@ public:
   // fibric donor gives N in proportion to the CUMULATIVE C moved from all fibric
   // layers above it, not its own. 1 = N moves with C: per-layer donor share,
   // dcaddfrac share to receivers, export accumulated (+=).
-  int n_som_move_fix = 0;
+  int n_som_move_fix = 1;   // v5o default (was 0)
   // Refs (N2): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 20b2723e); restores N mass conservation (N moves with C).
   // Fix G1 (v5n), OFF by default: model_settings.n_extract_limiter.
   // The root N extraction rtnextract[il] is fixed for the whole month (it equals

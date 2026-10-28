@@ -188,9 +188,13 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     std::cerr << "FATAL: model_settings n_extract_tau must be in (0, 1] (month fraction)" << std::endl;
     exit(EXIT_FAILURE);
   }
-  n_rootless_fix     = controldata["model_settings"].get("n_rootless_fix", 0).asInt(); // Fix N1 (v5k)
-  n_som_move_fix     = controldata["model_settings"].get("n_som_move_fix", 0).asInt();     // Fix N2 (v5k)
-  n_nonvasc_extract  = controldata["model_settings"].get("n_nonvasc_extract", 0).asInt();  // Fix N3 (v5k)
+  // v5o: N1-N3 fixes ON by default (2/1/1); legacy = explicit 0 (bit-identical to v5n).
+  // Refs (v5o defaults N1-N3 on): no published source for the fixes (code bugs, see Soil_Bgc.h / Vegetation_Bgc.h);
+  // a closed TEM N cycle (no unbooked N sources/sinks): McGuire et al. 1992, doi:10.1029/92GB00219; Raich et al. 1991,
+  // doi:10.2307/1941899. Legacy values (0/0/0) stay selectable and reproduce v5n bit-for-bit. See docs/daily-mode-REFERENCES.md.
+  n_rootless_fix     = controldata["model_settings"].get("n_rootless_fix", 2).asInt(); // Fix N1 (v5k), default 2 since v5o
+  n_som_move_fix     = controldata["model_settings"].get("n_som_move_fix", 1).asInt();     // Fix N2 (v5k), default 1 since v5o
+  n_nonvasc_extract  = controldata["model_settings"].get("n_nonvasc_extract", 1).asInt();  // Fix N3 (v5k), default 1 since v5o
   if (n_som_move_fix < 0 || n_som_move_fix > 1 || n_nonvasc_extract < 0 || n_nonvasc_extract > 1) {
     std::cerr << "FATAL: model_settings n_som_move_fix and n_nonvasc_extract must be 0 or 1" << std::endl;
     exit(EXIT_FAILURE);
@@ -307,6 +311,7 @@ ModelData::ModelData():force_cmt(-1) {
   et_fpc_once_fix = 0; nv_snow_bury_fix = 0; rain_int_lai_fix = 0; nv_rain_surface = 0; // v5l (off)
   n_safetynet_conserve = 0; // v5m L1 (off)
   n_extract_limiter = 0; soil_giveup_retry = 0; soil_giveup_diag = 0; n_extract_tau = 0.2; n_netnmin_rescale_guard = 0; // v5n (off)
+  n_rootless_fix = 2; n_som_move_fix = 1; n_nonvasc_extract = 1; // v5o: N1-N3 fixes on by default (legacy = 0)
   nv_snow_bury_depth = 0.0;
   set_envmodule(false);
   set_bgcmodule(false);
