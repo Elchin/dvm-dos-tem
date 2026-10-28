@@ -4,7 +4,10 @@ Formulas as /workspace/v5h/seb_explore/scripts/metrics_tvc.py:
   water (1951-2024): P - EET - QRUNOFF - QDRAINAGE - dS, dS = d(sum (LWC+IWC)*dz*1000) + dSWE  [mm]
                      PASS if |residual| < 1 % of P
   carbon (yearly):   d(SOC + VEGC + DEADC + DWDC) + NEE  [gC/m2/yr], NEE = RECO - GPP
-  nitrogen (yearly): d(VEGNTOT + ORGN + AVLN + DEADN + DWDN) - (NINPUT - NLOST)  [gN/m2/yr]
+  nitrogen (yearly): d(VEGNTOT + ORGN + AVLN + DEADN + DWDN) - (NINPUT [+ BNF_VEG] - NLOST)  [gN/m2/yr]
+                     v5q: NINPUT includes the soil part of biological N fixation (BNF output);
+                     BNF_VEG (bnf_to_plant = 1: BNF given directly to plant labile N) is an
+                     extra input, added when its yearly (else monthly, summed) file exists.
                      PASS if |mean residual| < ntol (default 1.0 gN/m2/yr: a coarse absolute
                      bound; summarize.py also requires B to be no worse than A).
                      v5o: the N tolerance is enforced (pass/fail) ONLY when all three N
@@ -49,6 +52,11 @@ def n_fixes(rundir, defaults=None):
     on = eff["n_rootless_fix"] in (1, 2) and eff["n_som_move_fix"] == 1 and eff["n_nonvasc_extract"] == 1
     return eff, src, on
 
+def n_budget(nst, nin, nl, bnfveg=None):
+    """Yearly N residual d(N stocks) - (NINPUT [+ BNF_VEG] - NLOST), years 2..n (v5q: BNF_VEG optional)."""
+    if bnfveg is not None: nin = nin + bnfveg
+    return np.diff(nst) - (nin[1:] - nl[1:])
+
 def closure(rundir):
     o = Path(rundir) / "main/output"
     g = lambda v, f="monthly": ma(nc.Dataset(o / f"{v}_{f}_sc.nc")[v][:])
@@ -77,7 +85,12 @@ def closure(rundir):
         for v in ("DEADN", "DWDN"):
             if have(v): Nst = Nst + yv(v); r["N_terms"].append(v)
         nin, nl = yv("NINPUT"), yv("NLOST")
-        rn = np.diff(Nst) - (nin[1:] - nl[1:])
+        r["N_inputs"] = ["NINPUT"]; bv = None
+        if have("BNF_VEG") or have("BNF_VEG", "monthly"):   # v5q Phase 2: BNF to plant labile N bypasses NINPUT
+            bv = yv("BNF_VEG") if have("BNF_VEG") else m("BNF_VEG").reshape(ny, 12).sum(1)
+            r["N_inputs"].append("BNF_VEG")
+            r["BNF_VEG_mean_gm2yr"] = float(bv[1:].mean())
+        rn = n_budget(Nst, nin, nl, bv)
         r["N_resid_mean_gm2yr"] = float(rn.mean()); r["N_resid_max_abs_annual"] = float(np.abs(rn).max())
         r["NLOST_mean_gm2yr"] = float(nl[1:].mean()); r["NINPUT_mean_gm2yr"] = float(nin[1:].mean())
     else:

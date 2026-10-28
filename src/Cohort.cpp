@@ -914,6 +914,18 @@ void Cohort::updateMonthly_Bgc(const int & currmind) {
   // v5q BNF (bnf_scheme > 0 only): this month's BNF from the previous year. Refs: see Bnf.h.
   if (soilbgc.bnfp.scheme > 0) {
     soilbgc.bnfBeginMonth(currmind, md->get_nfeed());
+    if (soilbgc.bnfp.to_plant == 1) {   // Phase 2: share the plant part among the PFTs
+      bool act[NUM_PFT]; double sh[NUM_PFT];
+      for (int ip = 0; ip < NUM_PFT; ip++) { act[ip] = cd.m_veg.vegcov[ip] > 0.; }
+      int na = bnf::pft_shares(soilbgc.bnfmem.prev_pft_npp, act, NUM_PFT, sh);
+      if (na == 0) {   // no vegetation: everything to the soil
+        soilbgc.bnf_soil_month += soilbgc.bnf_veg_month;
+        soilbgc.bnf_veg_month = 0.0;
+      }
+      for (int ip = 0; ip < NUM_PFT; ip++) {
+        vegbgc[ip].bnf_labn_in = (na > 0 && act[ip]) ? soilbgc.bnf_veg_month * sh[ip] : 0.0;
+      }
+    }
   }
 
   // vegetation BGC module calling
@@ -921,6 +933,9 @@ void Cohort::updateMonthly_Bgc(const int & currmind) {
     if (cd.m_veg.vegcov[ip]>0.) {
       vegbgc[ip].prepareIntegration(md->get_nfeed());
       vegintegrator[ip].updateMonthlyVbgc();
+      if (vegbgc[ip].bnf_labn_in != 0.0) {   // v5q Phase 2: BNF actually delivered (veg give-up: up to bh_t0)
+        soilbgc.bnf_veg_delivered += vegbgc[ip].bnf_labn_in * vegintegrator[ip].monthFractionDone();
+      }
       vegbgc[ip].afterIntegration();
       bd[ip].veg_endOfMonth(currmind); // yearly data accumulation
 
@@ -948,6 +963,9 @@ void Cohort::updateMonthly_Bgc(const int & currmind) {
   solintegrator.updateMonthlySbgc(MAX_SOI_LAY);
   soilbgc.afterIntegration();
   if (soilbgc.bnfp.scheme > 0) {   // v5q BNF: remember this month's NPP and ET (transpiration + canopy evaporation)
+    for (int ip = 0; ip < NUM_PFT; ip++) {   // Phase 2: per-PFT annual NPP for the plant shares
+      if (cd.m_veg.vegcov[ip] > 0.) { soilbgc.bnfRecordPft(ip, bd[ip].m_a2v.nppall); }
+    }
     soilbgc.bnfRecordMonth(currmind, bdall->m_a2v.nppall, edall->m_v2a.tran + edall->m_v2a.evap);
   }
   bdall->soil_endOfMonth(currmind);   // yearly data accumulation

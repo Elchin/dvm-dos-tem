@@ -152,6 +152,9 @@ public:
   bnf::Params bnfp;
   bnf::YearMemory bnfmem;
   double bnf_soil_month = 0.0;   // g/m2/month into AVLN
+  double bnf_veg_month = 0.0;    // Phase 2 (bnf_to_plant 1): g/m2/month to plant labile N (Cohort shares it among PFTs)
+  double bnf_veg_delivered = 0.0;// Phase 2: amount the vegetation integrators delivered (veg give-up: fraction bh_t0)
+  void bnfRecordPft(const int ip, const double npp);
   void bnfBeginMonth(const int m, const bool nfeedon);
   void bnfRecordMonth(const int m, const double npp, const double et);
 

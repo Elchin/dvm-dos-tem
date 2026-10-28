@@ -32,6 +32,10 @@ public:
   int n_nonvasc_extract = 1;   // v5o default (was 0)
   // Refs (N3): no published source for the scheme; restores N mass conservation; bryophyte N uptake from the moss/peat layer: Turetsky 2003, doi:10.1639/05.
   ~Vegetation_Bgc();
+  // v5q Phase 2 (model_settings.bnf_to_plant = 1 only, else 0): symbiotic BNF
+  // added to the labile N pool (g/m2/month, per ground area) in deltastate().
+  // Refs: Meyerholt et al. 2016, doi:10.5194/bg-13-1491-2016; see Bnf.h.
+  double bnf_labn_in = 0.0;
 
   int ipft;
 

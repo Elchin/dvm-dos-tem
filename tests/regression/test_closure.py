@@ -54,5 +54,14 @@ class T(unittest.TestCase):
         r = closure.evaluate(mkrun(self.root, "h", dict(n_som_move_fix=0)))
         self.assertFalse(r["closure_pass"]); self.assertTrue(any("water" in f for f in r["closure_fail"]))
 
+class TBudget(unittest.TestCase):   # v5q: BNF_VEG enters the N budget as an extra input
+    def test_n_budget_bnf_veg(self):
+        import numpy as np
+        nst = np.array([10.0, 10.5, 11.2]); nin = np.array([0.2, 0.2, 0.3]); nl = np.array([0.0, 0.1, 0.1])
+        bv = np.array([0.0, 0.4, 0.5])
+        np.testing.assert_allclose(closure.n_budget(nst, nin, nl), [0.5 - 0.1, 0.7 - 0.2])
+        np.testing.assert_allclose(closure.n_budget(nst, nin, nl, bv), [0.0, 0.0], atol=1e-12)
+        np.testing.assert_allclose(closure.n_budget(nst, nin, nl, np.zeros(3)), closure.n_budget(nst, nin, nl))
+
 if __name__ == "__main__":
     unittest.main(verbosity=2)

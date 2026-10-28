@@ -4,6 +4,8 @@
 //   3 CONST B = bnf_const;  + bnf_asym (free-living, constant);  taper bnf_avln_cap
 // from the previous model year, monthly weight = previous-year NPP shape, into
 // m_a2soi.avlninput (AVLN of the top layer; needs n_rootless_fix = 2).
+// Phase 2: bnf_to_plant = 1 sends the scheme part to plant labile N (PFT shares by
+// previous-year NPP), bnf_asym stays in the soil; output BNF_VEG.
 // Refs: Meyerholt et al. 2016, doi:10.5194/bg-13-1491-2016 (Eqs. A1, A2, Table A1);
 //   Cleveland et al. 1999, doi:10.1029/1999GB900014; Thornton et al. 2007,
 //   doi:10.1029/2006GB002868. See include/Bnf.h, docs/daily-mode-REFERENCES.md.
@@ -12,6 +14,7 @@
 #include "../../include/Bnf.h"
 #include <json/json.h>
 #include <cmath>
+#include <utility>
 
 namespace {
 Json::Value msb(const char* k, Json::Value v) { Json::Value c; c["model_settings"][k] = v; return c; }
@@ -173,6 +176,102 @@ TEST_CASE("BNF output spec row: BNF exists, g/m2/time, monthly and yearly only")
   std::string line; bool found = false;
   while (std::getline(f, line)) {
     if (line.rfind("BNF,", 0) == 0) {
+      found = true;
+      CHECK(line.find(",g/m2/time,") != std::string::npos);
+      CHECK(line.find(",,,invalid,invalid,invalid,invalid,") != std::string::npos);
+    }
+  }
+  CHECK(found);
+}
+
+TEST_CASE("BNF Phase 2 switch bnf_to_plant: default 0, 0/1 only, 1 needs bnf_scheme > 0") {
+  CHECK(ModelData(msb("svp_ice_fix", 0)).bnf.to_plant == 0);
+  CHECK(ModelData(msb2("bnf_scheme", 1, "bnf_to_plant", 1)).bnf.to_plant == 1);
+  CHECK(ModelData(msb2("bnf_scheme", 2, "bnf_to_plant", 0)).bnf.to_plant == 0);
+  CHECK(ut::exit_status_of([] { ModelData m(msb("bnf_to_plant", 1)); }) == EXIT_FAILURE);          // scheme 0
+  CHECK(ut::exit_status_of([] { ModelData m(msb2("bnf_scheme", 1, "bnf_to_plant", 2)); }) == EXIT_FAILURE);
+  CHECK(ut::exit_status_of([] { ModelData m(msb2("bnf_scheme", 1, "bnf_to_plant", true)); }) == EXIT_FAILURE);
+  CHECK(ut::exit_status_of([] { ModelData m(msb2("bnf_scheme", 1, "bnf_to_plant", 0.5)); }) == EXIT_FAILURE);
+  CHECK(ut::exit_status_of([] { ModelData m(msb("bnf_to_plant", 0)); }) == 0);
+  Vegetation_Bgc vb; CHECK(vb.bnf_labn_in == 0.0);
+  Soil_Bgc sb; CHECK(sb.bnf_veg_month == 0.0); CHECK(sb.bnf_veg_delivered == 0.0);
+  atm2soi_bgc a; CHECK(a.bnfveg == 0.0);
+}
+
+TEST_CASE("BNF Phase 2 helpers: month_parts sums to month_bnf; PFT shares; per-PFT memory") {
+  bnf::Params p; p.scheme = 1; p.asym = 0.03; p.avln_cap = 4.0;
+  bnf::YearMemory y;
+  double sym = -1, asym = -1;
+  bnf::month_parts(p, y, 5, 1.0, sym, asym); CHECK(sym == 0.0); CHECK(asym == 0.0);   // no previous year
+  double npp[12] = {0, 0, 0, 1, 5, 20, 30, 25, 5, 0, 0, 0};
+  for (int m = 0; m < 12; ++m) { y.record_pft(0, 0.75 * npp[m]); y.record_pft(3, 0.25 * npp[m]); y.record(m, npp[m], 8.0); }
+  CHECK(y.prev_pft_npp[0] == doctest::Approx(0.75 * 86)); CHECK(y.prev_pft_npp[3] == doctest::Approx(0.25 * 86));
+  CHECK(y.cur_pft_npp[0] == 0.0);
+  for (int m = 0; m < 12; ++m) {
+    CAPTURE(m);
+    bnf::month_parts(p, y, m, 1.0, sym, asym);
+    CHECK(sym + asym == doctest::Approx(bnf::month_bnf(p, y, m, 1.0)).epsilon(1e-14));
+    CHECK(asym == doctest::Approx(0.03 * bnf::month_weight(y.prev_npp, m) * 0.75));
+  }
+  bool act[bnf::MAX_PFT] = {false}; double sh[bnf::MAX_PFT];
+  CHECK(bnf::pft_shares(y.prev_pft_npp, act, bnf::MAX_PFT, sh) == 0);
+  for (int i = 0; i < bnf::MAX_PFT; ++i) CHECK(sh[i] == 0.0);
+  act[0] = act[3] = act[5] = true;
+  CHECK(bnf::pft_shares(y.prev_pft_npp, act, bnf::MAX_PFT, sh) == 3);
+  CHECK(sh[0] == doctest::Approx(0.75)); CHECK(sh[3] == doctest::Approx(0.25)); CHECK(sh[5] == 0.0); CHECK(sh[1] == 0.0);
+  double neg[bnf::MAX_PFT] = {-3, 0, 0, -1, 0, 0, 0, 0, 0, 0};    // all <= 0: equal shares among active PFTs
+  CHECK(bnf::pft_shares(neg, act, bnf::MAX_PFT, sh) == 3);
+  CHECK(sh[0] == doctest::Approx(1.0 / 3)); CHECK(sh[5] == doctest::Approx(1.0 / 3)); CHECK(sh[2] == 0.0);
+}
+
+TEST_CASE("BNF Phase 2 Soil_Bgc: to_plant 1 -> scheme part to bnf_veg_month, free-living part to the soil") {
+  BnfSoil f(3);
+  f.sb.bnfp.scheme = 3; f.sb.bnfp.cnst = 1.2; f.sb.bnfp.asym = 0.24; f.sb.bnfp.to_plant = 1;
+  for (int m = 0; m < 12; ++m) f.sb.bnfRecordMonth(m, 1.0, 1.0);
+  f.sb.bnf_veg_delivered = 9.0;
+  f.sb.bnfBeginMonth(0, true);
+  CHECK(f.sb.bnf_veg_month == doctest::Approx(0.1)); CHECK(f.sb.bnf_soil_month == doctest::Approx(0.02));
+  CHECK(f.sb.bnf_veg_delivered == 0.0);
+  f.sb.bnfBeginMonth(0, false); CHECK(f.sb.bnf_veg_month == 0.0); CHECK(f.sb.bnf_soil_month == 0.0);
+  f.sb.bnfp.to_plant = 0; f.sb.bnfBeginMonth(0, true);
+  CHECK(f.sb.bnf_veg_month == 0.0); CHECK(f.sb.bnf_soil_month == doctest::Approx(0.12));
+  f.sb.bnfp.scheme = 0; f.sb.bnfRecordPft(2, 5.0); CHECK(f.sb.bnfmem.cur_pft_npp[2] == 0.0);   // off: nothing recorded
+  f.sb.bnfp.scheme = 1; f.sb.bnfRecordPft(2, 5.0); CHECK(f.sb.bnfmem.cur_pft_npp[2] == 5.0);
+}
+
+TEST_CASE("BNF Phase 2 conservation: Vegetation_Bgc::deltastate adds bnf_labn_in to LABN (nfeed only); 0 = legacy") {
+  auto run = [](double bnfin, bool nfeed) {
+    Vegetation_Bgc vb; vb.nfeed = nfeed; vb.bnf_labn_in = bnfin;
+    vb.d2wdebrisc = 0.1; vb.d2wdebrisn = 0.002; vb.del_soi2v.lnuptake = 0.05;
+    for (int i = 0; i < NUM_PFT_PART; ++i) {
+      vb.del_a2v.npp[i] = 1.0 + i; vb.del_v2soi.ltrfalc[i] = 0.5; vb.del_soi2v.snuptake[i] = 0.01;
+      vb.del_v2v.nmobil[i] = 0.003 * (i + 1); vb.del_v2soi.ltrfaln[i] = 0.004; vb.del_v2v.nresorb[i] = 0.002;
+    }
+    vb.del_vegs.labn = 0.0; vb.deltastate();
+    double strn = 0; for (int i = 0; i < NUM_PFT_PART; ++i) strn += vb.del_vegs.strn[i];
+    return std::make_pair(vb.del_vegs.labn, strn);
+  };
+  auto base = run(0.0, true), on = run(0.04, true);
+  CHECK(on.first - base.first == doctest::Approx(0.04).epsilon(1e-14));   // plant N gain = BNF
+  CHECK(on.second == base.second);                                         // structural N unchanged
+  auto off = run(0.04, false), off0 = run(0.0, false);
+  CHECK(off.first == off0.first);                                          // no N cycle without nfeed
+}
+
+TEST_CASE("BNF Phase 2 Integrator::monthFractionDone: 1 normally, bh_t0 after a give-up") {
+  Integrator in;
+  CHECK(in.monthFractionDone() == 1.0);
+  in.blackhol = 1; in.bh_t0 = 0.375f;
+  CHECK(in.monthFractionDone() == doctest::Approx(0.375));
+  in.blackhol = 0; CHECK(in.monthFractionDone() == 1.0);
+}
+
+TEST_CASE("BNF Phase 2 output spec row: BNF_VEG exists, g/m2/time, monthly and yearly only") {
+  std::ifstream f("../../config/output_spec.csv");
+  REQUIRE(f.good());
+  std::string line; bool found = false;
+  while (std::getline(f, line)) {
+    if (line.rfind("BNF_VEG,", 0) == 0) {
       found = true;
       CHECK(line.find(",g/m2/time,") != std::string::npos);
       CHECK(line.find(",,,invalid,invalid,invalid,invalid,") != std::string::npos);

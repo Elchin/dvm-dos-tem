@@ -115,6 +115,9 @@ public :
   // month), the soil inputs for the rest of the month (litterfall C/N, woody
   // debris C/N, N deposition) are still delivered so that C is conserved.
   int blackhole_count;    // cumulative number of adapt() give-ups
+  // v5q Phase 2: fraction of the month the last adapt() integrated (1, or the
+  // give-up time bh_t0 when the state was reset), used to book delivered BNF.
+  double monthFractionDone() const { return blackhol ? (double)bh_t0 : 1.0; }
   int safetynet_count;    // cumulative number of soil safety-net deliveries
   bool safetynet_fired;   // set by the last updateMonthlySbgc()
   // Fix C1 (v5k), OFF by default: model_settings.soil_nmin_tol_fix. The soil

@@ -275,6 +275,7 @@ void BgcData::soil_beginOfYear() {
   y_a2soi.orgninput = 0.0;
   y_a2soi.avlninput = 0.0;
   y_a2soi.bnf = 0.0;  // v5q
+  y_a2soi.bnfveg = 0.0;  // v5q Phase 2
   y_soi2l.orgnlost  = 0.0;
   y_soi2l.avlnlost = 0.0;
 };
@@ -332,6 +333,7 @@ void BgcData::soil_endOfMonth(const int currmind) {
   y_soi2l.orgnlost += m_soi2l.orgnlost;
   y_a2soi.avlninput += m_a2soi.avlninput;
   y_a2soi.bnf += m_a2soi.bnf;  // v5q
+  y_a2soi.bnfveg += m_a2soi.bnfveg;  // v5q Phase 2
   y_soi2l.avlnlost += m_soi2l.avlnlost;
 };
 

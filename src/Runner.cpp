@@ -3706,6 +3706,24 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
   }//end BNF
   map_itr = netcdf_outputs.end();
 
+  // v5q Phase 2 BNF_VEG: part of BNF given to plant labile N (0 unless bnf_to_plant = 1). Refs: see Bnf.h.
+  map_itr = netcdf_outputs.find("BNF_VEG");
+  if(map_itr != netcdf_outputs.end()){
+    BOOST_LOG_SEV(glg, debug)<<"NetCDF output: BNF_VEG";
+    curr_spec = map_itr->second;
+    #pragma omp critical(outputBNF_VEG)
+    {
+      if(!curr_spec.layer){
+        if(curr_spec.monthly){
+          output_nc_3dim(&curr_spec, file_stage_suffix, &cohort.bdall->m_a2soi.bnfveg, 1, month_timestep, 1);
+        } else if(curr_spec.yearly){
+          output_nc_3dim(&curr_spec, file_stage_suffix, &cohort.bdall->y_a2soi.bnfveg, 1, year, 1);
+        }
+      }
+    }//end critical(outputBNF_VEG)
+  }//end BNF_VEG
+  map_itr = netcdf_outputs.end();
+
 
   //NLOST
   map_itr = netcdf_outputs.find("NLOST");

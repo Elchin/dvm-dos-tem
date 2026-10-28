@@ -274,10 +274,12 @@ void Soil_Bgc::prepareIntegration(const bool &mdnfeedback,
     }
   }
   // v5q: biological N fixation into AVLN (bnf_scheme > 0 only). Refs: see Bnf.h.
-  bd->m_a2soi.bnf = 0.0;   // output only (BNF = 0 when off); no model state reads it
+  bd->m_a2soi.bnf = 0.0;      // output only (BNF = 0 when off); no model state reads it
+  bd->m_a2soi.bnfveg = 0.0;   // output only (BNF_VEG)
   if (bnfp.scheme > 0) {
     bd->m_a2soi.avlninput = (this->nfeed == 1) ? bnf_soil_month : 0.0;
-    bd->m_a2soi.bnf = bd->m_a2soi.avlninput;
+    bd->m_a2soi.bnfveg = (this->nfeed == 1) ? bnf_veg_delivered : 0.0;   // Phase 2 (0 unless bnf_to_plant 1)
+    bd->m_a2soi.bnf = bd->m_a2soi.avlninput + bd->m_a2soi.bnfveg;
   }
 
   // dead standing C due to fire will put into ground debris
@@ -1336,10 +1338,22 @@ double Soil_Bgc::ds_rh_weight(double ts, double sws) {
 //   doi:10.1029/1999GB900014; Thornton et al. 2007, doi:10.1029/2006GB002868.
 void Soil_Bgc::bnfBeginMonth(const int m, const bool nfeedon) {
   bnf_soil_month = 0.0;
+  bnf_veg_month = 0.0;
+  bnf_veg_delivered = 0.0;
   if (bnfp.scheme <= 0 || !nfeedon) { return; }
   double avln = 0.0;
   for (int i = 0; i < cd->m_soil.numsl; i++) { avln += fmax(0.0, bd->m_sois.avln[i]); }
-  bnf_soil_month = bnf::month_bnf(bnfp, bnfmem, m, avln);
+  if (bnfp.to_plant == 1) {   // Phase 2: scheme part to the plants, free-living part to the soil
+    bnf::month_parts(bnfp, bnfmem, m, avln, bnf_veg_month, bnf_soil_month);
+  } else {
+    bnf_soil_month = bnf::month_bnf(bnfp, bnfmem, m, avln);
+  }
+}
+
+static_assert(bnf::MAX_PFT == NUM_PFT, "bnf::MAX_PFT must equal NUM_PFT");
+void Soil_Bgc::bnfRecordPft(const int ip, const double npp) {
+  if (bnfp.scheme <= 0) { return; }
+  bnfmem.record_pft(ip, npp);
 }
 
 void Soil_Bgc::bnfRecordMonth(const int m, const double npp, const double et) {

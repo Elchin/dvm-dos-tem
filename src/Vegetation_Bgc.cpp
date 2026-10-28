@@ -776,6 +776,10 @@ void Vegetation_Bgc::deltastate() {
       //  'labn', 'nmobil' in reverse direction
       del_vegs.labn += del_v2v.nresorb[i] - del_v2v.nmobil[i];
     }
+    // v5q Phase 2 (bnf_to_plant 1 only): symbiotic BNF into LABN. Refs: see Bnf.h.
+    if (bnf_labn_in != 0.0) {
+      del_vegs.labn += bnf_labn_in;
+    }
   }
 };
 

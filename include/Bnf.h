@@ -24,6 +24,14 @@
 // Month m receives B * w_m, w_m = max(NPP_m,0)/sum(max(NPP_k,0)) of the
 // previous year (uniform 1/12 if that sum is 0). The first model year of a
 // process (no previous year in memory; not stored in the restart file) gets 0.
+// Phase 2, model_settings.bnf_to_plant (0/1, default 0; 1 needs bnf_scheme > 0):
+// 1 = the scheme part of B (the symbiotic-type rate: PRO, AET or CONST) goes to
+// the plant labile N pool (LABN) instead of the soil, as symbiotic BNF in
+// Meyerholt et al. 2016 (the plant receives the fixed N), shared among the PFTs
+// with vegcov > 0 by their previous-year positive annual NPP (equal shares if
+// all are <= 0); bnf_asym (free-living) stays in the soil. Output BNF_VEG.
+// The NPP-proportional split is ours (no published source; consistent with the
+// NPP-driven PRO rate).
 // Pure helpers (no model state) so they can be unit tested
 // (tests/unit/test_bnf_v5q.cpp).
 // Refs: Meyerholt, Zaehle & Smith 2016, doi:10.5194/bg-13-1491-2016;
@@ -48,7 +56,10 @@ struct Params {
   double cnst  = 0.0;      // gN/m2/yr (scheme 3)
   double asym  = 0.0;      // gN/m2/yr, free-living term (scheme > 0 only)
   double avln_cap = 0.0;   // gN/m2, 0 = no taper
+  int to_plant = 0;        // Phase 2: 1 = scheme part to plant labile N
 };
+
+const int MAX_PFT = 10;    // = NUM_PFT (cohortconst.h); checked in Soil_Bgc.cpp
 
 // An integer-valued number in [lo, hi] (booleans, strings, fractions rejected).
 inline bool valid_int(const Json::Value& v, int lo, int hi) {
@@ -79,6 +90,14 @@ inline std::string parse(const Json::Value& ms, int n_rootless_fix, Params& p) {
       }
       *dst[k] = ms[keys[k]].asDouble();
     }
+  }
+  Json::Value tp = ms.get("bnf_to_plant", 0);
+  if (!valid_int(tp, 0, 1)) {
+    return "FATAL: model_settings.bnf_to_plant must be 0 (soil) or 1 (plant labile N)";
+  }
+  p.to_plant = tp.asInt();
+  if (p.to_plant == 1 && p.scheme == 0) {
+    return "FATAL: model_settings.bnf_to_plant = 1 needs bnf_scheme > 0";
   }
   if (p.pro_c < 0 || p.pro_d > 0 || p.aet_a < 0 || p.cnst < 0 || p.asym < 0 || p.avln_cap < 0) {
     return "FATAL: model_settings BNF parameters: need bnf_pro_c >= 0, bnf_pro_d <= 0, "
@@ -128,7 +147,13 @@ inline double month_weight(const double npp12[12], int m) {
 struct YearMemory {
   double cur_npp[12] = {0}, cur_et[12] = {0};
   double prev_npp[12] = {0}, prev_et[12] = {0};
+  double cur_pft_npp[MAX_PFT] = {0}, prev_pft_npp[MAX_PFT] = {0};  // Phase 2 (annual sums)
   bool have_prev = false;
+  // Phase 2: add PFT ip's NPP of this month (call before record() of the month).
+  void record_pft(int ip, double npp) {
+    if (ip < 0 || ip >= MAX_PFT) { return; }
+    cur_pft_npp[ip] += npp;
+  }
   void record(int m, double npp, double et) {
     if (m < 0 || m > 11) { return; }
     cur_npp[m] = npp; cur_et[m] = et;
@@ -137,6 +162,7 @@ struct YearMemory {
         prev_npp[k] = cur_npp[k]; prev_et[k] = cur_et[k];
         cur_npp[k] = 0.0; cur_et[k] = 0.0;
       }
+      for (int k = 0; k < MAX_PFT; ++k) { prev_pft_npp[k] = cur_pft_npp[k]; cur_pft_npp[k] = 0.0; }
       have_prev = true;
     }
   }
@@ -149,6 +175,31 @@ inline double month_bnf(const Params& p, const YearMemory& y, int m, double avln
   if (p.scheme <= 0 || !y.have_prev) { return 0.0; }
   double ann = scheme_annual(p, y.prev_npp_yr(), y.prev_et_yr()) + p.asym;
   return ann * month_weight(y.prev_npp, m) * cap_factor(avln_tot, p.avln_cap);
+}
+
+// Phase 2: the two parts of month m (gN/m2/month): sym = scheme part, asym = free-living.
+inline void month_parts(const Params& p, const YearMemory& y, int m, double avln_tot,
+                        double& sym, double& asym) {
+  sym = 0.0; asym = 0.0;
+  if (p.scheme <= 0 || !y.have_prev) { return; }
+  double f = month_weight(y.prev_npp, m) * cap_factor(avln_tot, p.avln_cap);
+  sym = scheme_annual(p, y.prev_npp_yr(), y.prev_et_yr()) * f;
+  asym = p.asym * f;
+}
+// Phase 2: PFT shares of the plant BNF: previous-year positive annual NPP among the
+// active PFTs (equal if all <= 0). Returns the number of active PFTs (0: all shares 0).
+inline int pft_shares(const double prev_pft_npp[], const bool active[], int n, double out[]) {
+  int na = 0; double s = 0.0;
+  for (int i = 0; i < n; ++i) {
+    out[i] = 0.0;
+    if (active[i]) { ++na; s += std::fmax(prev_pft_npp[i], 0.0); }
+  }
+  if (na == 0) { return 0; }
+  for (int i = 0; i < n; ++i) {
+    if (!active[i]) { continue; }
+    out[i] = (s > 0.0) ? std::fmax(prev_pft_npp[i], 0.0) / s : 1.0 / na;
+  }
+  return na;
 }
 
 } // namespace bnf
