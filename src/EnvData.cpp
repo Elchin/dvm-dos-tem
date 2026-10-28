@@ -399,6 +399,8 @@ void EnvData::atm_endOfDay(const int & dinm, const int & dayidx) {
   //Store daily values for netCDF output
   daily_eet[dayidx] = d_l2a.eet;
   daily_pet[dayidx] = d_l2a.pet;
+  daily_ta[dayidx]  = d_atms.ta;   // v5p daily_c_split weights (output only)
+  daily_par[dayidx] = d_a2l.par;
 };
 
 void EnvData::veg_endOfDay(const int & dinm) {
@@ -719,10 +721,12 @@ void EnvData::grnd_endOfDay(const int & dinm, const int & doy) {
   daily_qdrain[dom] = d_soi2l.qdrain;
   daily_qinfl[dom] = d_soi2l.qinfl;
   daily_qover[dom] = d_soi2l.qover;
+  daily_thaw[dom] = d_soid.rtdpthawpct; // v5p daily_c_split weights (output only)
 
   for(int il=0; il<MAX_SOI_LAY; il++){
     daily_layer_drain[dom][il] = d_soi2l.layer_drain[il];
     daily_tlayer[dom][il] = d_sois.ts[il];
+    daily_sws[dom][il] = d_soid.sws[il]; // v5p daily_c_split weights (output only)
   }
 
   for(int fid=0; fid<MAX_NUM_FNT; fid++){

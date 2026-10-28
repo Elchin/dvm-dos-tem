@@ -2436,6 +2436,39 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
 
 
   //HKDEEP
+  // v5p daily_c_split (output only): statistical daily split of the monthly
+  // C fluxes, ecosystem totals (Cohort::ds_daily), daily only; DS_FALLBACK
+  // monthly. Refs: see DailyCSplit.h.
+  for (int k = 0; k < dcsplit::NVAR; k++) {
+    map_itr = netcdf_outputs.find(dcsplit::VAR_NAMES[k]);
+    if(map_itr != netcdf_outputs.end()){
+      BOOST_LOG_SEV(glg, debug)<<"NetCDF output: "<<dcsplit::VAR_NAMES[k];
+      curr_spec = map_itr->second;
+
+      #pragma omp critical(outputDCSPLIT)
+      {
+        if(curr_spec.daily){
+          output_nc_3dim(&curr_spec, file_stage_suffix, &cohort.ds_daily[k][0], 1, day_timestep + DOYINDFST[month], dinm); // day-of-year offset
+        }
+      }//end critical(outputDCSPLIT)
+    }
+    map_itr = netcdf_outputs.end();
+  }
+  map_itr = netcdf_outputs.find(dcsplit::FALLBACK_NAME);
+  if(map_itr != netcdf_outputs.end()){
+    BOOST_LOG_SEV(glg, debug)<<"NetCDF output: DS_FALLBACK";
+    curr_spec = map_itr->second;
+
+    #pragma omp critical(outputDSFALLBACK)
+    {
+      if(curr_spec.monthly){
+        double ds_fl = (double)cohort.ds_flags;
+        output_nc_3dim(&curr_spec, file_stage_suffix, &ds_fl, 1, month_timestep, 1);
+      }
+    }//end critical(outputDSFALLBACK)
+  }
+  map_itr = netcdf_outputs.end();
+
   map_itr = netcdf_outputs.find("HKDEEP");
   if(map_itr != netcdf_outputs.end()){
     BOOST_LOG_SEV(glg, debug)<<"NetCDF output: HKDEEP";

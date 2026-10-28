@@ -72,6 +72,16 @@ public:
   void set_nfeed(bool);
   void set_nfeed(const std::string &value);
 
+  // v5p daily_c_split (output only, see DailyCSplit.h): the prvtopt of the
+  // last prepareIntegration (a copy; the model does not read it) and the
+  // daily weights from the model's own GPP and Rm scalars (getGV,
+  // getTempFactor4GPP, getRaq10; bodies unchanged).
+  // Refs: see DailyCSplit.h (Olsen & Randerson 2004, doi:10.1029/2003JD003968;
+  //   Fisher et al. 2016, doi:10.5194/bg-13-4271-2016); no published source for the exact method.
+  double prvtopt_used = 0.0;
+  double ds_gpp_weight(double ta, double par, double eet, double pet, double thaw);
+  double ds_rm_weight(double ta);
+
 private:
 
   bool nfeed; // NOTE: It seems like this is probably supposed to shadow

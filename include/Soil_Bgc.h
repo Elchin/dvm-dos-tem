@@ -136,6 +136,11 @@ public:
   // v5n diagnostics (written by every deltan(); read only by the give-up diag)
   double dg_nscale = 1.0, dg_totnetnmin_raw = 0.0, dg_totnextract = 0.0, dg_totdzavln = 0.0;
   // Refs (G1/G2): plant N uptake is a saturating (Michaelis-Menten) function of soil available N in TEM (Raich et al. 1991, doi:10.2307/1941899; McGuire et al. 1992, doi:10.1029/92GB00219); demand-based uptake is down-regulated when soil mineral N cannot supply it (Thornton et al. 2007, doi:10.1029/2006GB002868); arctic/boreal plants also take up organic N (Nasholm et al. 1998, doi:10.1038/31921; Schimel & Bennett 2004, doi:10.1890/03-8002); a zero-order sink drives a non-negative ODE state below zero in finite time, which no step-size reduction can avoid, positivity needs a state-dependent sink (Shampine et al. 2005, doi:10.1016/j.amc.2004.12.011; Burchard et al. 2003, doi:10.1016/S0168-9274(03)00101-6).
+  // v5p daily_c_split (output only, see DailyCSplit.h): daily RH weight of a
+  // soil layer, rhmoist*rhq10 as in deltac (rhmoistfrozen when ts < 0).
+  // Refs: see DailyCSplit.h; no published source for the exact method.
+  double ds_rh_weight(double ts, double sws);
+
 private:
 
   // NOTE: seems like these 3 variables are supposed to shadow the

@@ -128,6 +128,7 @@
     "n_rootless_fix": 2,                // N1 fix (v5o default 2; 0 = legacy: rootless-layer net mineralisation N lost)
     "n_som_move_fix": 1,                // N2 fix (v5o default 1; 0 = legacy: SOM N moved shallow->deep overwritten)
     "n_nonvasc_extract": 1,             // N3 fix (v5o default 1; 0 = legacy: moss N uptake not extracted from soil)
+    "daily_c_split": 0,                 // v5p: statistical daily split of the monthly C fluxes, output only (0 off, 1 on; the *_DS outputs need 1)
     "baseline_start": 1901,  //start year for baseline EQ climate
     "baseline_end": 1931     //end year for baseline EQ climate
 //    //"dynamic_climate": 0,

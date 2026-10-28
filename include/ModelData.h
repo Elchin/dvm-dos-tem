@@ -191,6 +191,15 @@ public:
   // Refs (N1): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 29d72af8); restores N mass conservation.
   // Fixes N2/N3 (v5k), default 1 since v5o (0 = legacy, selectable): see Soil_Bgc.h (n_som_move_fix) and Vegetation_Bgc.h (n_nonvasc_extract).
   int n_som_move_fix, n_nonvasc_extract;
+  // v5p: statistical daily split of the monthly C fluxes, output only
+  // (0 = off, default; 1 = on; anything else FATAL). With 1 the *_DS daily
+  // outputs (and DS_FALLBACK) may be requested in output_spec.csv; requesting
+  // them with 0 is FATAL. No effect on the model state. See DailyCSplit.h.
+  // Refs: Olsen & Randerson 2004, doi:10.1029/2003JD003968; Fisher et al. 2016,
+  //   doi:10.5194/bg-13-4271-2016; principle of exact temporal disaggregation:
+  //   Denton 1971, doi:10.1080/01621459.1971.10482227; Chow & Lin 1971, doi:10.2307/1928739.
+  //   No published source for the exact method.
+  int daily_c_split;
   // Refs (N2): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 20b2723e); restores N mass conservation (N moves with C).
   // Refs (N3): no published source for the scheme; restores N mass conservation; bryophyte N uptake from the moss/peat layer: Turetsky 2003, doi:10.1639/05.
   // ET-split fixes (v5l), all OFF by default (0 = legacy, bit-identical); see

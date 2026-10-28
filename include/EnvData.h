@@ -129,6 +129,12 @@ public:
   double daily_tlayer[31][MAX_SOI_LAY];
   double daily_root_water_uptake[31][MAX_SOI_LAY];
   double daily_percolation[31][MAX_SOI_LAY];
+  // v5p daily_c_split (output only): daily drivers for the weights of the
+  // statistical daily split of the monthly C fluxes, see DailyCSplit.h.
+  double daily_ta[31];    // air temperature (degC), atm_endOfDay
+  double daily_par[31];   // PAR, atm_endOfDay
+  double daily_thaw[31];  // root-zone thawed fraction (rtdpthawpct), grnd_endOfDay
+  double daily_sws[31][MAX_SOI_LAY]; // soil water saturation per layer, grnd_endOfDay
 
   double monthsfrozen;      // months since bottom soil frozen started -
                             //   24 months is the criterion for permafrost

@@ -1,8 +1,8 @@
-# daily-climate-mode: references for every switch and fix (v5-daily … v5o)
+# daily-climate-mode: references for every switch and fix (v5-daily … v5p)
 
 Standing rule (Elchin, 2026-10-22): every code change carries its scientific references in three places: code comments, commit message and README. This file is the full bibliography. Code comments cite entries by `[Key]`.
 
-Every DOI was checked against Crossref or DataCite, and every URL was opened (HTTP 200), on 2026-10-22 (v5m, v5n and v5o entries: Crossref, 2026-10-27). Author, year, title and journal were compared with the registry record.
+Every DOI was checked against Crossref or DataCite, and every URL was opened (HTTP 200), on 2026-10-22 (v5m, v5n and v5o entries: Crossref, 2026-10-27; v5p entries: Crossref, 2026-10-28). Author, year, title and journal were compared with the registry record.
 
 Where a fix is a code or numerics bug with no literature basis, it says **no published source**, followed by the code location, the original commit and the principle or standard it restores.
 
@@ -82,6 +82,12 @@ Switch defaults: every switch below is 0/off by default, which is legacy behavio
 | `rain_int_lai_fix` (S3) | Capacity = ircoef·LAI (mm per ground area), storage carried between days and evaporated first; legacy 0.21·P + 0.5 mm. | p_liq = 0.1 mm per unit (L+S) (CLM5 eq. 2.7.12, after [Dickinson1993]) [CLM5-Hydro]. Forest/crop S_max = 0.935 + 0.498·LAI − 0.00575·LAI² [vonHoyningenHuene1981] as implemented in LISFLOOD [vanderKnijff2010]. Observed TVC interception: 16–29 % of summer rain under dwarf birch [Zwieback2019]; 16.6 ± 3.2 % watershed-wide [Chang2022]. |
 | `nv_rain_surface` (S4) | Moss/lichen rain "interception" is surface water: 1 = booked as EVAP_MOSS; 2 = reaches the ground. | Moss treated as a ground/soil layer: [Chadburn2015] (JULES), [Yi2009] (DOS-TEM). Moss/understory evaporation as a ground-layer flux: [Heijmans2004]. |
 
+### Output-only diagnostics (v5p, branch v5p-daily-split)
+
+| switch | what it does | references |
+|---|---|---|
+| `daily_c_split` | Output only, no feedback: each monthly C flux (per PFT, per soil layer) is split over the days of its calendar month with the model's own environmental scalar of that day as weight, X_d = M·w_d/Σw (GPP: the day-varying part of getGPP; RM: Raq10(Ta); RG: max(GPP_d−RM_d, 0); RH: rhmoist·rhq10 of the layer; NEE_d = RECO_d − GPP_d), giving `*_DS` daily outputs whose calendar-month sums equal the monthly values (no smoothing across months). All-zero weights → uniform, flagged in `DS_FALLBACK`. A statistical split, not daily physics. | **No published source for this exact method.** Spreading coarse model fluxes over finer time steps with driver-based weights: [OlsenRanderson2004] (3-hourly fluxes from monthly CASA fluxes), [Fisher2016] (3-hourly downscaling of monthly MsTMIP NEE). Exact preservation of the coarse (monthly) total, temporal disaggregation — cited for the principle only, their regression/quadratic-minimisation methods are not used: [Denton1971], [ChowLin1971]. |
+
 ### Parameter test (not a switch)
 
 | change | status | references |
@@ -129,6 +135,7 @@ Format: commit — code location — principle — references.
 - [Chadburn2015] Chadburn, S., Burke, E., Essery, R., Boike, J., Langer, M., Heikenfeld, M., Cox, P., Friedlingstein, P. (2015). An improved representation of physical permafrost dynamics in the JULES land-surface model. Geosci. Model Dev. 8, 1493–1508. https://doi.org/10.5194/gmd-8-1493-2015
 - [Chang2022] Chang, Q., Zwieback, S., DeVries, B., Berg, A. (2022). Application of L-band SAR for mapping tundra shrub biomass, leaf area index, and rainfall interception. Remote Sens. Environ. 268, 112747. https://doi.org/10.1016/j.rse.2021.112747
 - [Chang2021data] Chang, Q., Zwieback, S., Berg, A., DeVries, B. (2021). Shrub aboveground biomass and Leaf Area Index maps, Trail Valley Creek Watershed, Northwest Territories. Borealis (dataset). https://doi.org/10.5683/SP2/O7MCCR
+- [ChowLin1971] Chow, G.C., Lin, A. (1971). Best linear unbiased interpolation, distribution, and extrapolation of time series by related series. Rev. Econ. Stat. 53, 372–375. https://doi.org/10.2307/1928739
 - [ClappHornberger1978] Clapp, R.B., Hornberger, G.M. (1978). Empirical equations for some soil hydraulic properties. Water Resour. Res. 14, 601–604. https://doi.org/10.1029/WR014i004p00601
 - [CLM5] Lawrence, D.M. et al. (2019). The Community Land Model Version 5: Description of new features, benchmarking, and impact of forcing uncertainty. J. Adv. Model. Earth Syst. 11, 4245–4287. https://doi.org/10.1029/2018MS001583
 - [CLM5-Hydro] CLM5.0 Technical Note, ch. 2.7 Hydrology. https://escomp.github.io/CTSM/release-clm5.0/tech_note/Hydrology/CLM50_Tech_Note_Hydrology.html
@@ -136,11 +143,13 @@ Format: commit — code location — principle — references.
 - [CLM5-SoilT] CLM5.0 Technical Note, ch. 2.6 Soil and Snow Temperatures. https://escomp.github.io/CTSM/release-clm5.0/tech_note/Soil_Snow_Temperatures/CLM50_Tech_Note_Soil_Snow_Temperatures.html
 - [CoteKonrad2005] Côté, J., Konrad, J.-M. (2005). A generalized thermal conductivity model for soils and construction materials. Can. Geotech. J. 42, 443–458. https://doi.org/10.1139/t04-106
 - [CrawfordDuchon1999] Crawford, T.M., Duchon, C.E. (1999). An improved parameterization for estimating effective atmospheric emissivity for use in calculating daytime downwelling longwave radiation. J. Appl. Meteorol. 38, 474–480. https://doi.org/10.1175/1520-0450(1999)038<0474:AIPFEE>2.0.CO;2
+- [Denton1971] Denton, F.T. (1971). Adjustment of monthly or quarterly series to annual totals: an approach based on quadratic minimization. J. Am. Stat. Assoc. 66, 99–102. https://doi.org/10.1080/01621459.1971.10482227
 - [Dickinson1993] Dickinson, R.E., Henderson-Sellers, A., Kennedy, P.J. (1993). Biosphere-Atmosphere Transfer Scheme (BATS) Version 1e as coupled to the NCAR Community Climate Model. NCAR Tech. Note NCAR/TN-387+STR. https://doi.org/10.5065/D67W6959
 - [Dyer1974] Dyer, A.J. (1974). A review of flux-profile relationships. Boundary-Layer Meteorol. 7, 363–372. https://doi.org/10.1007/BF00240838
 - [EOL-VP] NCAR/UCAR Earth Observing Laboratory. Water vapor pressure formulations (reproduces the WMO 2008 CIMO ice formula). https://www.eol.ucar.edu/data-software/conventions-and-standards/water-vapor-pressure-formulations
 - [Euskirchen2009] Euskirchen, E.S., McGuire, A.D., Chapin, F.S. III, Yi, S., Thompson, C.C. (2009). Changes in vegetation in northern Alaska under scenarios of climate change, 2003–2100: implications for climate feedbacks. Ecol. Appl. 19, 1022–1043. https://doi.org/10.1890/08-0806.1
 - [Farouki1981] Farouki, O.T. (1981). Thermal Properties of Soils. CRREL Monograph 81-1, U.S. Army CRREL, Hanover NH. https://doi.org/10.21236/ADA111734
+- [Fisher2016] Fisher, J.B., Sikka, M., Huntzinger, D.N., Schwalm, C., Liu, J. (2016). Technical note: 3-hourly temporal downscaling of monthly global terrestrial biosphere model net ecosystem exchange. Biogeosciences 13, 4271–4277. https://doi.org/10.5194/bg-13-4271-2016
 - [Genet2013] Genet, H. et al. (2013). Modeling the effects of fire severity and climate warming on active layer thickness and soil carbon storage of black spruce forests across the landscape in interior Alaska. Environ. Res. Lett. 8, 045016. https://doi.org/10.1088/1748-9326/8/4/045016
 - [Gerten2004] Gerten, D., Schaphoff, S., Haberlandt, U., Lucht, W., Sitch, S. (2004). Terrestrial vegetation and water balance — hydrological evaluation of a dynamic global vegetation model. J. Hydrol. 286, 249–270. https://doi.org/10.1016/j.jhydrol.2003.09.029
 - [Goodrich1982] Goodrich, L.E. (1982). The influence of snow cover on the ground thermal regime. Can. Geotech. J. 19, 421–432. https://doi.org/10.1139/t82-047
@@ -161,6 +170,7 @@ Format: commit — code location — principle — references.
 - [Monteith1965] Monteith, J.L. (1965). Evaporation and environment. Symp. Soc. Exp. Biol. 19, 205–234. https://pubmed.ncbi.nlm.nih.gov/5321565/
 - [MurphyKoop2005] Murphy, D.M., Koop, T. (2005). Review of the vapour pressures of ice and supercooled water for atmospheric applications. Q. J. R. Meteorol. Soc. 131, 1539–1565. https://doi.org/10.1256/qj.04.94
 - [Nasholm1998] Näsholm, T., Ekblad, A., Nordin, A., Giesler, R., Högberg, M., Högberg, P. (1998). Boreal forest plants take up organic nitrogen. Nature 392, 914–916. https://doi.org/10.1038/31921
+- [OlsenRanderson2004] Olsen, S.C., Randerson, J.T. (2004). Differences between surface and column atmospheric CO2 and implications for carbon cycle research. J. Geophys. Res. Atmos. 109(D2), 2003JD003968 (article number as registered). https://doi.org/10.1029/2003JD003968
 - [Prata1996] Prata, A.J. (1996). A new long-wave formula for estimating downward clear-sky radiation at the surface. Q. J. R. Meteorol. Soc. 122, 1127–1151. https://doi.org/10.1002/qj.49712253306
 - [Press2007] Press, W.H., Teukolsky, S.A., Vetterling, W.T., Flannery, B.P. (2007). Numerical Recipes: The Art of Scientific Computing, 3rd ed. Cambridge Univ. Press. https://numerical.recipes/book.html
 - [QuintonMarsh1999] Quinton, W.L., Marsh, P. (1999). A conceptual framework for runoff generation in a permafrost environment. Hydrol. Process. 13, 2563–2581. https://doi.org/10.1002/(SICI)1099-1085(199911)13:16<2563::AID-HYP942>3.0.CO;2-D

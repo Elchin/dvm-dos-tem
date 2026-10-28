@@ -26,6 +26,7 @@
 #include "../include/TEMLogger.h"
 
 #include "../include/Soil_Bgc.h"
+#include "../include/DailyCSplit.h"
 
 extern src::severity_logger< severity_level > glg;
 
@@ -1312,3 +1313,14 @@ int Soil_Bgc::get_baseline() {
 }
 
 
+
+// v5p daily_c_split (output only): same factors as Soil_Bgc::deltac.
+double Soil_Bgc::ds_rh_weight(double ts, double sws) {
+  double rhmoist;
+  if (ts < 0.0) {
+    rhmoist = bgcpar.rhmoistfrozen;
+  } else {
+    rhmoist = getRhmoist(sws, bgcpar.moistmin, bgcpar.moistmax, bgcpar.moistopt);
+  }
+  return dcsplit::clean(rhmoist * getRhq10(ts));
+}
