@@ -26,6 +26,7 @@
 
 #include "../include/Cohort.h"
 #include "../include/NFactorSelect.h"
+#include <limits>
 
 extern src::severity_logger< severity_level > glg;
 
@@ -437,6 +438,9 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
 
   BOOST_LOG_SEV(glg, debug) << "Clean up before a month starts.";
   cd.beginOfMonth();
+  // v5p daily_c_split: output only (reads the model, writes only ds_* / daily driver copies)
+  const bool ds_on = (md->daily_c_split == 1) && md->get_envmodule() && md->get_bgcmodule();
+  if (ds_on) { ds_begin_month(); }
   if(md->get_envmodule()) {
   
     BOOST_LOG_SEV(glg, debug) << "RIGHT BEFORE updateMonthlyEnv()"
@@ -444,6 +448,7 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
   
     BOOST_LOG_SEV(glg, info) << "Run the environmental module - updates water/thermal processes to get (bio)physical conditions.";
     updateMonthly_Env(currmind, dinmcurr);
+    if (ds_on) { ds_snapshot_soil(ds_env_numsl, ds_env_z, ds_env_dz, NULL); }
     
     BOOST_LOG_SEV(glg, debug) << "RIGHT AFTER updateMonthlyEnv() yr:"
                               << yrcnt << " m:" << currmind << " "
@@ -459,6 +464,7 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
     BOOST_LOG_SEV(glg, debug) << "Run the BGC processes to get the C/N fluxes.";
     BOOST_LOG_SEV(glg, debug) << "RIGHT BEFORE updateMonthly_Bgc()" << ground.layer_report_string("depth CN");
     updateMonthly_Bgc(currmind);
+    if (ds_on) { ds_snapshot_soil(ds_bgc_numsl, ds_bgc_z, ds_bgc_dz, ds_bgc_type); }
     BOOST_LOG_SEV(glg, debug) << "RIGHT AFTER updateMonthly_Bgc()" << ground.layer_report_string("depth CN");
 
   }
@@ -476,6 +482,13 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
   // otherwise the model enters the next month's integration with
   // old values.
   this->bdall->soil_updatePools(currmind);
+
+  // v5p daily_c_split (output only): split this month's C fluxes into days.
+  if (ds_on) {
+    updateMonthly_DailyCSplit(dinmcurr);
+  } else if (md->daily_c_split == 1) {
+    dcsplit::clear(ds_daily); ds_flags = 0;
+  }
 
   if(currmind == 11) {
     BOOST_LOG_SEV(glg, debug) << "Clean up at end of year.";
@@ -1714,4 +1727,99 @@ void Cohort::set_restartdata_from_state() {
       restartdata.prvltrfcnA[i][il]= tmpdeque[i];
     }
   }
+}
+
+/////////////////////////////////////////////////////////////////////////////////
+// v5p daily_c_split: statistical daily split of the monthly C fluxes (output
+// only). Reads the model's monthly fluxes and the daily drivers stored by the
+// Env loop; writes only ds_* members and the daily driver copies. See
+// DailyCSplit.h and docs/daily-mode-REFERENCES.md.
+// Refs: no published source for the exact method; Olsen & Randerson 2004,
+//   doi:10.1029/2003JD003968; Fisher et al. 2016, doi:10.5194/bg-13-4271-2016;
+//   exact preservation of the monthly total (principle only): Denton 1971,
+//   doi:10.1080/01621459.1971.10482227; Chow & Lin 1971, doi:10.2307/1928739.
+/////////////////////////////////////////////////////////////////////////////////
+
+// Daily driver copies start the month as NaN, so a day without data gives a
+// zero weight (and, if all days are missing, the counted uniform fallback).
+void Cohort::ds_begin_month() {
+  const double nan = std::numeric_limits<double>::quiet_NaN();
+  for (int ip = 0; ip < NUM_PFT; ip++) {
+    for (int d = 0; d < 31; d++) {
+      ed[ip].daily_ta[d] = nan; ed[ip].daily_par[d] = nan; ed[ip].daily_thaw[d] = nan;
+    }
+  }
+  for (int d = 0; d < 31; d++) {
+    for (int il = 0; il < MAX_SOI_LAY; il++) { edall->daily_sws[d][il] = nan; }
+  }
+}
+
+void Cohort::ds_snapshot_soil(int& numsl, double* z, double* dz, int* type) {
+  numsl = cd.m_soil.numsl;
+  for (int il = 0; il < MAX_SOI_LAY; il++) {
+    z[il] = cd.m_soil.z[il]; dz[il] = cd.m_soil.dz[il];
+    if (type) { type[il] = cd.m_soil.type[il]; }
+  }
+}
+
+void Cohort::updateMonthly_DailyCSplit(const int & dinm) {
+  using namespace dcsplit;
+  clear(ds_daily);
+  ds_flags = 0;
+  const int n = dinm;
+  if (n < 1 || n > 31) { return; }
+
+  // Vegetation: per PFT (same PFTs as getBd4allveg_monthly), summed.
+  for (int ip = 0; ip < NUM_PFT; ip++) {
+    if (!(cd.m_veg.vegcov[ip] > 0.)) { continue; }
+    double wg[31], wr[31];
+    for (int d = 0; d < n; d++) {
+      wg[d] = vegbgc[ip].ds_gpp_weight(ed[ip].daily_ta[d], ed[ip].daily_par[d],
+                                       ed[ip].daily_eet[d], ed[ip].daily_pet[d],
+                                       ed[ip].daily_thaw[d]);
+      wr[d] = vegbgc[ip].ds_rm_weight(ed[ip].daily_ta[d]);
+    }
+    PftMonth m;
+    m.gpp = bd[ip].m_a2v.gppall;     m.rm = bd[ip].m_v2a.rmall;
+    m.rg = bd[ip].m_v2a.rgall;       m.ingpp = bd[ip].m_a2v.ingppall;
+    m.innpp = bd[ip].m_a2v.innppall;
+    ds_flags |= add_pft(m, wg, wr, n, ds_daily);
+  }
+
+  // Soil: per Bgc layer; daily ts/sws of the Env layer at the same index, or
+  // (if the Env-loop and Bgc structures differ) of the Env layer containing
+  // the Bgc layer's midpoint depth.
+  const bool same = same_layers(ds_env_numsl, ds_env_z, ds_env_dz,
+                                ds_bgc_numsl, ds_bgc_z, ds_bgc_dz);
+  if (!same) { ds_flags |= FLAG_LAYER_REMAP; }
+  int ilwd = -1;
+  for (int il = 0; il < ds_bgc_numsl && il < MAX_SOI_LAY; il++) {
+    if (ds_bgc_type[il] > 0) { ilwd = il; break; } // first non-moss layer, as in deltac
+  }
+  double w[31];
+  for (int il = 0; il < MAX_SOI_LAY; il++) {
+    const double M = bdall->m_soi2a.rhrawc[il] + bdall->m_soi2a.rhsoma[il]
+                   + bdall->m_soi2a.rhsompr[il] + bdall->m_soi2a.rhsomcr[il];
+    const bool wd = (il == ilwd) && bdall->m_soi2a.rhwdeb != 0.0;
+    if (M == 0.0 && !wd) { continue; }
+    int je = -1;
+    if (il < ds_bgc_numsl) {
+      je = same ? il : layer_containing(ds_bgc_z[il] + 0.5 * ds_bgc_dz[il],
+                                        ds_env_z, ds_env_dz, ds_env_numsl);
+    }
+    for (int d = 0; d < n; d++) {
+      w[d] = (je >= 0) ? soilbgc.ds_rh_weight(edall->daily_tlayer[d][je], edall->daily_sws[d][je]) : 0.0;
+    }
+    if (M != 0.0 && add_rh(M, w, n, ds_daily[RHSOM])) { ds_flags |= FLAG_RHSOM; }
+    if (wd && add_rh(bdall->m_soi2a.rhwdeb, w, n, ds_daily[RHDWD])) { ds_flags |= FLAG_RHDWD; }
+  }
+  if (bdall->m_soi2a.rhwdeb != 0.0 && ilwd < 0) { // no non-moss layer: uniform
+    double u[31];
+    for (int d = 0; d < n; d++) { u[d] = 0.0; }
+    add_rh(bdall->m_soi2a.rhwdeb, u, n, ds_daily[RHDWD]);
+    ds_flags |= FLAG_RHDWD;
+  }
+
+  finish(ds_daily, n);
+  count_month(ds_flags, ds_fallback_months, ds_remap_months);
 }

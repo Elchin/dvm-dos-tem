@@ -50,6 +50,7 @@ in N uptake over soil.
 #include "../include/TEMUtilityFunctions.h"
 
 #include "../include/Vegetation_Bgc.h"
+#include "../include/DailyCSplit.h"
 
 extern src::severity_logger< severity_level > glg;
 
@@ -216,6 +217,7 @@ void Vegetation_Bgc::prepareIntegration(const bool &nfeedback) {
 
   // Now that we have the average of the previous optimum temps, get the factor.
   bd->m_vegd.ftemp = getTempFactor4GPP(ed->m_atms.ta, prvtopt);
+  prvtopt_used = prvtopt; // v5p: copy for the daily_c_split weights (output only)
 
   // temperature factor for plant respiration
   bd->m_vegd.raq10 = getRaq10(ed->m_atms.ta);
@@ -1147,3 +1149,18 @@ void Vegetation_Bgc::set_nfeed(const bool value) {
   this->nfeed = value;
 }
 
+
+// v5p daily_c_split (output only): daily GPP weight of this PFT, the
+// day-varying part of getGPP with the day's drivers (co2 = monthly mean as in
+// prepareIntegration; same PET floor). Refs: see DailyCSplit.h.
+double Vegetation_Bgc::ds_gpp_weight(double ta, double par, double eet,
+                                     double pet, double thaw) {
+  double gv = getGV(eet, dcsplit::pet_floor(pet));
+  double ftemp = getTempFactor4GPP(ta, prvtopt_used);
+  return dcsplit::gpp_weight(ed->m_atms.co2, gv, bgcpar.kc, par, bgcpar.ki, ftemp, thaw);
+}
+
+// v5p daily_c_split (output only): daily Rm weight raq10(Ta_d).
+double Vegetation_Bgc::ds_rm_weight(double ta) {
+  return dcsplit::clean(getRaq10(ta));
+}

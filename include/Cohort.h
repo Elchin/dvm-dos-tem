@@ -30,6 +30,7 @@
 
 // headers for run
 #include "ModelData.h"
+#include "DailyCSplit.h"
 
 class Cohort {
 public :
@@ -125,7 +126,23 @@ public :
     for (int ip = 0; ip < NUM_PFT; ip++) { n += vegintegrator[ip].blackhole_count; }
     return n;
   }
+
+  // v5p daily_c_split (output only): daily ecosystem totals of the current
+  // month (g/m2/day, dcsplit::Var order, days 0..dinm-1) and the month's
+  // fallback flags. Written by updateMonthly_DailyCSplit, read by Runner.
+  double ds_daily[dcsplit::NVAR][31] = {};
+  int ds_flags = 0;
+  long ds_fallback_months = 0;  // months with any fallback flag (cumulative)
+  long ds_remap_months = 0;     // months with the midpoint layer remap (cumulative)
 private:
+  // v5p daily_c_split: soil layer structure of the Env loop and of the Bgc step
+  int ds_env_numsl = 0, ds_bgc_numsl = 0;
+  double ds_env_z[MAX_SOI_LAY] = {}, ds_env_dz[MAX_SOI_LAY] = {};
+  double ds_bgc_z[MAX_SOI_LAY] = {}, ds_bgc_dz[MAX_SOI_LAY] = {};
+  int ds_bgc_type[MAX_SOI_LAY] = {};
+  void ds_begin_month();
+  void ds_snapshot_soil(int& numsl, double* z, double* dz, int* type);
+  void updateMonthly_DailyCSplit(const int & dinm);
 
   Integrator vegintegrator[NUM_PFT];
   Integrator solintegrator;

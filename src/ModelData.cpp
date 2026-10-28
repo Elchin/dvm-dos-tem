@@ -4,6 +4,7 @@
 #include <json/value.h>
 #include <boost/filesystem.hpp>
 #include "../include/ModelData.h"
+#include "../include/DailyCSplit.h"
 #include "../include/timeconst.h"
 
 #include "../include/TEMLogger.h"
@@ -203,6 +204,16 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     std::cerr << "FATAL: model_settings.n_rootless_fix must be 0, 1 or 2" << std::endl;
     exit(EXIT_FAILURE);
   }
+  // v5p: daily_c_split (output only), default 0; only the numbers 0 and 1 are valid.
+  // Refs: see DailyCSplit.h / ModelData.h.
+  {
+    Json::Value dcs = controldata["model_settings"].get("daily_c_split", 0);
+    if (!dcsplit::valid_switch(dcs)) {
+      std::cerr << "FATAL: model_settings.daily_c_split must be 0 or 1" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    daily_c_split = dcs.asInt();
+  }
   // ET-split fixes S1-S4 (v5l), default 0 = off (legacy); see ModelData.h / Vegetation_Env.h
   et_fpc_once_fix    = controldata["model_settings"].get("et_fpc_once_fix", 0).asInt();
   nv_snow_bury_fix   = controldata["model_settings"].get("nv_snow_bury_fix", 0).asInt();
@@ -312,6 +323,7 @@ ModelData::ModelData():force_cmt(-1) {
   n_safetynet_conserve = 0; // v5m L1 (off)
   n_extract_limiter = 0; soil_giveup_retry = 0; soil_giveup_diag = 0; n_extract_tau = 0.2; n_netnmin_rescale_guard = 0; // v5n (off)
   n_rootless_fix = 2; n_som_move_fix = 1; n_nonvasc_extract = 1; // v5o: N1-N3 fixes on by default (legacy = 0)
+  daily_c_split = 0; // v5p (off)
   nv_snow_bury_depth = 0.0;
   set_envmodule(false);
   set_bgcmodule(false);
@@ -587,6 +599,16 @@ void ModelData::create_netCDF_output_files(int ysize, int xsize,
       }
     } // end looping over tokens (aka columns) in a line
 
+    // v5p: the *_DS outputs need model_settings.daily_c_split = 1 (FATAL otherwise).
+    {
+      std::string dcs_err = dcsplit::request_error(name,
+          new_spec.yearly || new_spec.monthly || new_spec.daily, new_spec.daily, this->daily_c_split);
+      if (!dcs_err.empty()) {
+        std::cerr << dcs_err << std::endl;
+        exit(EXIT_FAILURE);
+      }
+    }
+
     // Only create a file if a timestep is specified for the variable.
     // Otherwise, assume the user does not want that variable output.
     if(new_spec.yearly || new_spec.monthly || new_spec.daily){
@@ -622,6 +644,13 @@ void ModelData::create_netCDF_output_files(int ysize, int xsize,
 
       temutil::nc( nc_put_att_text(ncid, NC_GLOBAL, "run_name", this->run_name.length(), this->run_name.c_str() ) );
       temutil::nc( nc_put_att_text(ncid, NC_GLOBAL, "run_description", this->run_description.length(), this->run_description.c_str() ) );
+      if (dcsplit::is_ds_name(name)) { // v5p: label the statistical daily split
+        const std::string dsnote = "Statistical daily split of the model's monthly C flux "
+          "(model_settings.daily_c_split = 1, output only): X_d = M*w_d/sum(w), w = the model's own "
+          "environmental scalar with that day's drivers; the days of a month sum to the monthly value. "
+          "Not a daily process model. See docs/daily-mode-REFERENCES.md.";
+        temutil::nc( nc_put_att_text(ncid, NC_GLOBAL, "daily_c_split_note", dsnote.length(), dsnote.c_str()) );
+      }
 
       //Calculating total timesteps
       int stage_timestep_count = 0;
