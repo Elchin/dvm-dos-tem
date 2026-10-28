@@ -24,3 +24,10 @@ def test_parse_and_residual(tmp_path):
     res, ol = cs.n_residual(a)
     assert np.allclose(res[seg < 2], 0) and np.allclose(res[seg == 2], 0.001)
     assert np.allclose(ol, 0.3)
+
+
+def test_residual_includes_regrow_n_input():
+    # yr m N0 N1 ai oi al ol tl tv vi rn: N1-N0 = ai - tl + rn
+    a = np.array([[0, 7, 100.0, 100.0 + 0.5 - 2.0 + 0.09, 0.5, 0, 0, 0, 2.0, 0, 0, 0.09]])
+    res, _ = cs.n_residual(a)
+    assert abs(res[0]) < 1e-12

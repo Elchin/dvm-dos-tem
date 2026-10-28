@@ -26,7 +26,10 @@ def parse_nbal(path):
 
 def n_residual(a):
     _, _, n0, n1, ai, oi, al, ol, tl, tv, vi = a.T[:11]
-    return (n1 - n0) - (ai + oi + vi - al - tl - tv), ol
+    # 12th column: RTS regrow external N input (TKREGROWN), 0 without RTS; same
+    # formula as spatial10x10_regrow/analyze.py
+    rn = a[:, 11] if a.shape[1] > 11 else 0.0
+    return (n1 - n0) - (ai + oi + vi + rn - al - tl - tv), ol
 
 
 def nan_vars(path):

@@ -8,7 +8,8 @@ Per run (ROOT/cNN/<run>/stage2b_{rts|baseline}/*_sc.nc):
   * carbon closure: monthly |dECOC + TKNETC| < 0.01 gC/m2/month and cumulative
     |sum TKNETC + (ECOC_end - ECOC_start)| < 1.0 gC/m2 (suite tolerances),
     ECOC = VEGC + SOC + DEADC + DWDC (+ TKCH4POOL)
-  * N closure from nbal.txt (NBAL_DIAG=1): max |N_res| (reported; check_stage1 formula)
+  * N closure from nbal.txt (NBAL_DIAG=1): max |N_res| < 1e-3 gN/m2/month (check_stage1
+    formula incl. the regrow N input column)
 Per cell / folr (A=0 regressions):
   * base_f08 == base_f05 bit-for-bit (folr only enters at initiation)
   * notrig_fNN == base_fNN bit-for-bit (rts mode, all-zero mask)
@@ -26,6 +27,7 @@ from rts_sus2case.check_stage1 import parse_nbal, n_residual, nan_vars  # noqa: 
 
 FIRST = 2016; AUG = 7
 TOL_ID, TOL_M, TOL_CUM = 1e-9, 0.01, 1.0
+TOL_N = 1e-3   # gN/m2/month, as the stage-1 gate (nbal.txt prints 6 decimals)
 
 
 def read(d, v, ts='monthly'):
@@ -98,7 +100,8 @@ def check_run(run):
         b, _ = nan_vars(p)
         if b: nan[os.path.basename(p)] = b
     r['nan'] = nan
-    r['ok'] = (r['id_max'] < TOL_ID and r['c_month_max'] < TOL_M and abs(r['c_cum']) < TOL_CUM and not nan)
+    r['ok'] = (r['id_max'] < TOL_ID and r['c_month_max'] < TOL_M and abs(r['c_cum']) < TOL_CUM and not nan
+               and r.get('N_res_max', 0.0) < TOL_N)
     return r
 
 
