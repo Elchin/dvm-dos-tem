@@ -25,6 +25,14 @@ public:
 
   int ipft;
 
+  // N3 switch (model_settings "n_nonvasc_extract", default false = legacy).
+  // true: non-vascular (moss/lichen) N uptake is extracted from soil AVLN
+  // of the moss/fibric layers (and capped at 95 % of it), restoring N mass
+  // conservation. Port of hpc-tvc daily-climate-mode 5812ff19 / 20b2723e /
+  // d3d3fbba. Refs: Raich et al. 1991 doi:10.2307/1941899; McGuire et al.
+  // 1992 doi:10.1029/92GB00219; Turetsky 2003 doi:10.1639/05.
+  bool n_nonvasc_extract = false;
+
   vegpar_cal calpar;
   vegpar_bgc bgcpar;
 

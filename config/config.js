@@ -165,7 +165,12 @@
     "rts_regrow_n_rate1": 2.2,           // floor available-N supply, t <= rts_regrow_n_T (gN/m2/yr, before taper)
     "rts_regrow_n_rate2": 0.4,           // floor available-N supply after that (gN/m2/yr, before taper)
     "rts_regrow_n_taper": true,          // taper floor N supply by GPP recovery: factor 1 - r^n_taper_pow
-    "rts_regrow_n_taper_pow": 4.0        // taper exponent (1 - 0.5^4 = 0.94 at half recovery)
+    "rts_regrow_n_taper_pow": 4.0,       // taper exponent (1 - 0.5^4 = 0.94 at half recovery)
+    // Soil/vegetation N switches ported from hpc-tvc daily-climate-mode. All default
+    // false -> outputs bit-identical to rts-v0.3 (tested; reference/v03).
+    "n_nonvasc_extract": false           // N3: moss/lichen N uptake taken from soil AVLN of the moss/fibric
+                                         // layers, capped at 95 % of it (restores N mass conservation;
+                                         // hpc-tvc 5812ff19/20b2723e/d3d3fbba; Turetsky 2003 doi:10.1639/05)
 //    //"dynamic_climate": 0,
 //    //"varied_co2": 0,
 //    //"fire_severity_as_input": 0,    // fire sev. as input or ??

@@ -72,6 +72,10 @@ Cohort::Cohort(int y, int x, ModelData* modeldatapointer):
   this->climate.baseline_start = modeldatapointer->baseline_start;
   this->climate.baseline_end = modeldatapointer->baseline_end;
   this->climate.m2d_mean_preserving = modeldatapointer->m2d_mean_preserving;
+  // Switches ported from hpc-tvc daily-climate-mode (default off).
+  for (int ip = 0; ip < NUM_PFT; ip++) {
+    this->vegbgc[ip].n_nonvasc_extract = modeldatapointer->n_nonvasc_extract;
+  }
   //Prepare averaged input set for EQ stage
   this->climate.prep_avg_climate();
 

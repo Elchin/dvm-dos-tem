@@ -136,6 +136,9 @@ public:
   RTSRegrowParams tk_regrow;  // post-slump vegetation recovery (off -> v0.2)
   RTSFloorParams tk_floor;   // post-slump floor RH cap / export / anoxia (all off -> v0.1)
   bool tk_initiation = true; // false: thermokarst module on (ice) but never initiate RTS (baseline)
+  // Soil/vegetation N switches ported from hpc-tvc daily-climate-mode
+  // (all default off -> bit-identical to rts-v0.3 behaviour).
+  bool n_nonvasc_extract = false; // N3: moss/lichen N uptake extracted from soil AVLN (Vegetation_Bgc)
 
   int cell_timelimit; //Time limit in seconds for cell computation time
   time_t cell_stime; //Start time per cell. Move to Runner?

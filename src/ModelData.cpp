@@ -138,6 +138,7 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     tk_floor.load(ms);
     tk_regrow.load(ms);
     if (ms.isMember("monthly2daily_mean_preserving")) m2d_mean_preserving = ms["monthly2daily_mean_preserving"].asBool();
+    if (ms.isMember("n_nonvasc_extract")) n_nonvasc_extract = ms["n_nonvasc_extract"].asBool();
     if (!(tk_excess_fraction >= 0.0 && tk_excess_fraction < 0.8) || !(tk_excess_top >= 0.0) ||
         !(tk_excess_bottom > tk_excess_top)) {
       throw std::invalid_argument("invalid thermokarst excess-ice profile");

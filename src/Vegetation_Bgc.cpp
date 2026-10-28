@@ -530,9 +530,34 @@ void Vegetation_Bgc::deltanfeed() {
         del_soi2v.innuptake = 0.95 * avln;
       }
 
+    } else if (n_nonvasc_extract) {
+      // N3 (model_settings "n_nonvasc_extract", default false; port of
+      // hpc-tvc daily-climate-mode 5812ff19 / 20b2723e / d3d3fbba).
+      // With the switch on the non-vascular (moss/lichen) uptake is taken
+      // from the soil AVLN pool (see afterIntegration), so it is limited
+      // like the vascular uptake above: 95 % of the AVLN in the moss/fibric
+      // layers (type <= 1) holding liquid water; all layers if those hold none.
+      // Refs: no published source for this scheme -- it restores N mass
+      // conservation (uptake was previously created from nothing).
+      // Monthly TEM N uptake limited by soil available N: Raich et al. 1991,
+      // doi:10.2307/1941899; McGuire et al. 1992, doi:10.1029/92GB00219.
+      // Bryophyte N uptake from the moss/peat layer: Turetsky 2003,
+      // doi:10.1639/05.
+      double avln = 0.0;
+      for (int pass = 0; pass < 2 && avln <= 0.0; pass++) {
+        for (int il=0; il<cd->m_soil.numsl; il++) {
+          if ((pass == 1 || cd->m_soil.type[il] <= 1) &&
+              bd->m_sois.avln[il] > 0. && ed->m_sois.liq[il] > 0.) {
+            avln += bd->m_sois.avln[il];
+          }
+        }
+      }
+      if (del_soi2v.innuptake > 0.95 * avln) {
+        del_soi2v.innuptake = 0.95 * avln;
+      }
     } else {
       // For non-vascular plants innuptake is not influenced by soil
-      // available Nitrogen! Nothing to do...
+      // available Nitrogen! Nothing to do... (legacy; N3 switch off)
     }
 
 
@@ -830,6 +855,31 @@ void Vegetation_Bgc::afterIntegration() {
         bd->m_soi2v.nextract[il] = tempnuptake * fracnuptake[il];   //
       } else {
         bd->m_soi2v.nextract[il] = 0.;
+      }
+    }
+    if (n_nonvasc_extract && cd->m_veg.nonvascular[ipft] > 0 && tempnuptake > 0.) {
+      // N3 (hpc-tvc 5812ff19 / 20b2723e / d3d3fbba; refs at deltanfeed):
+      // the non-vascular uptake is extracted from the top (moss/fibric)
+      // layers, weighted by AVLN x liquid water (same weighting as the
+      // vascular fracnuptake, without roots); all layers if those hold none.
+      // Side effect (documented): Soil_Bgc treats a layer with
+      // rtnextract > 0 as "rooted", so these layers then also get their
+      // net mineralization / AVLN update.
+      double w[MAX_SOI_LAY] = {0.}, ws = 0.;
+      for (int pass = 0; pass < 2 && ws <= 0.; pass++) {
+        for (int il=0; il<cd->m_soil.numsl; il++) {
+          w[il] = 0.;
+          if ((pass == 1 || cd->m_soil.type[il] <= 1) &&
+              bd->m_sois.avln[il] > 0. && ed->m_sois.liq[il] > 0.) {
+            w[il] = bd->m_sois.avln[il] * ed->m_sois.liq[il];
+          }
+          ws += w[il];
+        }
+      }
+      if (ws > 0.) {
+        for (int il=0; il<cd->m_soil.numsl; il++) {
+          bd->m_soi2v.nextract[il] = tempnuptake * w[il] / ws;
+        }
       }
     }
   }
