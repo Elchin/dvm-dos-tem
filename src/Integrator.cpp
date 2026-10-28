@@ -54,6 +54,7 @@ int Integrator::nmin_tol_fix = 0; // Fix C1 (v5k), default off (legacy)
 int Integrator::n_safetynet_conserve = 0; // Fix L1 (v5m), default off (legacy)
 int Integrator::soil_giveup_retry = 0;    // Fix G2 (v5n), default off (legacy)
 int Integrator::soil_giveup_diag = 0;     // v5n diagnostics, default off
+int Integrator::soil_negpool_fix = 0;     // Fix NP (v5q-negpool), default off (legacy)
 
 int REJECT = 0;
 int ACCEPT = 1;
@@ -244,9 +245,17 @@ void Integrator::updateMonthlySbgc(const int & numsoillayer) {
 
   // initialize the state from 'bd';
   c2ystate_soi(y);
+  // Fix NP (v5q-negpool, F2): no soil month may start with a negative N pool
+  // (it would lock adapt() at t0 = 0); removed N is booked as debt. Refs: Integrator.h.
+  if (soil_negpool_fix == 1) {
+    const int nsl = std::min(numsl, (int)MAX_SOI_LAY);
+    n_debt += healNegative(&y[I_L_AVLN], nsl);
+    n_debt += healNegative(&y[I_L_ORGN], nsl);
+    n_debt += healNegative(&y[I_WDEBRISN], 1);
+  }
   // Fix L1 (v5m): N owed by an earlier safety-net event whose donors were empty
   // Refs (L1): see Integrator.h (n_safetynet_conserve).
-  if (n_safetynet_conserve == 1 && n_debt > 0.0) {
+  if ((n_safetynet_conserve == 1 || soil_negpool_fix == 1) && n_debt > 0.0) {
     payNDebt();
   }
   // integration
@@ -382,6 +391,32 @@ double Integrator::conserveSafetyNetN(const double frac) {
   }
   n_debit_total += got;
   return got;
+}
+
+/** Fix NP (v5q-negpool, F1). Legacy clamp when the layer can afford it
+*   (ORGN + AVLN >= 0.001, same float arithmetic as legacy); otherwise
+*   ORGN = max(0, ORGN + AVLN), AVLN = 0 and the unpaid part is returned. */
+double Integrator::clampLayerN(float & avln, float & orgn) {
+  if (!(avln < 0)) { return 0.0; }
+  if (orgn + avln - 0.001 >= 0) {
+    orgn += avln - 0.001;
+    avln = 0.001;
+    return 0.0;
+  }
+  double tot = (double)orgn + (double)avln;
+  avln = 0.0f;
+  if (tot >= 0.0) { orgn = (float)tot; return 0.0; }
+  orgn = 0.0f;
+  return -tot;
+}
+
+/** Fix NP (v5q-negpool, F2): zero negative entries, return the removed deficit. */
+double Integrator::healNegative(float pool[], const int n) {
+  double d = 0.0;
+  for (int i = 0; i < n; i++) {
+    if (pool[i] < 0.0f) { d -= (double)pool[i]; pool[i] = 0.0f; }
+  }
+  return d;
 }
 
 /** Fix L1 (v5m): pay N owed by earlier events from ORGN, then AVLN. */
@@ -709,7 +744,10 @@ void Integrator::y2cstate_soi(float y[]) {
     bd->m_sois.sompr[il]= y[I_L_SOMPR+il];
     bd->m_sois.somcr[il]= y[I_L_SOMCR+il];
 
-    if(y[I_L_AVLN+il] < 0) { //add by shuhua Dec 8 2007
+    if (soil_negpool_fix == 1) {
+      // Fix NP (v5q-negpool, F1): borrow only N the layer has. Refs: Integrator.h.
+      n_debt += clampLayerN(y[I_L_AVLN+il], y[I_L_ORGN+il]);
+    } else if(y[I_L_AVLN+il] < 0) { //add by shuhua Dec 8 2007
       y[I_L_ORGN+il] += y[I_L_AVLN+il] - 0.001;
       y[I_L_AVLN+il] = 0.001;
     }

@@ -210,6 +210,10 @@ public:
   // 1 = the soil AVLN pools lose exactly the booked NLOST); see Soil_Bgc.h. Integers 0/1 only.
   // Refs: no published source (code bug, N mass conservation); see Soil_Bgc.h.
   int n_leach_fix;
+  // v5q-negpool: model_settings.soil_negpool_fix (0 = legacy, default; 1 = no negative soil N
+  // pools from the legacy AVLN clamp, negatives healed at month start, removed N booked as debt);
+  // see Integrator.h. Integers 0/1 only.
+  int soil_negpool_fix;
   // Refs (N2): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 20b2723e); restores N mass conservation (N moves with C).
   // Refs (N3): no published source for the scheme; restores N mass conservation; bryophyte N uptake from the moss/peat layer: Turetsky 2003, doi:10.1639/05.
   // ET-split fixes (v5l), all OFF by default (0 = legacy, bit-identical); see

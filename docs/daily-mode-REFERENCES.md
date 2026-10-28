@@ -103,6 +103,12 @@ Switch defaults: every switch below is 0/off by default, which is legacy behavio
 |---|---|---|
 | `n_leach_fix` (0 legacy / 1 fix) | 1 = the soil AVLN pools lose exactly the booked inorganic N leaching `avlnlost` (`NLOST`): overland part from layer 0, drainage part from the drainage-zone layers by their current AVLN. Legacy `deltastate` removed avlnlost·qdrain (qdrain in mm/month), not the overland part, and nothing when totdzliq ≤ 0.01 (same code in upstream dvm-dos-tem c0fa75cb). | **No published source** (code bug; N mass conservation). Observed arctic DIN export for plausibility of the resulting leaching: [McNamara2008], [Khosh2017]. |
 
+### No negative soil N pools (v5q-negpool, branch v5q-negpool)
+
+| switch | what it does | references |
+|---|---|---|
+| `soil_negpool_fix` (0 legacy / 1 fix) | 1 = the "shuhua 2007" clamp in `Integrator::y2cstate_soi` can no longer write a negative ORGN (empty layer: AVLN = 0, ORGN = max(0, ORGN + AVLN), shortfall to `n_debt`); after `c2ystate_soi` any negative layer AVLN/ORGN or WDEBRISN is healed to 0 with the deficit booked to `n_debt` and repaid by `payNDebt`. Removes the permanent give-up/safety-net lock (RH = 0) triggered by an empty moss layer (CAP125 TVC_Warming_nfeed 2080). | **No published source for the fix** (code bug; N mass conservation). Principle: clipping/resetting a non-negative ODE state is mass-conserving only if the removed mass is booked [Shampine2005]. |
+
 ### Parameter test (not a switch)
 
 | change | status | references |

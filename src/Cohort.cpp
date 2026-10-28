@@ -81,6 +81,7 @@ Cohort::Cohort(int y, int x, ModelData* modeldatapointer):
   Soil_Bgc::n_netnmin_rescale_guard = modeldatapointer->n_netnmin_rescale_guard; // Fix G3 (v5n)
   Integrator::soil_giveup_retry = modeldatapointer->soil_giveup_retry; // Fix G2 (v5n)
   Integrator::soil_giveup_diag = modeldatapointer->soil_giveup_diag;   // v5n diagnostics
+  Integrator::soil_negpool_fix = modeldatapointer->soil_negpool_fix;   // Fix NP (v5q-negpool)
 
   //On construction we assume historic climate, which will be
   // overwritten by projected climate later when necessary.

@@ -231,6 +231,15 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     }
     n_leach_fix = nl.asInt();
   }
+  // v5q-negpool: soil_negpool_fix (0 = legacy, default). Refs: see Integrator.h.
+  {
+    Json::Value np = controldata["model_settings"].get("soil_negpool_fix", 0);
+    if (!bnf::valid_int(np, 0, 1)) {
+      std::cerr << "FATAL: model_settings.soil_negpool_fix must be 0 (legacy) or 1 (no negative soil N pools)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    soil_negpool_fix = np.asInt();
+  }
   // ET-split fixes S1-S4 (v5l), default 0 = off (legacy); see ModelData.h / Vegetation_Env.h
   et_fpc_once_fix    = controldata["model_settings"].get("et_fpc_once_fix", 0).asInt();
   nv_snow_bury_fix   = controldata["model_settings"].get("nv_snow_bury_fix", 0).asInt();
@@ -342,6 +351,7 @@ ModelData::ModelData():force_cmt(-1) {
   n_rootless_fix = 2; n_som_move_fix = 1; n_nonvasc_extract = 1; // v5o: N1-N3 fixes on by default (legacy = 0)
   daily_c_split = 0; // v5p (off)
   n_leach_fix = 0; // v5q-ndrain (off)
+  soil_negpool_fix = 0; // v5q-negpool (off)
   nv_snow_bury_depth = 0.0;
   set_envmodule(false);
   set_bgcmodule(false);

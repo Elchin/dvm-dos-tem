@@ -162,6 +162,24 @@ public :
   // pool or the error-test variable, with the soil N state of that layer) and
   // count rkf45 calls; reported on stderr only (outputs unchanged).
   static int soil_giveup_diag;
+  // Fix NP (v5q-negpool), OFF by default: model_settings.soil_negpool_fix.
+  // Legacy y2cstate_soi() (shuhua 2007) clamps a negative layer AVLN with
+  // ORGN += AVLN - 0.001, AVLN = 0.001 without checking ORGN; in an empty moss
+  // layer (ORGN = 0) this writes ORGN = -0.001. Every later soil month then
+  // starts with a negative pool, checkPools() rejects every RKF45 stage for any
+  // dt, adapt() gives up at t0 = 0 and the safety net resets the whole soil
+  // (RH = 0) for the rest of the run (CAP125 TVC_W 2080-2099, 233 months).
+  // 1 = (F1) the clamp only borrows N the layer has (legacy arithmetic when
+  // ORGN + AVLN >= 0.001; else ORGN = max(0, ORGN + AVLN), AVLN = 0) and
+  // (F2) any negative soil N pool found at the start of a soil month is set to
+  // 0; every gram removed this way is booked as N debt (L1 n_debt) and paid
+  // from ORGN, then AVLN (payNDebt), so total N is conserved. 0 = legacy.
+  static int soil_negpool_fix;
+  // Refs (NP): no published source for the fix (code: Integrator::y2cstate_soi, shuhua 2007); principle: a clipped/reset non-negative ODE state is mass-conserving only if the removed mass is booked (Shampine et al. 2005, doi:10.1016/j.amc.2004.12.011).
+  // F1 helper: returns the N (g/m2) the layer could not supply (>= 0).
+  static double clampLayerN(float & avln, float & orgn);
+  // F2 helper: sets negative entries of pool[0..n) to 0, returns removed deficit (>= 0).
+  static double healNegative(float pool[], const int n);
   int retry_count;          // G2: soil months retried with the limiter
   int retry_fail_count;     // G2: retries that still gave up
   bool retry_fired;         // G2: set by the last updateMonthlySbgc()
