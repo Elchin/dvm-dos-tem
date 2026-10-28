@@ -168,6 +168,8 @@ rts-unit-test: $(APPNAME)
 	./tests/rts/test_rts_units
 	$(CC) -std=c++11 -g -DBOOST_ALL_DYN_LINK -Iinclude $(INCLUDES) -o tests/rts/test_daily_port_fixes tests/rts/test_daily_port_fixes.cpp $(addprefix obj/, $(OBJECTS)) $(LIBDIR) $(LIBS) $(MPILFLAGS) $(OMPLFLAGS)
 	./tests/rts/test_daily_port_fixes
+	$(CC) -std=c++11 -g -DBOOST_ALL_DYN_LINK -Iinclude $(INCLUDES) -o tests/rts/test_daily_n_switches tests/rts/test_daily_n_switches.cpp $(addprefix obj/, $(OBJECTS)) $(LIBDIR) $(LIBS) $(MPILFLAGS) $(OMPLFLAGS)
+	./tests/rts/test_daily_n_switches
 
 rts-test: rts-unit-test
 	$(RTS_PYTHON) -m pytest -v tests/rts

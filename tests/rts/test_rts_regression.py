@@ -3,7 +3,7 @@
 Tolerances for comparisons against stored references are set by env
 RTS_RTOL / RTS_ATOL (default exact-ish 1e-9; CI may loosen for other compilers).
 """
-import os, subprocess
+import os, shutil, subprocess
 import numpy as np
 import pytest
 import rtslib as r
@@ -71,6 +71,18 @@ def test_port_fixes_unit_binary():
     032e8f13, e3fcc91c, 0e22205a): Feb precip conservation, Richards guards (no hang), empty snow
     layers, SC CO2 by calendar year, NUL-safe time units, cohort.md pointer."""
     exe = os.path.join(r.REPO, 'tests', 'rts', 'test_daily_port_fixes')
+    if not os.path.exists(exe):
+        pytest.skip('unit test binary not built (make rts-unit-test)')
+    p = subprocess.run([exe], capture_output=True, text=True, cwd=r.REPO, timeout=600)
+    print(p.stdout)
+    assert p.returncode == 0
+    assert ' 0 failed' in p.stdout
+
+def test_n_switches_unit_binary():
+    """Unit tests for the switches ported from hpc-tvc daily-climate-mode (all default off):
+    N3 n_nonvasc_extract (5812ff19/20b2723e/d3d3fbba), G1 n_extract_limiter/n_extract_tau
+    (904a4a7c/5c597aec) and the soil give-up counters / soil_giveup_diag (forced give-up case)."""
+    exe = os.path.join(r.REPO, 'tests', 'rts', 'test_daily_n_switches')
     if not os.path.exists(exe):
         pytest.skip('unit test binary not built (make rts-unit-test)')
     p = subprocess.run([exe], capture_output=True, text=True, cwd=r.REPO, timeout=600)
@@ -525,3 +537,68 @@ def test_regrow_gydan_closure_and_recovery(tmp_path, cmt):
     assert np.array_equal(g(d, 'GPP')[:m + 1], g(d0, 'GPP')[:m + 1])
     assert g(d, 'TKREGROWC')[m + 12] > 0                       # reseed at stabilization
     assert g(d, 'GPP')[m + 13:].sum() > g(d0, 'GPP')[m + 13:].sum()
+
+
+# ---------------- soil give-up counters / soil_giveup_diag (default off) -----
+def _giveup_run(workdir, diag, data_dir=None, tk_file='thermokarst-none.nc', extra=None):
+    import subprocess
+    if os.path.exists(workdir): shutil.rmtree(workdir)
+    os.makedirs(workdir)
+    cfgp = r.make_config(workdir, False, tk_file=tk_file, data_dir=data_dir,
+                         extra=dict(extra or {}, soil_giveup_diag=bool(diag)))
+    p = subprocess.run([BIN, '-f', cfgp, '-l', 'fatal'] + r.RUN_ARGS, cwd=r.REPO,
+                       capture_output=True, text=True, timeout=900)
+    assert p.returncode == 0, p.stderr[-2000:]
+    return os.path.join(workdir, 'output'), p.stderr
+
+def _check_giveup_diag(tmp_path, data_dir, tk_file, expect_giveups, extra=None):
+    """soil_giveup_diag only reports: nc outputs identical to diag off; per-event rows,
+    per-year rows, stderr lines and the stage summaries agree (adapted from hpc-tvc
+    daily-climate-mode soil_giveup_diag, 904a4a7c / 5c597aec)."""
+    import csv
+    off, err_off = _giveup_run(str(tmp_path / 'off'), False, data_dir, tk_file, extra)
+    on, err_on = _giveup_run(str(tmp_path / 'on'), True, data_dir, tk_file, extra)
+    assert r.compare_dirs(off, on) == []                       # bit-identical outputs
+    assert 'SOIL_GIVEUP' not in err_off                        # silent by default
+    assert not os.path.exists(os.path.join(off, 'soil_giveup_diag_yearly.csv'))
+    summ = {}
+    for ln in err_on.splitlines():
+        if ln.startswith('SOIL_GIVEUP_SUMMARY'):
+            kv = dict(t.split('=', 1) for t in ln.split()[1:])
+            summ[kv['stage']] = {k: int(v) for k, v in kv.items() if k not in ('stage', 'cell')}
+    events = [ln for ln in err_on.splitlines() if ln.startswith('SOIL_GIVEUP_DIAG ')]
+    yearly = list(csv.DictReader(open(os.path.join(on, 'soil_giveup_diag_yearly.csv'))))
+    ev_csv = []
+    if os.path.exists(os.path.join(on, 'soil_giveup_diag.csv')):
+        ev_csv = list(csv.DictReader(open(os.path.join(on, 'soil_giveup_diag.csv'))))
+    assert len(ev_csv) == len(events)
+    for st, s in summ.items():
+        ys = [y for y in yearly if y['stage'] == st]
+        assert len(ys) == s['years']
+        # pre-run (-p) has no soil BGC integration: 0 months there
+        assert sum(int(y['months']) for y in ys) == s['months']
+        assert s['months'] in (0, 12 * s['years'])
+        assert sum(int(y['giveups']) for y in ys) == s['giveups']
+        assert sum(int(y['retry_failed']) for y in ys) == s['retry_failed']
+        assert sum(int(y['rkf_calls']) for y in ys) == s['rkf_calls']
+        assert sum(int(y['forced_steps']) for y in ys) == s['forced_steps']
+        evs = [e for e in ev_csv if e['stage'] == st]
+        assert len(evs) == s['giveups']                        # one row per give-up month
+        assert sum(int(e['retry_failed']) for e in evs) == s['retry_failed']
+        assert s['retry_failed'] <= s['giveups']
+        assert s['forced_steps'] >= 100 * s['giveups']         # each give-up = maxitmon forced steps
+    total = sum(s['giveups'] for s in summ.values())
+    if expect_giveups: assert total > 0
+    return summ
+
+def test_soil_giveup_diag_synthetic(tmp_path):
+    _check_giveup_diag(tmp_path, None, 'thermokarst-none.nc', False)
+
+@pytest.mark.skipif(not os.path.exists(os.path.join(GYDAN70, 'vegetation.nc')),
+                    reason='Gydan CMT70 inputs not available')
+def test_soil_giveup_diag_cmt70_forced_giveups(tmp_path):
+    """Gydan CMT70 (RTS off) gives up in the soil solver (mineral AVLN overdrawn):
+    the counters must match the per-event diagnostic exactly."""
+    summ = _check_giveup_diag(tmp_path, GYDAN70, 'thermokarst-none.nc', True,
+                              extra={'baseline_start': 1940, 'baseline_end': 1970})
+    print('CMT70 give-ups:', summ)

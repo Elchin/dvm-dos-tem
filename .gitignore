@@ -56,5 +56,6 @@ bundle*
 .dvc/*
 tests/rts/test_rts_units
 tests/rts/test_daily_port_fixes
+tests/rts/test_daily_n_switches
 __pycache__/
 .pytest_cache/
