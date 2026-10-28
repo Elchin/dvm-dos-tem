@@ -46,7 +46,7 @@ def maps(D, P, table, out):
         G1, lat, lon = grid(table, P, lambda p, r: p['sc'][n]['area_frac_2100'] * float(r['cell_area_km2']))
         G2, _, _ = grid(table, P, lambda p, r: p['sc'][n]['dTKNETC_cum_g'] / 1e9)
         lone, late = edges(np.nan_to_num(lon, nan=np.nanmean(lon))), edges(np.nan_to_num(lat, nan=np.nanmean(lat)))
-        m1 = ax[r_, 0].pcolormesh(lone, late, G1, cmap='viridis', vmin=0, vmax=np.nanmax([G1.max(), 1e-9]))
+        m1 = ax[r_, 0].pcolormesh(lone, late, G1, cmap='viridis', vmin=0, vmax=max(float(np.nanmax(G1)), 1e-9))
         fig.colorbar(m1, ax=ax[r_, 0], label='disturbed area 2100 (km$^2$)')
         lim = np.nanmax(np.abs(G2)) or 1
         m2 = ax[r_, 1].pcolormesh(lone, late, G2, cmap='RdBu_r', vmin=-lim, vmax=lim)
