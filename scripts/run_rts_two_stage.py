@@ -85,6 +85,9 @@ def main():
     ap.add_argument('--mode', choices=['rts', 'baseline'], default='rts')
     ap.add_argument('--ch4', action='store_true', help='enable reduced-form CH4 diagnostic (rts-ch4 only)')
     ap.add_argument('--stage1-restart', default=None, help='reuse an existing stage-1 restart-sp.nc')
+    ap.add_argument('--stage2a-restart', default=None,
+                    help='reuse an existing stage-2a restart-tr.nc (skips stage 2a; needs --stage1-restart '
+                         'or a stage 1 run only for bookkeeping)')
     ap.add_argument('--log-level', default='fatal')
     ap.add_argument('--stop-after', choices=['stage1', 'stage2a', 'stage2b'], default='stage2b',
                     help='stop after this stage (e.g. stage1: shared spin-up only, for the '
@@ -119,17 +122,21 @@ def main():
         return finish(w, times)
 
     # ---- Stage 2a: historical transient, RTS off
-    c = json.loads(json.dumps(cfg0)); c['IO']['restart_from'] = sp_restart
-    c['model_settings']['thermokarst'] = False
-    times['stage2a'] = run_step(a.binary, c, os.path.join(w, 'stage2a_hist'),
-                                ['-p', '0', '-e', '0', '-s', '0', '-t', str(a.hist), '-n', '0'],
-                                a.log_level, 'stage2a historical')
+    if a.stage2a_restart:
+        tr_restart = os.path.abspath(a.stage2a_restart)
+    else:
+        c = json.loads(json.dumps(cfg0)); c['IO']['restart_from'] = sp_restart
+        c['model_settings']['thermokarst'] = False
+        times['stage2a'] = run_step(a.binary, c, os.path.join(w, 'stage2a_hist'),
+                                    ['-p', '0', '-e', '0', '-s', '0', '-t', str(a.hist), '-n', '0'],
+                                    a.log_level, 'stage2a historical')
+        tr_restart = os.path.join(w, 'stage2a_hist', 'restart-tr.nc')
     if a.stop_after == 'stage2a':
         return finish(w, times)
 
     # ---- Stage 2b: ice init + short spin-up + RTS (scenario stage)
     c = json.loads(json.dumps(cfg0))
-    c['IO']['restart_from'] = os.path.join(w, 'stage2a_hist', 'restart-tr.nc')
+    c['IO']['restart_from'] = tr_restart
     c['model_settings']['thermokarst'] = True
     c['model_settings']['thermokarst_initiation'] = (a.mode == 'rts')
     if a.ch4: c['model_settings']['thermokarst_ch4'] = True
