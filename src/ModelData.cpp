@@ -139,6 +139,11 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     tk_regrow.load(ms);
     if (ms.isMember("monthly2daily_mean_preserving")) m2d_mean_preserving = ms["monthly2daily_mean_preserving"].asBool();
     if (ms.isMember("n_nonvasc_extract")) n_nonvasc_extract = ms["n_nonvasc_extract"].asBool();
+    if (ms.isMember("n_extract_limiter")) n_extract_limiter = ms["n_extract_limiter"].asBool();
+    if (ms.isMember("n_extract_tau")) n_extract_tau = ms["n_extract_tau"].asDouble();
+    if (!(n_extract_tau > 0.0 && n_extract_tau <= 1.0)) {
+      throw std::invalid_argument("model_settings n_extract_tau must be in (0, 1] (month fraction)");
+    }
     if (!(tk_excess_fraction >= 0.0 && tk_excess_fraction < 0.8) || !(tk_excess_top >= 0.0) ||
         !(tk_excess_bottom > tk_excess_top)) {
       throw std::invalid_argument("invalid thermokarst excess-ice profile");

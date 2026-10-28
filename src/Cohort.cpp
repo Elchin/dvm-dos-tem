@@ -76,6 +76,8 @@ Cohort::Cohort(int y, int x, ModelData* modeldatapointer):
   for (int ip = 0; ip < NUM_PFT; ip++) {
     this->vegbgc[ip].n_nonvasc_extract = modeldatapointer->n_nonvasc_extract;
   }
+  this->soilbgc.n_extract_limiter = modeldatapointer->n_extract_limiter;  // G1
+  this->soilbgc.n_extract_tau = modeldatapointer->n_extract_tau;
   //Prepare averaged input set for EQ stage
   this->climate.prep_avg_climate();
 

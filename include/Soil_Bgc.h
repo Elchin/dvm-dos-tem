@@ -44,6 +44,20 @@ public:
   double debris_n() const { return d2wdebrisn; }
   double root_n_extract(int il) const { return rtnextract[il]; }
 
+  // G1 root N uptake limiter (model_settings "n_extract_limiter", default
+  // false = legacy; "n_extract_tau", default 0.2, month fraction in (0, 1]).
+  // Port of hpc-tvc daily-climate-mode 904a4a7c / 5c597aec (G2/G3 NOT ported).
+  // Root N extraction r is a zero-order sink on AVLN during the soil month,
+  // so AVLN in rooted layers can reach 0 mid-month and adapt() gives up.
+  // With the limiter on, the AVLN part of r in a rooted layer is
+  //   rx = r * min(1, AVLN / (tau * r))   (= min(r, AVLN / tau)),
+  // and the rest r - rx is taken from ORGN of the same layer, so total
+  // extraction, plant uptake and soil N mass are unchanged.
+  bool n_extract_limiter = false;
+  double n_extract_tau = 0.2;
+  // AVLN part of the extraction r from pool A with time scale tau (above).
+  static double limitedExtraction(const double r, const double A, const double tau);
+
   Soil_Bgc();
   ~Soil_Bgc();
 

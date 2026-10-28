@@ -29,6 +29,32 @@
 extern src::severity_logger< severity_level > glg;
 
 /** New constructor. Build it complete! Build it right! */
+/** G1 (hpc-tvc daily-climate-mode 904a4a7c / 5c597aec): AVLN part of the
+*   root N extraction r from a pool A, rx = r*min(1, A/(tau*r)); see Soil_Bgc.h.
+*   Refs: plant N uptake is a saturating function of soil available N in TEM
+*     (Raich et al. 1991, doi:10.2307/1941899; McGuire et al. 1992,
+*     doi:10.1029/92GB00219); demand-based uptake is down-regulated when soil
+*     mineral N cannot supply it (Thornton et al. 2007, doi:10.1029/2006GB002868);
+*     arctic/boreal plants also take up organic N (Nasholm et al. 1998,
+*     doi:10.1038/31921; Schimel & Bennett 2004, doi:10.1890/03-8002); a
+*     zero-order sink drives a non-negative ODE state below zero in finite time,
+*     which no step-size reduction avoids -- positivity needs a state-dependent
+*     sink (Shampine et al. 2005, doi:10.1016/j.amc.2004.12.011; Burchard et al.
+*     2003, doi:10.1016/S0168-9274(03)00101-6). */
+double Soil_Bgc::limitedExtraction(const double r, const double A, const double tau) {
+  if (!(r > 0.0)) {
+    return r;
+  }
+  const double cap = tau * r;
+  if (A >= cap) {
+    return r;
+  }
+  if (!(A > 0.0)) {
+    return 0.0;
+  }
+  return r * (A / cap);
+}
+
 Soil_Bgc::Soil_Bgc(): nfeed(false), avlnflg(false), baseline(false),
                       d2wdebrisc(UIN_D), d2wdebrisn(UIN_D),
                       mossdeathc(UIN_D), mossdeathn(UIN_D), kdshlw(UIN_D),
@@ -748,8 +774,22 @@ void Soil_Bgc::deltan() {
     //  integrated in 'Cohort.cpp'
     totnextract = 0.;
 
-    for (int il=0; il<MAX_SOI_LAY; il++) {
-      totnextract += bd->m_soi2v.nextract[il];
+    if (n_extract_limiter) {
+      // G1 (hpc-tvc 904a4a7c / 5c597aec; refs at limitedExtraction): only
+      // the AVLN part of the extraction of rooted layers enters the AVLN
+      // budget, the rest is taken from ORGN (see deltastate).
+      for (int il=0; il<MAX_SOI_LAY; il++) {
+        if (il < cd->m_soil.numsl &&
+            (bd->m_v2soi.rtlfalfrac[il] > 0. || rtnextract[il] > 0.)) {
+          totnextract += limitedExtraction(rtnextract[il], tmp_sois.avln[il], n_extract_tau);
+        } else {
+          totnextract += bd->m_soi2v.nextract[il];
+        }
+      }
+    } else {
+      for (int il=0; il<MAX_SOI_LAY; il++) {
+        totnextract += bd->m_soi2v.nextract[il];
+      }
     }
 
     if (this->avlnflg == 1) { // open-N (inorganic) swithed on - note here ONLY 'lost' considered, while 'input' shall be from outside if any
@@ -1175,7 +1215,13 @@ void Soil_Bgc::deltastate() {
           }
         }
       }
-      if(rooted){
+      if (rooted && n_extract_limiter) {
+        // G1 (hpc-tvc 904a4a7c / 5c597aec; refs at limitedExtraction):
+        // AVLN supplies rx = r*min(1, AVLN/(tau*r)), ORGN the rest r - rx.
+        const double rx = limitedExtraction(rtnextract[il], tmp_sois.avln[il], n_extract_tau);
+        del_sois.avln[il] = ninput + del_soi2soi.netnmin[il] - ndrain - rx;
+        del_sois.orgn[il] -= rtnextract[il] - rx;
+      } else if(rooted){
         del_sois.avln[il] = ninput + del_soi2soi.netnmin[il]
                             - ndrain - rtnextract[il];
       } else {

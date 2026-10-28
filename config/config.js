@@ -168,9 +168,14 @@
     "rts_regrow_n_taper_pow": 4.0,       // taper exponent (1 - 0.5^4 = 0.94 at half recovery)
     // Soil/vegetation N switches ported from hpc-tvc daily-climate-mode. All default
     // false -> outputs bit-identical to rts-v0.3 (tested; reference/v03).
-    "n_nonvasc_extract": false           // N3: moss/lichen N uptake taken from soil AVLN of the moss/fibric
+    "n_nonvasc_extract": false,          // N3: moss/lichen N uptake taken from soil AVLN of the moss/fibric
                                          // layers, capped at 95 % of it (restores N mass conservation;
                                          // hpc-tvc 5812ff19/20b2723e/d3d3fbba; Turetsky 2003 doi:10.1639/05)
+    "n_extract_limiter": false,          // G1: AVLN part of root N extraction r is r*min(1, AVLN/(tau*r)),
+                                         // rest r - rx from ORGN of the same layer (total uptake unchanged);
+                                         // removes most soil-solver give-ups but lowers GPP (hpc-tvc 904a4a7c/
+                                         // 5c597aec; Thornton 2007 doi:10.1029/2006GB002868, Shampine 2005)
+    "n_extract_tau": 0.2                 // G1 time scale, month fraction in (0, 1] (used only with the limiter on)
 //    //"dynamic_climate": 0,
 //    //"varied_co2": 0,
 //    //"fire_severity_as_input": 0,    // fire sev. as input or ??
