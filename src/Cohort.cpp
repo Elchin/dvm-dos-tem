@@ -315,6 +315,7 @@ void Cohort::initialize_state_parameters() {
   soilbgc.n_som_move_fix = md->n_som_move_fix;         // Fix N2 (v5k)
   soilbgc.bnfp = md->bnf;                              // v5q BNF (scheme 0 = off)
   soilbgc.n_leach_fix = md->n_leach_fix;               // v5q-ndrain (0 = legacy)
+  soilbgc.d2m_transfer_gate = md->d2m_transfer_gate;   // v5q-d2m-gate (0 = legacy)
   for (int ip = 0; ip < NUM_PFT; ip++) { vegbgc[ip].n_nonvasc_extract = md->n_nonvasc_extract; } // Fix N3 (v5k)
   for (int ip = 0; ip < NUM_PFT; ip++) {   // ET-split fixes S1-S4 (v5l), default 0
     vegenv[ip].fpc_once_fix       = md->et_fpc_once_fix;
@@ -496,6 +497,11 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
 
   if(currmind == 11) {
     BOOST_LOG_SEV(glg, debug) << "Clean up at end of year.";
+
+    // v5q-d2m-gate: keep this year's ALD for next year's gate (Refs: see Soil_Bgc.h)
+    if (md->d2m_transfer_gate != 0 && md->get_envmodule()) {
+      cd.d2m_ald_prevyr = fmax(0.0, edall->y_soid.ald);
+    }
 
     cd.endOfYear();
   }
@@ -1591,6 +1597,8 @@ void Cohort::set_state_from_restartdata() {
   solprntenv.set_state_from_restartdata(this->restartdata);
   soilbgc.set_state_from_restartdata(this->restartdata);
   fire.set_state_from_restartdata(this->restartdata);
+  // v5q-d2m-gate: previous-year ALD (absent in old restarts -> MISSING -> 0)
+  cd.d2m_ald_prevyr = (restartdata.d2m_ald_prevyr >= 0.0) ? restartdata.d2m_ald_prevyr : 0.0;
 
   for(int ii=0; ii<NUM_PFT; ii++){
     vegbgc[ii].set_state_from_restartdata(this->restartdata);
@@ -1714,6 +1722,8 @@ void Cohort::set_restartdata_from_state() {
   // ground-soil
   restartdata.numsl  = cd.d_soil.numsl;     // actual number of soil layers
   restartdata.monthsfrozen   = edall->monthsfrozen;
+  // v5q-d2m-gate: written only when d2m_transfer_gate != 0 (gate 0 restart files unchanged)
+  restartdata.d2m_ald_prevyr = (md->d2m_transfer_gate != 0) ? cd.d2m_ald_prevyr : MISSING_D;
   restartdata.rtfrozendays   = edall->rtfrozendays;
   restartdata.rtunfrozendays = edall->rtunfrozendays;
   restartdata.watertab   = edall->d_sois.watertab;

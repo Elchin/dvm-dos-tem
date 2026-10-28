@@ -269,6 +269,7 @@ MPI_Datatype RestartData::register_mpi_datatype() {
 #endif
 
 void RestartData::reinitValue() {
+  d2m_ald_prevyr = MISSING_D;   // v5q-d2m-gate
   // atmosphere
   dsr         = MISSING_I;
   firea2sorgn = MISSING_D;
@@ -405,6 +406,8 @@ void RestartData::update_from_ncfile(const std::string& fname, const int rowidx,
 
   read_px_prev_pft_vars(fname, rowidx, colidx);
 
+  read_px_d2m_vars(fname, rowidx, colidx);   // v5q-d2m-gate (optional variable)
+
   BOOST_LOG_SEV(glg, debug) << "Done reading data from file into RestartData.";
 }
 
@@ -436,8 +439,43 @@ void RestartData::write_pixel_to_ncfile(const std::string& fname, const int rowi
 
   write_px_prev_pft_vars(fname, rowidx, colidx);
 
+  if (d2m_ald_prevyr >= 0.0) { write_px_d2m_vars(fname, rowidx, colidx); }   // v5q-d2m-gate
+
   BOOST_LOG_SEV(glg, debug) << "Done writing RestartData.";
 
+}
+
+/** v5q-d2m-gate: optional scalar d2m_ald_prevyr (Y,X); absent -> MISSING_D (old restarts). */
+void RestartData::read_px_d2m_vars(const std::string& fname, const int rowidx, const int colidx) {
+  d2m_ald_prevyr = MISSING_D;
+  int ncid, cv;
+  temutil::nc( nc_open(fname.c_str(), NC_NOWRITE, &ncid), fname );
+  if (nc_inq_varid(ncid, "d2m_ald_prevyr", &cv) == NC_NOERR) {
+    size_t start[2] = {(size_t)rowidx, (size_t)colidx};
+    temutil::nc( nc_get_var1_double(ncid, cv, start, &d2m_ald_prevyr) );
+  }
+  temutil::nc( nc_close(ncid) );
+}
+
+/** v5q-d2m-gate: define d2m_ald_prevyr (Y,X) if needed and write this pixel (serial builds). */
+void RestartData::write_px_d2m_vars(const std::string& fname, const int rowidx, const int colidx) {
+#ifdef WITHMPI
+  BOOST_LOG_SEV(glg, warn) << "d2m_ald_prevyr not written to the restart in MPI builds (read as 0 on restart).";
+#else
+  int ncid, cv;
+  temutil::nc( nc_open(fname.c_str(), NC_WRITE, &ncid), fname );
+  if (nc_inq_varid(ncid, "d2m_ald_prevyr", &cv) != NC_NOERR) {
+    int dims[2];
+    temutil::nc( nc_inq_dimid(ncid, "Y", &dims[0]) );
+    temutil::nc( nc_inq_dimid(ncid, "X", &dims[1]) );
+    temutil::nc( nc_redef(ncid) );
+    temutil::nc( nc_def_var(ncid, "d2m_ald_prevyr", NC_DOUBLE, 2, dims, &cv) );
+    temutil::nc( nc_enddef(ncid) );
+  }
+  size_t start[2] = {(size_t)rowidx, (size_t)colidx};
+  temutil::nc( nc_put_var1_double(ncid, cv, start, &d2m_ald_prevyr) );
+  temutil::nc( nc_close(ncid) );
+#endif
 }
 
 /** Checks a given variable against an extreme negative value. 

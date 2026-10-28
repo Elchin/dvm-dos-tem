@@ -39,6 +39,8 @@ public :
   void read_px_prev_pft_vars(const std::string& fname, const int rowidx, const int colidx);
 
   void write_px_vars(const std::string& fname, const int rowidx, const int colidx);
+  void read_px_d2m_vars(const std::string& fname, const int rowidx, const int colidx);   // v5q-d2m-gate
+  void write_px_d2m_vars(const std::string& fname, const int rowidx, const int colidx);  // v5q-d2m-gate
   void write_px_pft_vars(const std::string& fname, const int rowidx, const int colidx);
   void write_px_pftpart_pft_vars(const std::string& fname, const int rowidx, const int colidx);
   void write_px_snow_vars(const std::string& fname, const int rowidx, const int colidx);
@@ -112,6 +114,9 @@ public :
   int rtfrozendays;
   int rtunfrozendays;
   double watertab;
+  // v5q-d2m-gate: previous-year ALD (m); optional NetCDF scalar per pixel, written only if >= 0
+  // (d2m_transfer_gate != 0), read as MISSING_D when absent (old restarts).
+  double d2m_ald_prevyr;
 
   double DZsoil[MAX_SOI_LAY];
   int TYPEsoil[MAX_SOI_LAY];

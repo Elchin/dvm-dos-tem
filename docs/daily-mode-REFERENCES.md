@@ -109,6 +109,12 @@ Switch defaults: every switch below is 0/off by default, which is legacy behavio
 |---|---|---|
 | `soil_negpool_fix` (0 legacy / 1 fix) | 1 = the "shuhua 2007" clamp in `Integrator::y2cstate_soi` can no longer write a negative ORGN (empty layer: AVLN = 0, ORGN = max(0, ORGN + AVLN), shortfall to `n_debt`); after `c2ystate_soi` any negative layer AVLN/ORGN or WDEBRISN is healed to 0 with the deficit booked to `n_debt` and repaid by `payNDebt`. Removes the permanent give-up/safety-net lock (RH = 0) triggered by an empty moss layer (CAP125 TVC_Warming_nfeed 2080). | **No published source for the fix** (code bug; N mass conservation). Principle: clipping/resetting a non-negative ODE state is mass-conserving only if the removed mass is booked [Shampine2005]. |
 
+### Deep->mineral SOM transfer gated on thaw (v5q-d2m-gate, branch v5q-d2m-gate)
+
+| switch | what it does | references |
+|---|---|---|
+| `d2m_transfer_gate` (0 legacy / 1 thaw-gated / 2 off) | 1 = the deep(humic)->mineral transfer of `Soil_Bgc::deltastate` step (II)3)-4) goes only into the part of the top 0.20 m of mineral soil above max(this year's running max ALD, previous year's ALD), scaled by that thawed fraction; C and N together at the donor C:N, receiver N `+=`, column C and N conserved; no transfer when ALD = 0. 2 = no transfer (physics-only spin-up phase). Previous-year ALD in the restart (`d2m_ald_prevyr`, optional; gate 0 files unchanged). | Permafrost SOM stays where frozen, transport only in the active layer [Koven2009]; [Koven2013]; CLM5/CTSM gating on max(altmax, altmax_lastyear) [Lawrence2019]. Spin-up to a stable ALD before carbon [Melton2019] (context). **No published source** for the f-scaling of the dvmdostem transfer. |
+
 ### Parameter test (not a switch)
 
 | change | status | references |
@@ -208,6 +214,10 @@ Format: commit — code location — principle — references.
 - [Rousk2013] Rousk, K., Jones, D.L., DeLuca, T.H. (2013). Moss-cyanobacteria associations as biogenic sources of nitrogen in boreal forest ecosystems. Front. Microbiol. 4, 150. https://doi.org/10.3389/fmicb.2013.00150
 - [Schaphoff2018] Schaphoff, S., von Bloh, W., Rammig, A., et al. (2018). LPJmL4 — a dynamic global vegetation model with managed land — Part 1: Model description. Geosci. Model Dev. 11, 1343–1375. https://doi.org/10.5194/gmd-11-1343-2018
 - [SchimelBennett2004] Schimel, J.P., Bennett, J. (2004). Nitrogen mineralization: challenges of a changing paradigm. Ecology 85, 591–602. https://doi.org/10.1890/03-8002
+- [Koven2009] Koven, C., Friedlingstein, P., Ciais, P., Khvorostyanov, D., Krinner, G., Tarnocai, C. (2009). On the formation of high-latitude soil carbon stocks: Effects of cryoturbation and insulation by organic matter in a land surface model. Geophys. Res. Lett. 36, L21501. https://doi.org/10.1029/2009GL040150
+- [Koven2013] Koven, C.D., Riley, W.J., Subin, Z.M., Tang, J.Y., Torn, M.S., Collins, W.D., Bonan, G.B., Lawrence, D.M., Swenson, S.C. (2013). The effect of vertically resolved soil biogeochemistry and alternate soil C and N models on C dynamics of CLM4. Biogeosciences 10, 7109–7131. https://doi.org/10.5194/bg-10-7109-2013
+- [Lawrence2019] Lawrence, D.M., et al. (2019). The Community Land Model Version 5: Description of New Features, Benchmarking, and Impact of Forcing Uncertainty. J. Adv. Model. Earth Syst. 11, 4245–4287. https://doi.org/10.1029/2018MS001583
+- [Melton2019] Melton, J.R., Verseghy, D.L., Sospedra-Alfonso, R., Gruber, S. (2019). Improving permafrost physics in the coupled Canadian Land Surface Scheme (v.3.6.2) and Canadian Terrestrial Ecosystem Model (v.2.1) (CLASS-CTEM). Geosci. Model Dev. 12, 4443–4467. https://doi.org/10.5194/gmd-12-4443-2019
 - [Shampine2005] Shampine, L.F., Thompson, S., Kierzenka, J.A., Byrne, G.D. (2005). Non-negative solutions of ODEs. Appl. Math. Comput. 170, 556–569. https://doi.org/10.1016/j.amc.2004.12.011
 - [Stewart2011] Stewart, K.J., Coxson, D., Grogan, P. (2011). Nitrogen inputs by associative cyanobacteria across a low Arctic tundra landscape. Arct. Antarct. Alp. Res. 43, 267–278. https://doi.org/10.1657/1938-4246-43.2.267
 - [Sturm1997] Sturm, M., Holmgren, J., König, M., Morris, K. (1997). The thermal conductivity of seasonal snow. J. Glaciol. 43, 26–41. https://doi.org/10.3189/S0022143000002781

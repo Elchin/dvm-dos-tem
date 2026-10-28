@@ -25,6 +25,10 @@ public:
   void clear();
 
   int chtid;
+  // v5q-d2m-gate: previous model year's ALD (max of monthly ALD, m), set at the end of each
+  // year when d2m_transfer_gate != 0; in the restart as d2m_ald_prevyr (optional, old
+  // restarts -> 0). Refs: see Soil_Bgc.h (d2m_transfer_gate).
+  double d2m_ald_prevyr = 0.0;
   int year;     // only used for output (old format)
   int month;    // only used for output (old format)
 

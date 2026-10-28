@@ -97,6 +97,32 @@ public:
   // layers above it, not its own. 1 = N moves with C: per-layer donor share,
   // dcaddfrac share to receivers, export accumulated (+=).
   int n_som_move_fix = 1;   // v5o default (was 0)
+  // v5q-d2m-gate: deep(humic)->mineral SOM transfer of deltastate() step (II)3)-4),
+  // model_settings.d2m_transfer_gate (FATAL unless integer 0/1/2):
+  //  0 = legacy (default; code path unchanged): the mobile part rh*fsoma*som2co2 of the
+  //      decomposition of the type-2 layers in the top xtopdlthick (0.10 m) of the humic horizon
+  //      moves to the top xtopmlthick (0.20 m) of the mineral horizon, frozen or not; receiver N
+  //      is assigned (=); C/N is lost where the mineral column is thinner than 0.20 m.
+  //  1 = gated: receiver thickness counts only where it lies above zgate = max(this year's
+  //      running max ALD, last year's ALD) (d2mGateDepth; no transfer if zgate <= 0).
+  //      f = eligible receiver thickness / 0.20 (d2mGateReceivers) scales the donor removal
+  //      (C and N, N at the donor C:N); a donor layer either gives C and N together or nothing;
+  //      receivers get it in proportion to their eligible thickness (weights sum to 1, so
+  //      nothing is lost), N with +=. f = 0 (no thawed receiver) = no transfer at all.
+  //  2 = transfer off (physics-only / no-transfer spin-up phase).
+  // Refs: Koven et al. 2009, doi:10.1029/2009GL040150 (no advective SOM transport in
+  //   permafrost); Koven et al. 2013, doi:10.5194/bg-10-7109-2013 and Lawrence et al. 2019 (CLM5),
+  //   doi:10.1029/2018MS001583: vertical SOM transport only within the active layer, gated on
+  //   max(altmax, altmax_lastyear), none where ALT = 0 (CTSM SoilBiogeochemLittVertTransp code).
+  //   The f-scaling of the dvmdostem transfer and the restart variable: no published source.
+  int d2m_transfer_gate = 0;
+  double d2m_moved_c = 0.0, d2m_moved_n = 0.0, d2m_f = 0.0;   // gate 1: last deltastate() (diagnostic)
+  // pure helpers (unit-tested). Gate depth: max(running max ALD, previous-year ALD), MISSING -> 0.
+  static double d2mGateDepth(const double ald_runmax, const double ald_prevyr);
+  // receiver weights w[0..n-1] (type-3 layers inside the top xtopmlthick, eligible part above
+  // zgate; sum 1 if any eligible, else all 0); returns f = eligible thickness / xtopmlthick.
+  static double d2mGateReceivers(const int n, const int type[], const double z[], const double dz[],
+                                 const double xtopmlthick, const double zgate, double w[]);
   // Refs (N2): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 20b2723e); restores N mass conservation (N moves with C).
   // Fix G1 (v5n), OFF by default: model_settings.n_extract_limiter.
   // The root N extraction rtnextract[il] is fixed for the whole month (it equals

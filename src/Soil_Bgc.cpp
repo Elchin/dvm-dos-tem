@@ -57,6 +57,34 @@ double Soil_Bgc::rescaleNetNmin(double netnmin[], const int n, const double nmin
 
 /** Fix G1 (v5n): AVLN part of the root N extraction r from a pool A.
 *   Refs (G1/G2): plant N uptake is a saturating (Michaelis-Menten) function of soil available N in TEM (Raich et al. 1991, doi:10.2307/1941899; McGuire et al. 1992, doi:10.1029/92GB00219); demand-based uptake is down-regulated when soil mineral N cannot supply it (Thornton et al. 2007, doi:10.1029/2006GB002868); arctic/boreal plants also take up organic N (Nasholm et al. 1998, doi:10.1038/31921; Schimel & Bennett 2004, doi:10.1890/03-8002); a zero-order sink drives a non-negative ODE state below zero in finite time, which no step-size reduction can avoid, positivity needs a state-dependent sink (Shampine et al. 2005, doi:10.1016/j.amc.2004.12.011; Burchard et al. 2003, doi:10.1016/S0168-9274(03)00101-6). */
+// v5q-d2m-gate (d2m_transfer_gate 1): gate depth and receiver weights, see Soil_Bgc.h.
+// Refs: Koven et al. 2009, doi:10.1029/2009GL040150 (no advective SOM transport in
+//   permafrost); Koven et al. 2013, doi:10.5194/bg-10-7109-2013 and Lawrence et al. 2019 (CLM5),
+//   doi:10.1029/2018MS001583: vertical SOM transport only within the active layer, gated on
+//   max(altmax, altmax_lastyear), none where ALT = 0 (CTSM SoilBiogeochemLittVertTransp code).
+//   The f-scaling of the dvmdostem transfer and the restart variable: no published source.
+double Soil_Bgc::d2mGateDepth(const double ald_runmax, const double ald_prevyr) {
+  const double a = (ald_runmax > 0.0) ? ald_runmax : 0.0;   // MISSING_D (< 0) -> 0
+  const double b = (ald_prevyr > 0.0) ? ald_prevyr : 0.0;
+  return fmax(a, b);
+}
+double Soil_Bgc::d2mGateReceivers(const int n, const int type[], const double z[], const double dz[],
+                                  const double xtopmlthick, const double zgate, double w[]) {
+  double mlleft = xtopmlthick, etot = 0.0;
+  for (int il = 0; il < n; il++) { w[il] = 0.0; }
+  for (int il = 0; il < n; il++) {   // same receiver set as legacy step 4)
+    if (type[il] != 3) { continue; }
+    const double thick = fmin(dz[il], mlleft);
+    mlleft -= thick;
+    const double e = fmax(0.0, fmin(zgate - z[il], thick));   // part of the receiver above zgate
+    w[il] = e; etot += e;
+    if (mlleft <= 0.0) { break; }
+  }
+  if (!(etot > 0.0) || !(zgate > 0.0)) { for (int il = 0; il < n; il++) { w[il] = 0.0; } return 0.0; }
+  for (int il = 0; il < n; il++) { w[il] /= etot; }
+  return etot / xtopmlthick;
+}
+
 // v5q-ndrain (n_leach_fix 1): per-layer removal of the booked leaching loss; zone and fdz
 // exactly as prepareIntegration() builds totdzliq / totdzavln. See Soil_Bgc.h.
 double Soil_Bgc::leachLayers(const int n, const double z[], const double dz[], const double liq[],
@@ -957,6 +985,7 @@ void Soil_Bgc::deltastate() {
   double dcaddfrac = 0.0;
   double thickadded= 0.0;
   double del_orgn[MAX_SOI_LAY]= {0.0}; // soil org. N change with SOMC transformation and/or allocation
+  int d2m_donor[MAX_SOI_LAY] = {0};   // v5q-d2m-gate (gate 1/2): donor layers of step 3)
 
   for(int il=0; il<cd->m_soil.numsl; il++) {
     // 1) most of resistant-C increment into the fibric-horizon (generated
@@ -1041,7 +1070,9 @@ void Soil_Bgc::deltastate() {
       double rhsum = del_soi2a.rhrawc[il] + del_soi2a.rhsoma[il]
                      + del_soi2a.rhsompr[il] + del_soi2a.rhsomcr[il];
 
-      if (rhsum > 0.0) {
+      if (d2m_transfer_gate != 0) {
+        d2m_donor[il] = 1;   // v5q-d2m-gate: gate 1 transfers after the loop, gate 2 none (Soil_Bgc.h)
+      } else if (rhsum > 0.0) {
         double totmobile = rhsum*mobiletoco2;
         d2mcarbon += totmobile;
         del_sois.rawc[il]  -= del_soi2a.rhrawc[il]*mobiletoco2;
@@ -1071,7 +1102,7 @@ void Soil_Bgc::deltastate() {
       }
 
     // end soil type 2 and 'dlleft>0'
-    } else if (cd->m_soil.type[il]==3) { // mineral layers...
+    } else if (cd->m_soil.type[il]==3 && d2m_transfer_gate == 0) { // mineral layers... (legacy path only)
       // 4) d2mcarbon from above will move into the 'xtopmlthick';
       thickadded = fmin(cd->m_soil.dz[il], mlleft);
       dcaddfrac = thickadded/xtopmlthick;
@@ -1096,6 +1127,62 @@ void Soil_Bgc::deltastate() {
         break;
       }
     } // end soil type 3
+  }
+
+  // v5q-d2m-gate (d2m_transfer_gate 1): deep->mineral transfer only into thawed receiver
+  // thickness (see Soil_Bgc.h). Donor C and N leave together (N at the donor C:N) or not at all;
+  // receivers get C (legacy pool split) and N (+=) by eligible-thickness weight (sum 1).
+  // Refs: Koven et al. 2009, doi:10.1029/2009GL040150 (no advective SOM transport in
+  //   permafrost); Koven et al. 2013, doi:10.5194/bg-10-7109-2013 and Lawrence et al. 2019 (CLM5),
+  //   doi:10.1029/2018MS001583: vertical SOM transport only within the active layer, gated on
+  //   max(altmax, altmax_lastyear), none where ALT = 0 (CTSM SoilBiogeochemLittVertTransp code).
+  //   The f-scaling of the dvmdostem transfer and the restart variable: no published source.
+  if (d2m_transfer_gate == 1) {
+    double w[MAX_SOI_LAY];
+    const double zgate = d2mGateDepth(ed->y_soid.ald, cd->d2m_ald_prevyr);
+    const double f = d2mGateReceivers(cd->m_soil.numsl, cd->m_soil.type, cd->m_soil.z,
+                                      cd->m_soil.dz, xtopmlthick, zgate, w);
+    double mc = 0.0, mn = 0.0;
+    if (f > 0.0) {
+      for (int il = 0; il < cd->m_soil.numsl; il++) {
+        if (!d2m_donor[il]) { continue; }
+        const double rhsum = del_soi2a.rhrawc[il] + del_soi2a.rhsoma[il]
+                             + del_soi2a.rhsompr[il] + del_soi2a.rhsomcr[il];
+        if (!(rhsum > 0.0)) { continue; }
+        const double totmobile = f*rhsum*mobiletoco2;
+        const double totsomc = tmp_sois.rawc[il] + tmp_sois.soma[il]
+                               + tmp_sois.sompr[il] + tmp_sois.somcr[il];
+        if (!(totsomc > totmobile)) { continue; }   // C and N together or nothing
+        const double cr = f*del_soi2a.rhrawc[il]*mobiletoco2, ca = f*del_soi2a.rhsoma[il]*mobiletoco2;
+        const double cp = f*del_soi2a.rhsompr[il]*mobiletoco2, cc = f*del_soi2a.rhsomcr[il]*mobiletoco2;
+        del_sois.rawc[il] -= cr; del_sois.soma[il] -= ca;
+        del_sois.sompr[il] -= cp; del_sois.somcr[il] -= cc;
+        mc += cr + ca + cp + cc;
+        if (this->nfeed == 1) {
+          const double dn = totmobile/totsomc*tmp_sois.orgn[il];
+          del_orgn[il] -= dn;
+          mn += dn;
+        }
+      }
+      for (int il = 0; il < cd->m_soil.numsl; il++) {
+        if (!(w[il] > 0.0)) { continue; }
+        const double add = w[il]*mc;
+        const double tsom = tmp_sois.soma[il] + tmp_sois.sompr[il] + tmp_sois.somcr[il];
+        if (tsom > 0.0) {
+          del_sois.soma[il]  += add*(tmp_sois.soma[il]/tsom);
+          del_sois.sompr[il] += add*(tmp_sois.sompr[il]/tsom);
+          del_sois.somcr[il] += add*(tmp_sois.somcr[il]/tsom);
+        } else {
+          del_sois.soma[il]  += add*fsoma;
+          del_sois.sompr[il] += add*fsompr;
+          del_sois.somcr[il] += add*fsomcr;
+        }
+        if (this->nfeed == 1) {
+          del_orgn[il] += w[il]*mn;   // += (legacy path assigns)
+        }
+      }
+    }
+    d2m_moved_c = mc; d2m_moved_n = mn; d2m_f = f;
   }
 
   /////////////// Nitrogen pools in soil ///////////////////////////////////

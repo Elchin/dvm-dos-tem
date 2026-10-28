@@ -240,6 +240,15 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     }
     soil_negpool_fix = np.asInt();
   }
+  // v5q-d2m-gate: d2m_transfer_gate (0 = legacy, default). Refs: see Soil_Bgc.h.
+  {
+    Json::Value dg = controldata["model_settings"].get("d2m_transfer_gate", 0);
+    if (!bnf::valid_int(dg, 0, 2)) {
+      std::cerr << "FATAL: model_settings.d2m_transfer_gate must be 0 (legacy), 1 (thaw-gated) or 2 (off)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    d2m_transfer_gate = dg.asInt();
+  }
   // ET-split fixes S1-S4 (v5l), default 0 = off (legacy); see ModelData.h / Vegetation_Env.h
   et_fpc_once_fix    = controldata["model_settings"].get("et_fpc_once_fix", 0).asInt();
   nv_snow_bury_fix   = controldata["model_settings"].get("nv_snow_bury_fix", 0).asInt();
@@ -352,6 +361,7 @@ ModelData::ModelData():force_cmt(-1) {
   daily_c_split = 0; // v5p (off)
   n_leach_fix = 0; // v5q-ndrain (off)
   soil_negpool_fix = 0; // v5q-negpool (off)
+  d2m_transfer_gate = 0; // v5q-d2m-gate (legacy)
   nv_snow_bury_depth = 0.0;
   set_envmodule(false);
   set_bgcmodule(false);

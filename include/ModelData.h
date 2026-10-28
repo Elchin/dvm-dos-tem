@@ -214,6 +214,10 @@ public:
   // pools from the legacy AVLN clamp, negatives healed at month start, removed N booked as debt);
   // see Integrator.h. Integers 0/1 only.
   int soil_negpool_fix;
+  // v5q-d2m-gate: model_settings.d2m_transfer_gate (0 = legacy, default; 1 = deep->mineral SOM
+  // transfer only into thawed receiver thickness, max(running max ALD, previous-year ALD);
+  // 2 = transfer off). Integers 0/1/2 only; see Soil_Bgc.h for the scheme and references.
+  int d2m_transfer_gate;
   // Refs (N2): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 20b2723e); restores N mass conservation (N moves with C).
   // Refs (N3): no published source for the scheme; restores N mass conservation; bryophyte N uptake from the moss/peat layer: Turetsky 2003, doi:10.1639/05.
   // ET-split fixes (v5l), all OFF by default (0 = legacy, bit-identical); see
