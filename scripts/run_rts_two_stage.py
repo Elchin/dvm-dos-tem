@@ -86,6 +86,9 @@ def main():
     ap.add_argument('--ch4', action='store_true', help='enable reduced-form CH4 diagnostic (rts-ch4 only)')
     ap.add_argument('--stage1-restart', default=None, help='reuse an existing stage-1 restart-sp.nc')
     ap.add_argument('--log-level', default='fatal')
+    ap.add_argument('--stop-after', choices=['stage1', 'stage2a', 'stage2b'], default='stage2b',
+                    help='stop after this stage (e.g. stage1: shared spin-up only, for the '
+                         'per-cell cohort-response runs; timings.json is still written)')
     a = ap.parse_args()
 
     cfg0 = load_js(a.config)
@@ -112,6 +115,8 @@ def main():
                                    ['-p', str(a.pr), '-e', str(a.eq), '-s', str(a.sp), '-t', '0', '-n', '0'],
                                    a.log_level, 'stage1 pr/eq/sp')
         sp_restart = os.path.join(w, 'stage1', 'restart-sp.nc')
+    if a.stop_after == 'stage1':
+        return finish(w, times)
 
     # ---- Stage 2a: historical transient, RTS off
     c = json.loads(json.dumps(cfg0)); c['IO']['restart_from'] = sp_restart
@@ -119,6 +124,8 @@ def main():
     times['stage2a'] = run_step(a.binary, c, os.path.join(w, 'stage2a_hist'),
                                 ['-p', '0', '-e', '0', '-s', '0', '-t', str(a.hist), '-n', '0'],
                                 a.log_level, 'stage2a historical')
+    if a.stop_after == 'stage2a':
+        return finish(w, times)
 
     # ---- Stage 2b: ice init + short spin-up + RTS (scenario stage)
     c = json.loads(json.dumps(cfg0))
@@ -131,6 +138,9 @@ def main():
     times['stage2b'] = run_step(a.binary, c, os.path.join(w, 'stage2b_' + a.mode),
                                 ['-p', '0', '-e', '0', '-s', '0', '-t', '0', '-n', str(a.sc)],
                                 a.log_level, 'stage2b %s' % a.mode)
+    finish(w, times)
+
+def finish(w, times):
     json.dump(times, open(os.path.join(w, 'timings.json'), 'w'), indent=2)
     print('timings (s):', json.dumps({k: round(v, 1) for k, v in times.items()}))
 
