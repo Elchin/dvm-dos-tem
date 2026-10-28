@@ -313,6 +313,7 @@ void Cohort::initialize_state_parameters() {
   soilbgc.n_rootless_fix = md->n_rootless_fix;         // Fix N1 (v5k)
   soilbgc.n_som_move_fix = md->n_som_move_fix;         // Fix N2 (v5k)
   soilbgc.bnfp = md->bnf;                              // v5q BNF (scheme 0 = off)
+  soilbgc.n_leach_fix = md->n_leach_fix;               // v5q-ndrain (0 = legacy)
   for (int ip = 0; ip < NUM_PFT; ip++) { vegbgc[ip].n_nonvasc_extract = md->n_nonvasc_extract; } // Fix N3 (v5k)
   for (int ip = 0; ip < NUM_PFT; ip++) {   // ET-split fixes S1-S4 (v5l), default 0
     vegenv[ip].fpc_once_fix       = md->et_fpc_once_fix;

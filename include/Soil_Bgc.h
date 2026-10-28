@@ -141,6 +141,28 @@ public:
   // soil layer, rhmoist*rhq10 as in deltac (rhmoistfrozen when ts < 0).
   // Refs: see DailyCSplit.h; no published source for the exact method.
   double ds_rh_weight(double ts, double sws);
+  // v5q-ndrain: N leaching bookkeeping fix, model_settings.n_leach_fix (0 = legacy, default; 1 = fix).
+  // deltan() books the inorganic N leaching avlnlost = (totdzavln/totdzliq)*fnloss*qdrain
+  // + (avln[0]/liq[0])*fnloss*qover (NLOST, integrated as I_AVLNLOSS), but legacy deltastate()
+  // removes ndrain = avlnlost*(liq[il]/totdzliq*qdrain)*fdz from the drainage-zone layers, i.e.
+  // about avlnlost*qdrain in total (qdrain in mm/month), takes nothing for the qover part and
+  // nothing when totdzliq <= 0.01. 1 = the pools lose exactly avlnlost: the qover part from
+  // layer 0, the drainage part from the drainage-zone layers in proportion to their current
+  // (integrator-state) AVLN
+  // (avln[il]*fdz/totdzavln = each layer drains a share liq[il]*fdz/totdzliq of the water at
+  // its own concentration, so no layer is charged for N it does not hold); fallbacks: by
+  // liq*fdz/totdzliq if totdzavln <= 0, layer 0 if totdzliq <= 0 too. Same for avlnflg 0.
+  // Refs: no published source; code bug in Soil_Bgc::deltastate (also in upstream
+  //   dvm-dos-tem c0fa75cb, src/Soil_Bgc.cpp l.1004-1018); restores N mass conservation
+  //   (NLOST = AVLN removed). Observed arctic DIN export context: McNamara et al. 2008,
+  //   doi:10.1002/hyp.6920; Khosh et al. 2017, doi:10.1002/2016jg003377.
+  int n_leach_fix = 0;
+  double leach_drain = 0.0, leach_over = 0.0;   // n_leach_fix 1: parts of avlnlost (set in deltan)
+  // pure helper (unit-tested): per-layer leaching removal ndrain[0..n-1] for n_leach_fix 1;
+  // returns sum(ndrain) (= drain + over up to round-off).
+  static double leachLayers(const int n, const double z[], const double dz[], const double liq[],
+                            const double avln[], const double draindepth, const double drain,
+                            const double over, double ndrain[]);
   // v5q: biological N fixation (model_settings.bnf_scheme, 0 = off): see Bnf.h.
   // bnfBeginMonth() (Cohort, before the vegetation) computes this month's BNF
   // from the previous model year; prepareIntegration() puts it into

@@ -222,6 +222,15 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
       exit(EXIT_FAILURE);
     }
   }
+  // v5q-ndrain: n_leach_fix (0 = legacy, default; 1 = pools lose exactly NLOST). Refs: see Soil_Bgc.h.
+  {
+    Json::Value nl = controldata["model_settings"].get("n_leach_fix", 0);
+    if (!bnf::valid_int(nl, 0, 1)) {
+      std::cerr << "FATAL: model_settings.n_leach_fix must be 0 (legacy) or 1 (leaching removed = NLOST)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    n_leach_fix = nl.asInt();
+  }
   // ET-split fixes S1-S4 (v5l), default 0 = off (legacy); see ModelData.h / Vegetation_Env.h
   et_fpc_once_fix    = controldata["model_settings"].get("et_fpc_once_fix", 0).asInt();
   nv_snow_bury_fix   = controldata["model_settings"].get("nv_snow_bury_fix", 0).asInt();
@@ -332,6 +341,7 @@ ModelData::ModelData():force_cmt(-1) {
   n_extract_limiter = 0; soil_giveup_retry = 0; soil_giveup_diag = 0; n_extract_tau = 0.2; n_netnmin_rescale_guard = 0; // v5n (off)
   n_rootless_fix = 2; n_som_move_fix = 1; n_nonvasc_extract = 1; // v5o: N1-N3 fixes on by default (legacy = 0)
   daily_c_split = 0; // v5p (off)
+  n_leach_fix = 0; // v5q-ndrain (off)
   nv_snow_bury_depth = 0.0;
   set_envmodule(false);
   set_bgcmodule(false);

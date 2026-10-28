@@ -57,6 +57,32 @@ double Soil_Bgc::rescaleNetNmin(double netnmin[], const int n, const double nmin
 
 /** Fix G1 (v5n): AVLN part of the root N extraction r from a pool A.
 *   Refs (G1/G2): plant N uptake is a saturating (Michaelis-Menten) function of soil available N in TEM (Raich et al. 1991, doi:10.2307/1941899; McGuire et al. 1992, doi:10.1029/92GB00219); demand-based uptake is down-regulated when soil mineral N cannot supply it (Thornton et al. 2007, doi:10.1029/2006GB002868); arctic/boreal plants also take up organic N (Nasholm et al. 1998, doi:10.1038/31921; Schimel & Bennett 2004, doi:10.1890/03-8002); a zero-order sink drives a non-negative ODE state below zero in finite time, which no step-size reduction can avoid, positivity needs a state-dependent sink (Shampine et al. 2005, doi:10.1016/j.amc.2004.12.011; Burchard et al. 2003, doi:10.1016/S0168-9274(03)00101-6). */
+// v5q-ndrain (n_leach_fix 1): per-layer removal of the booked leaching loss; zone and fdz
+// exactly as prepareIntegration() builds totdzliq / totdzavln. See Soil_Bgc.h.
+double Soil_Bgc::leachLayers(const int n, const double z[], const double dz[], const double liq[],
+                             const double avln[], const double draindepth, const double drain,
+                             const double over, double ndrain[]) {
+  double wl[MAX_SOI_LAY] = {0.0}, wa[MAX_SOI_LAY] = {0.0}, sl = 0.0, sa = 0.0;
+  const int nn = (n < MAX_SOI_LAY) ? n : MAX_SOI_LAY;
+  for (int i = 0; i < nn; i++) {
+    ndrain[i] = 0.0;
+    double fdz = 0.0;
+    if ((z[i] + dz[i]) <= draindepth) { fdz = 1.0; }
+    else if (z[i] < draindepth) { fdz = (draindepth - z[i]) / dz[i]; }
+    wl[i] = fmax(0., liq[i]) * fdz; wa[i] = fmax(0., avln[i]) * fdz; sl += wl[i]; sa += wa[i];
+  }
+  if (nn <= 0) { return 0.0; }
+  if (drain != 0.0) {
+    if (sa > 0.0)      { for (int i = 0; i < nn; i++) { ndrain[i] = drain * (wa[i] / sa); } }
+    else if (sl > 0.0) { for (int i = 0; i < nn; i++) { ndrain[i] = drain * (wl[i] / sl); } }
+    else               { ndrain[0] = drain; }
+  }
+  ndrain[0] += over;
+  double t = 0.0;
+  for (int i = 0; i < nn; i++) { t += ndrain[i]; }
+  return t;
+}
+
 double Soil_Bgc::limitedExtraction(const double r, const double A, const double tau) {
   if (!(r > 0.0)) {
     return r;
@@ -807,11 +833,13 @@ void Soil_Bgc::deltan() {
         del_soi2l.avlnlost = totdzavln / totdzliq * bgcpar.fnloss
                              * ed->m_soi2l.qdrain;
       }
+      const double raw_drain = del_soi2l.avlnlost;   // v5q-ndrain (n_leach_fix 1 split only)
 
       if(ed->m_sois.liq[0]>0) { // N loss with surface runoff water
         del_soi2l.avlnlost += tmp_sois.avln[0] / ed->m_sois.liq[0]
                               * bgcpar.fnloss * ed->m_soi2l.qover;
       }
+      const double raw_over = del_soi2l.avlnlost - raw_drain;
 
       if( del_soi2l.avlnlost > totdzavln - totnextract
           + totnetnmin + bd->m_a2soi.avlninput) {
@@ -832,10 +860,16 @@ void Soil_Bgc::deltan() {
         dg_nscale = rescaleNetNmin(del_soi2soi.netnmin, cd->m_soil.numsl, nminadj,
                                    totnetnmin, n_netnmin_rescale_guard);
       }
+      if (n_leach_fix == 1) {   // v5q-ndrain: split the booked (capped) loss into drain / overland parts
+        const double raw = raw_drain + raw_over;
+        leach_over = (raw > 0.0) ? raw_over * (del_soi2l.avlnlost / raw) : 0.0;
+        leach_drain = del_soi2l.avlnlost - leach_over;
+      }
     } else { // End (this->avlnflg == 1)
       // N budget estimation of inorganic N loss
       del_soi2l.avlnlost = bd->m_a2soi.avlninput -
                            totnextract + totnetnmin;
+      if (n_leach_fix == 1) { leach_drain = del_soi2l.avlnlost; leach_over = 0.0; }   // v5q-ndrain
     }
 
     if ( !this->baseline ) {
@@ -1066,6 +1100,11 @@ void Soil_Bgc::deltastate() {
 
   /////////////// Nitrogen pools in soil ///////////////////////////////////
   if (this->nfeed == 1) {
+    double leach_nd[MAX_SOI_LAY] = {0.0};   // v5q-ndrain (n_leach_fix 1 only)
+    if (n_leach_fix == 1) {
+      leachLayers(cd->m_soil.numsl, cd->m_soil.z, cd->m_soil.dz, ed->m_sois.liq, tmp_sois.avln,
+                  ed->m_sois.draindepth, leach_drain, leach_over, leach_nd);
+    }
     for(int il = 0; il<cd->m_soil.numsl; il++) {
       // organic N pools
       //del_orgn[il] is from above SOM C mixing and moving
@@ -1112,7 +1151,9 @@ void Soil_Bgc::deltastate() {
       //    for longer intervals, e.g. monthly
       double ndrain = 0.;
 
-      if (totdzliq>0.01) {
+      if (n_leach_fix == 1) {   // v5q-ndrain: remove exactly the booked avlnlost (see Soil_Bgc.h)
+        ndrain = leach_nd[il];
+      } else if (totdzliq>0.01) {
         if((cd->m_soil.z[il]+cd->m_soil.dz[il]) <= ed->m_sois.draindepth) { //note: z is at the top of a layer
           ndrain = del_soi2l.avlnlost
                    *(ed->m_sois.liq[il]/totdzliq*ed->m_soi2l.qdrain);

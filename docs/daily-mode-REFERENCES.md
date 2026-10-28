@@ -97,6 +97,12 @@ Switch defaults: every switch below is 0/off by default, which is legacy behavio
 | `bnf_avln_cap` | Linear taper max(0, 1 − AVLN/cap). | **No published source for the linear form**; FOR scheme converges to 0 above 2 gN/m2 inorganic N [Meyerholt2016]. |
 | `bnf_to_plant` (Phase 2) | 1 = scheme (symbiotic) part to plant labile N of active PFTs, split by previous-year PFT NPP; `bnf_asym` stays in the soil; output `BNF_VEG`, extra input in `closure.py`. | Symbiotic BNF to the plant, asymbiotic to the soil [Meyerholt2016]; **no published source for the NPP-proportional PFT split**; rationale: delivers fixed N where the previous year's growth was, without a per-PFT fixer parameter. |
 
+### N leaching bookkeeping (v5q-ndrain, branch v5q-ndrain)
+
+| switch | what it does | references |
+|---|---|---|
+| `n_leach_fix` (0 legacy / 1 fix) | 1 = the soil AVLN pools lose exactly the booked inorganic N leaching `avlnlost` (`NLOST`): overland part from layer 0, drainage part from the drainage-zone layers by their current AVLN. Legacy `deltastate` removed avlnlost·qdrain (qdrain in mm/month), not the overland part, and nothing when totdzliq ≤ 0.01 (same code in upstream dvm-dos-tem c0fa75cb). | **No published source** (code bug; N mass conservation). Observed arctic DIN export for plausibility of the resulting leaching: [McNamara2008], [Khosh2017]. |
+
 ### Parameter test (not a switch)
 
 | change | status | references |
@@ -174,12 +180,14 @@ Format: commit — code location — principle — references.
 - [Heijmans2004] Heijmans, M.M.P.D., Arp, W.J., Chapin, F.S. III (2004). Carbon dioxide and water vapour exchange from understory species in boreal forest. Agric. For. Meteorol. 123, 135–147. https://doi.org/10.1016/j.agrformet.2003.12.006
 - [vonHoyningenHuene1981] von Hoyningen-Huene, J. (1981). Die Interzeption des Niederschlags in landwirtschaftlichen Pflanzenbeständen. Arbeitsbericht, Deutscher Verband für Wasserwirtschaft und Kulturbau (DVWK), Braunschweig. No DOI. Cited as such in the LISFLOOD references (https://ec-jrc.github.io/lisflood-model/5_1_references/). Published as DVWK Schriften 57 (1983), Parey, Hamburg/Berlin, ISBN 3-490-05797-X; full text https://wiki.bluemodel.org/images/9/9e/DVWK_57_I.pdf
 - [Johansen1975] Johansen, O. (1975). Thermal conductivity of soils. PhD thesis, Univ. of Trondheim. CRREL Draft English Translation 637 (1977). https://doi.org/10.21236/ADA044002
+- [Khosh2017] Khosh, M.S., McClelland, J.W., Jacobson, A.D., Douglas, T.A., Barker, A.J., Lehn, G.O. (2017). Seasonality of dissolved nitrogen from spring melt to fall freezeup in Alaskan Arctic tundra and mountain streams. J. Geophys. Res. Biogeosci. 122, 1718–1737. https://doi.org/10.1002/2016jg003377
 - [Klene2001] Klene, A.E., Nelson, F.E., Shiklomanov, N.I., Hinkel, K.M. (2001). The N-factor in natural landscapes: variability of air and soil-surface temperatures, Kuparuk River Basin, Alaska, U.S.A. Arct. Antarct. Alp. Res. 33, 140–148. https://doi.org/10.1080/15230430.2001.12003416
 - [LawrenceSlater2008] Lawrence, D.M., Slater, A.G. (2008). Incorporating organic soil into a global climate model. Clim. Dyn. 30, 145–160. https://doi.org/10.1007/s00382-007-0278-1
 - [LeePielke1992] Lee, T.J., Pielke, R.A. (1992). Estimating the soil surface specific humidity. J. Appl. Meteorol. 31, 480–484. https://doi.org/10.1175/1520-0450(1992)031<0480:ETSSSH>2.0.CO;2
 - [Letts2000] Letts, M.G., Roulet, N.T., Comer, N.T., Skarupa, M.R., Verseghy, D.L. (2000). Parametrization of peatland hydraulic properties for the Canadian Land Surface Scheme. Atmos.-Ocean 38, 141–160. https://doi.org/10.1080/07055900.2000.9649643
 - [Louis1979] Louis, J.-F. (1979). A parametric model of vertical eddy fluxes in the atmosphere. Boundary-Layer Meteorol. 17, 187–202. https://doi.org/10.1007/BF00117978
 - [McGuire1992] McGuire, A.D., Melillo, J.M., Joyce, L.A., Kicklighter, D.W., Grace, A.L., Moore, B. III, Vorosmarty, C.J. (1992). Interactions between carbon and nitrogen dynamics in estimating net primary productivity for potential vegetation in North America. Global Biogeochem. Cycles 6, 101–124. https://doi.org/10.1029/92GB00219
+- [McNamara2008] McNamara, J.P., Kane, D.L., Hobbie, J.E., Kling, G.W. (2008). Hydrologic and biogeochemical controls on the spatial and temporal patterns of nitrogen and phosphorus in the Kuparuk River, arctic Alaska. Hydrol. Process. 22, 3294–3309. https://doi.org/10.1002/hyp.6920
 - [Meyerholt2016] Meyerholt, J., Zaehle, S., Smith, M.J. (2016). Variability of projected terrestrial biosphere responses to elevated levels of atmospheric CO2 due to uncertainty in biological nitrogen fixation. Biogeosciences 13, 1491–1518. https://doi.org/10.5194/bg-13-1491-2016
 - [MonsiSaeki1953] Monsi, M., Saeki, T. (1953). Über den Lichtfaktor in den Pflanzengesellschaften und seine Bedeutung für die Stoffproduktion. Jpn. J. Bot. 14, 22–52. English translation: On the factor light in plant communities and its importance for matter production. Ann. Bot. 95, 549–567 (2005). https://doi.org/10.1093/aob/mci052
 - [Monteith1965] Monteith, J.L. (1965). Evaporation and environment. Symp. Soc. Exp. Biol. 19, 205–234. https://pubmed.ncbi.nlm.nih.gov/5321565/

@@ -206,6 +206,10 @@ public:
   // Refs: Meyerholt et al. 2016, doi:10.5194/bg-13-1491-2016; Cleveland et al. 1999,
   //   doi:10.1029/1999GB900014; Thornton et al. 2007, doi:10.1029/2006GB002868.
   bnf::Params bnf;
+  // v5q-ndrain: N leaching bookkeeping fix, model_settings.n_leach_fix (0 = legacy, default;
+  // 1 = the soil AVLN pools lose exactly the booked NLOST); see Soil_Bgc.h. Integers 0/1 only.
+  // Refs: no published source (code bug, N mass conservation); see Soil_Bgc.h.
+  int n_leach_fix;
   // Refs (N2): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 20b2723e); restores N mass conservation (N moves with C).
   // Refs (N3): no published source for the scheme; restores N mass conservation; bryophyte N uptake from the moss/peat layer: Turetsky 2003, doi:10.1639/05.
   // ET-split fixes (v5l), all OFF by default (0 = legacy, bit-identical); see
