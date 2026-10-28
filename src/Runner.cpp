@@ -11,6 +11,7 @@
 
 #include "../include/Runner.h"
 #include "../include/Cohort.h"
+#include "../include/DailyWaterOut.h"
 #include "../include/TEMUtilityFunctions.h"
 #include "../include/TEMLogger.h"
 #include "../include/tbc-debug-util.h"
@@ -2116,13 +2117,9 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
         //daily
         if(curr_spec.daily){
 
-          for(int id=0; id<DINM[month]; id++){
-            double daily_eet_tot = 0.;
-            for(int ip=0; ip<NUM_PFT; ip++){
-              daily_eet_tot += cohort.ed[ip].daily_eet[id];
-            }
-            outhold.eet_tot_for_output.push_back(daily_eet_tot);
-          }
+          // v5p-daily-water-fix: cohort daily value (the term summed into m_l2a.eet); the old
+          // sum over ed[ip].daily_eet counted the ground terms once per PFT (DailyWaterOut.h)
+          dwout::append_days(cohort.edall->daily_eet, DINM[month], outhold.eet_tot_for_output);
 
           if(end_of_year){
             output_nc_3dim(&curr_spec, file_stage_suffix, &outhold.eet_tot_for_output[0], 1, day_timestep, DINY);
@@ -4321,13 +4318,9 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
         //daily
         if(curr_spec.daily){
 
-          for(int id=0; id<DINM[month]; id++){
-            double daily_pet_tot = 0.;
-            for(int ip=0; ip<NUM_PFT; ip++){
-              daily_pet_tot += cohort.ed[ip].daily_pet[id];
-            }
-            outhold.pet_tot_for_output.push_back(daily_pet_tot);
-          }
+          // v5p-daily-water-fix: cohort daily value (the term summed into m_l2a.pet); the old
+          // sum over ed[ip].daily_pet counted the ground terms once per PFT (DailyWaterOut.h)
+          dwout::append_days(cohort.edall->daily_pet, DINM[month], outhold.pet_tot_for_output);
 
           if(end_of_year){
             output_nc_3dim(&curr_spec, file_stage_suffix, &outhold.pet_tot_for_output[0], 1, day_timestep, DINY);
@@ -6223,11 +6216,12 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
       //Total
       else{ 
         if(curr_spec.daily){
-          //TODO - as above, this is a single daily value for the whole month
-          outhold.trans_tot_for_output.push_back(cohort.edall->d_v2a.tran);
+          // v5p-daily-water-fix: every day of the month (the terms summed into m_v2a.tran);
+          // previously one value per month and one value per year (DailyWaterOut.h)
+          dwout::append_days(cohort.edall->daily_tran, DINM[month], outhold.trans_tot_for_output);
 
           if(end_of_year){
-            output_nc_3dim(&curr_spec, file_stage_suffix, &outhold.trans_tot_for_output[0], 1, day_timestep, 1);
+            output_nc_3dim(&curr_spec, file_stage_suffix, &outhold.trans_tot_for_output[0], 1, day_timestep, DINY);
             outhold.trans_tot_for_output.clear();
           }
         }

@@ -97,6 +97,7 @@ public:
   // netCDF output.
   double daily_eet[31];
   double daily_pet[31];
+  double daily_tran[31] = {}; // cohort transpiration per day (mm/day), output only (DailyWaterOut.h)
   double daily_swesum[31];
   double daily_snowthick[31];
   double daily_tshlw[31];

@@ -50,6 +50,7 @@ How the tests are written:
 | fixes_v5m | test_fixes_v5m.cpp | v5m L1 `n_safetynet_conserve`: default/parsing (+ death tests); legacy (off) state unchanged; on: soil N change = remaining inputs − (1 − t0)·root extraction (veg + soil N conserved), donor order ORGN (by extraction share) → ORGN → AVLN, rootless layers as in deltastate, zero pools → debt carried and paid, negative pools untouched, `debitProportional` bookkeeping |
 | fixes_v5n | test_fixes_v5n.cpp | v5n G1 `n_extract_limiter` (+ `n_extract_tau`), G2 `soil_giveup_retry`, G3 `n_netnmin_rescale_guard`, `soil_giveup_diag`: defaults/parsing (+ death tests); G1 limiter shape, zero-order sink drives AVLN < 0 / limiter keeps it ≥ 0, off and ample-AVLN bit-identical, AVLN/ORGN split with soil N change unchanged, rooted/rootless application; G2 per-month flag; G3 guard 0 = legacy loop bit for bit, guard 1 skips a negative scale and applies a positive one, zero denominator |
 | daily_c_split | test_daily_c_split.cpp | v5p `daily_c_split` (output only): key default/parsing (+ death tests for 2, −1, 0.5, true, "1"), `*_DS` request rules (daily only, FATAL with the switch off), proportional split and exact monthly sum, NaN/negative weights = 0, zero flux, all-zero-weight uniform fallback and its flags/month counter, RG weight max(GPP−RM, 0) → GPP weight → uniform, derived NPP/INNPP, RECO/NEE identities, 500-month random property test (|Σ−M| ≤ 1e-13·max(1,|M|)), model weights from Vegetation_Bgc/Soil_Bgc, layer remap helpers |
+| daily_water_out | test_daily_water_out.cpp | v5p-daily-water-fix (output only): `dwout::record_tran` + `veg_endOfDay` daily TRANSPIRATION sums exactly to `m_v2a.tran` (12 months), out-of-range day indices ignored, `append_days` order/clamping, `atm_endOfDay` `daily_eet`/`daily_pet` sum exactly to `m_l2a.eet`/`pet`, `Cohort::getEd4land_daily` with 3 PFTs: cohort EET/PET = veg + ground while the old per-PFT sum = veg + 3 × ground |
 
 Tests in `test_seb.cpp` need the v5j commits (9dae595b and d41c7f79), which are cherry-picked onto this branch.
 
@@ -191,12 +192,21 @@ Checked and left unchanged:
 * `EVAP_*`, `SUBL_*`, `*_INTERCEPT` (`mm/time`): correct.
 * `RAINFALL`/`SNOWFALL` (`mm`, step totals): no time unit, not wrong.
 
-Known data issues, not fixed here because they are numeric (see /workspace/bnf/units/check.txt):
+Known data issues found here (see /workspace/bnf/units/check.txt), fixed on branch v5p-daily-water-fix (next section):
 * daily `TRANSPIRATION` output holds one value per year (Runner TODO "single daily value");
 * daily `EET` is the per-PFT sum of `daily_eet`, which counts ground evaporation once per PFT (about 2.2× monthly at TVC);
 * daily `PET` sums differ from monthly in the shoulder months.
 
 Unit tests: suite `output_units` (2 cases: spec labels; day → month → year accumulation). Proof: run_regression bin_v5p vs bin_v5p_units on calib8: all data bit-identical; only the TRANSPIRATION `units` attribute differs (with the new spec). References: **no published source**; rationale: the units attribute must describe the stored value, CF Conventions v1.8 §3.1 "Units" [CF18](https://cfconventions.org/Data/cf-conventions/cf-conventions-1.8/cf-conventions.html).
+
+## Daily water output fix (branch v5p-daily-water-fix, from v5p-transp-units; output only, no switch)
+
+Daily NetCDF files for `TRANSPIRATION`, `EET` and `PET` (cohort total, no PFT dimension) did not hold the values the model sums into the monthly outputs. Monthly values come from the cohort `edall`: `EnvData::atm_endOfDay` adds `d_l2a.eet`/`pet` into `m_l2a` and stores them in `daily_eet`/`daily_pet[day]`; `EnvData::veg_endOfDay` adds `d_v2a.tran` into `m_v2a.tran`.
+* `EET`, `PET`: Runner summed `cohort.ed[ip].daily_eet/pet` over all PFTs. Each PFT's `d_l2a` holds the full ground terms (soil evaporation, snow sublimation; `assignGroundEd2pfts_daily`), so ground was counted once per active PFT, and inactive PFTs added stale arrays. Now Runner writes `edall->daily_eet/pet` (`dwout::append_days`).
+* `TRANSPIRATION`: Runner pushed `edall->d_v2a.tran` once per month and wrote one value per year. Now `Cohort::updateMonthly_Env` records the final daily `d_v2a.tran` after `veg_endOfDay` into the new output-only array `EnvData::daily_tran[31]` (`dwout::record_tran`), and Runner writes all `DINY` days.
+* Unchanged: model state, fluxes, monthly/yearly outputs, restarts, per-PFT `ed[ip]` arrays (used by v5p `daily_c_split` weights). The per-PFT daily branches of these variables are unreachable (PFT is "invalid" in output_spec) and were left as they were.
+
+Unit tests: suite `daily_water_out` (5 cases). Proof (numbers in /workspace/v5p_dwater/DAILY_WATER_FIX_REPORT.md): run_regression bin_v5p_units vs bin_v5p_dwater on calib8: all monthly/yearly outputs and restarts bit-identical; daily diagnostic runs: Σ daily = monthly for the three variables. References: **no published source**; rationale: the daily output of an accumulated flux must be the term that is summed into the monthly output (output bookkeeping only).
 
 ## References for every daily-mode switch (v5-daily … v5n)
 

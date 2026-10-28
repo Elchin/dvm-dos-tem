@@ -125,6 +125,7 @@ Format: commit — code location — principle — references.
   - 17d53b56 — startup undefined behaviour (array sizes, NUL-safe read, dangling pointer) — C++ memory safety — **no published source**.
   - 0f76919c — exit code 2 when a cell fails — **no published source**.
   - v5p-transp-units — `TRANSPIRATION` units label `mm/day` → `mm/time` in config/output_spec.csv (values are step sums: EnvData::veg_endOfDay/veg_endOfMonth); metadata only — **no published source**; units attribute must describe the stored value, [CF18] §3.1.
+  - v5p-daily-water-fix — daily `TRANSPIRATION`, `EET`, `PET` NetCDF values taken from the cohort daily terms that EnvData sums into the monthly outputs (EET/PET no longer summed over PFTs, which counted ground evaporation once per PFT; TRANSPIRATION one value per day instead of per year); output only — **no published source**; rationale: daily values of an accumulated flux must sum to the monthly value.
 
 ## 3. Bibliography
 

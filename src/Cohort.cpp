@@ -26,6 +26,7 @@
 
 #include "../include/Cohort.h"
 #include "../include/NFactorSelect.h"
+#include "../include/DailyWaterOut.h"
 #include <limits>
 
 extern src::severity_logger< severity_level > glg;
@@ -876,6 +877,7 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
     //accumulate daily vars into monthly for 'ed' of all pfts
     edall->atm_endOfDay(dinmcurr, id);
     edall->veg_endOfDay(dinmcurr); //be sure 'getEd4allpfts_daily' called above
+    dwout::record_tran(*edall, id); // v5p-daily-water-fix: daily TRANSPIRATION output (output only)
     edall->grnd_endOfDay(dinmcurr, doy);
 
     // accumulate yearly vars at the last day of a month for all pfts
