@@ -1494,8 +1494,16 @@ void Ground::redivideDeepLayers() {
       plnew->soma  = 0.5*lfibl->soma;
       plnew->sompr = lfibl->sompr;
       plnew->somcr = lfibl->somcr;
-      plnew->orgn  = lfibl->orgn;
-      plnew->avln  = lfibl->avln;
+      if (layer_n_remap_fix == 1) {
+        // v5q-layern-fix: N moves in the fraction of the C moved. Refs: see Ground.h
+        const double c_whole = lfibl->rawc + lfibl->soma + lfibl->sompr + lfibl->somcr;
+        const double fn = layerNSplitFrac(somc, c_whole, frac);
+        plnew->orgn  = lfibl->orgn * fn;
+        plnew->avln  = lfibl->avln * fn;
+      } else {
+        plnew->orgn  = lfibl->orgn;
+        plnew->avln  = lfibl->avln;
+      }
       plnew->derivePhysicalProperty();
       insertAfter(plnew, lfibl);
       // adjust properties for the above fibrous layer
@@ -1505,8 +1513,13 @@ void Ground::redivideDeepLayers() {
       lfibl->soma *=0.5;
       lfibl->sompr = 0.;
       lfibl->somcr = 0.;
-      lfibl->orgn  = 0.;
-      lfibl->avln  = 0.;
+      if (layer_n_remap_fix == 1) {
+        lfibl->orgn -= plnew->orgn;   // v5q-layern-fix
+        lfibl->avln -= plnew->avln;
+      } else {
+        lfibl->orgn  = 0.;
+        lfibl->avln  = 0.;
+      }
       lfibl->derivePhysicalProperty();
       updateSoilHorizons();
     }
@@ -1521,6 +1534,14 @@ void Ground::redivideDeepLayers() {
 // 'updeptop' - the 'usl' top depth of same soil horizon type (needed for
 //   estimating C content from depth)
 // 'lsldz' - the new 'lsl' thickness
+// v5q-layern-fix: share of a layer's N that goes with the C part c_part (Refs: see Ground.h)
+double Ground::layerNSplitFrac(const double c_part, const double c_whole, const double fallback) {
+  double f = (c_whole > 0.0) ? c_part / c_whole : fallback;
+  if (!(f > 0.0)) f = 0.0;   // also NaN
+  if (f > 1.0) f = 1.0;
+  return f;
+}
+
 void Ground::splitOneSoilLayer(SoilLayer*usl, SoilLayer* lsl,
                                const double & updeptop, const double &lsldz) {
   double lslfrac = lsldz/usl->dz;
@@ -1630,9 +1651,18 @@ void Ground::splitOneSoilLayer(SoilLayer*usl, SoilLayer* lsl,
   lsl->avln = usl->avln;
 
   if (usl->isOrganic) {
+    // v5q-layern-fix: C of the whole (pre-split) layer, copied into 'lsl' above
+    const double c_whole = lsl->rawc + lsl->soma + lsl->sompr + lsl->somcr;
     double pldtop = updeptop + usl->dz;   //usl->dz has been updated above
     double pldbot = pldtop + lsl->dz;
     getOslCarbon5Thickness(lsl, pldtop, pldbot);
+    if (layer_n_remap_fix == 1) {
+      // v5q-layern-fix: N follows C (legacy: all N to 'lsl'). Refs: see Ground.h
+      const double c_low = lsl->rawc + lsl->soma + lsl->sompr + lsl->somcr;
+      const double fn = layerNSplitFrac(c_low, c_whole, lslfrac);
+      lsl->orgn = usl->orgn * fn;
+      lsl->avln = usl->avln * fn;
+    }
   } else {
     lsl->rawc *= lslfrac;
     lsl->soma *= lslfrac;
@@ -1694,7 +1724,11 @@ void Ground::combineTwoSoilLayersL2U(SoilLayer* lsl, SoilLayer* usl) {
   usl->sompr+=lsl->sompr;
   usl->somcr+=lsl->somcr;
   usl->orgn +=lsl->orgn;
-  usl->avln =+lsl->avln;
+  if (layer_n_remap_fix == 1) {
+    usl->avln += lsl->avln;   // v5q-layern-fix: sum (Refs: see Ground.h)
+  } else {
+    usl->avln =+lsl->avln;    // legacy: assigns (typo kept so switch 0 stays bit-identical)
+  }
   // after combination, needs to update 'usl'- 'frozen' status based on
   //   'fronts' if given
   getLayerFrozenstatusByFronts(usl);

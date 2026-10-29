@@ -130,6 +130,24 @@ public :
   // soil layers
   void redivideSoilLayers();
 
+  // v5q-layern-fix: model_settings.layer_n_remap_fix (0 = legacy, default).
+  //  1 = (a) splitOneSoilLayer, organic layers: the new lower layer gets orgn/avln in the same
+  //          fraction as its C (legacy: all N of the split layer goes to the lower part, the
+  //          upper part keeps C with N = 0); (b) new deep layer formed from the last fibric
+  //          layer: N moves in the fraction of the C moved (legacy: all N moves, fibric N = 0);
+  //      (c) combineTwoSoilLayersL2U: avln is summed (legacy typo 'usl->avln =+lsl->avln'
+  //          assigns the lower layer's value, so the upper layer's avln is lost).
+  //      Soil_Bgc::assignNitrogen{Bd2Layer,Layer2Bd}Monthly carry layer N with the C pools
+  //      around redivideSoilLayers (Cohort::updateMonthly_DIMgrd and the post-burn path).
+  // Refs: layer structure and the organic-layer C<->thickness relation of the dynamic organic
+  //   soil (DOS) module: Yi et al. 2009, doi:10.1029/2008JG000841; Yi et al. 2010,
+  //   doi:10.1029/2010JG001302. The fix itself is a mass/stoichiometry bookkeeping
+  //   (conservation) bug fix: no published source for the remap rule (N follows C).
+  int layer_n_remap_fix = 0;
+  // fraction of N that goes with the C part c_part of a layer holding c_whole (clamped to
+  // [0,1]); 'fallback' (thickness fraction) if c_whole <= 0. Unit-tested.
+  static double layerNSplitFrac(const double c_part, const double c_whole, const double fallback);
+
   // thawing/freezing fronts
   void setFstLstFrontLayers();
   void updateWholeFrozenStatus(); //update if whole soil frozen(1)/

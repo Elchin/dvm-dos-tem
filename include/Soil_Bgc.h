@@ -54,6 +54,11 @@ public:
 
   void assignCarbonBd2LayerMonthly();
   void assignCarbonLayer2BdMonthly();
+  // v5q-layern-fix (layer_n_remap_fix 1 only): carry layer orgn/avln with the C pools around
+  // Ground::redivideSoilLayers (legacy copies only C, so after a layer split/combine the bd N
+  // stays at the old layer index while C moves). Refs: see Ground.h.
+  void assignNitrogenBd2LayerMonthly();
+  void assignNitrogenLayer2BdMonthly();
 
   void deltac();
   void deltan();

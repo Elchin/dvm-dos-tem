@@ -201,6 +201,41 @@ void Soil_Bgc::assignCarbonLayer2BdMonthly() {
 
 }
 
+// v5q-layern-fix: same layer walk as assignCarbonBd2LayerMonthly, for orgn/avln
+// (used only when model_settings.layer_n_remap_fix == 1). Refs: see Ground.h.
+void Soil_Bgc::assignNitrogenBd2LayerMonthly() {
+  Layer* currl = ground->fstsoill;
+  while(currl!=NULL) {
+    if(currl->isSoil) {
+      currl->orgn = bd->m_sois.orgn[currl->solind-1];
+      currl->avln = bd->m_sois.avln[currl->solind-1];
+    } else {
+      break;
+    }
+    currl = currl->nextl;
+  }
+}
+
+// v5q-layern-fix: same layer walk as assignCarbonLayer2BdMonthly, for orgn/avln.
+void Soil_Bgc::assignNitrogenLayer2BdMonthly() {
+  Layer* currl = ground->fstsoill;
+  int lstprocessedlayer = 0;
+  while(currl!=NULL) {
+    if(currl->isSoil) {
+      lstprocessedlayer = currl->solind-1;
+      bd->m_sois.orgn[currl->solind-1] = currl->orgn;
+      bd->m_sois.avln[currl->solind-1] = currl->avln;
+    } else {
+      break;
+    }
+    currl = currl->nextl;
+  }
+  for(int il = lstprocessedlayer+1; il<MAX_SOI_LAY; il++) {
+    bd->m_sois.orgn[il] = 0.0;
+    bd->m_sois.avln[il] = 0.0;
+  }
+}
+
 void Soil_Bgc::prepareIntegration(const bool &mdnfeedback,
                                   const bool &mdavlnflg,
                                   const bool &mdbaseline) {

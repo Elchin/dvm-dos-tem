@@ -316,6 +316,7 @@ void Cohort::initialize_state_parameters() {
   soilbgc.bnfp = md->bnf;                              // v5q BNF (scheme 0 = off)
   soilbgc.n_leach_fix = md->n_leach_fix;               // v5q-ndrain (0 = legacy)
   soilbgc.d2m_transfer_gate = md->d2m_transfer_gate;   // v5q-d2m-gate (0 = legacy)
+  ground.layer_n_remap_fix = md->layer_n_remap_fix;    // v5q-layern-fix (0 = legacy)
   for (int ip = 0; ip < NUM_PFT; ip++) { vegbgc[ip].n_nonvasc_extract = md->n_nonvasc_extract; } // Fix N3 (v5k)
   for (int ip = 0; ip < NUM_PFT; ip++) {   // ET-split fixes S1-S4 (v5l), default 0
     vegenv[ip].fpc_once_fix       = md->et_fpc_once_fix;
@@ -1036,12 +1037,14 @@ void Cohort::updateMonthly_Fir(const int & year, const int & midx, std::string s
 
     BOOST_LOG_SEV(glg, debug) << "Post-burn, assign the updated C/N pools to double linked layer matrix in ground...";
     soilbgc.assignCarbonBd2LayerMonthly();
+    if (md->layer_n_remap_fix == 1) { soilbgc.assignNitrogenBd2LayerMonthly(); } // v5q-layern-fix
 
     BOOST_LOG_SEV(glg, debug) << "Post-burn, adjust soil structure...";
     ground.adjustSoilAfterburn(); // must call after soilbgc.assignCarbonBd2LayerMonthly()
 
     BOOST_LOG_SEV(glg, debug) << "Post-burn, save the data back to 'bdall'...";
     soilbgc.assignCarbonLayer2BdMonthly();
+    if (md->layer_n_remap_fix == 1) { soilbgc.assignNitrogenLayer2BdMonthly(); } // v5q-layern-fix
 
     BOOST_LOG_SEV(glg, debug) << "Post-burn, update all other pft's 'bd'...";
     assignSoilBd2pfts_monthly();
@@ -1117,6 +1120,8 @@ void Cohort::updateMonthly_DIMgrd(const int & currmind, const bool & dslmodule) 
 
   //only update the thickness at begin of year, since it is a slow process
   if(dslmodule && currmind==0) {
+    // v5q-layern-fix: layer N = bd N before the re-division (Refs: see Ground.h)
+    if (md->layer_n_remap_fix == 1) { soilbgc.assignNitrogenBd2LayerMonthly(); }
     // calculate the OSL layer thickness from C contents
     ground.updateOslThickness5Carbon(ground.fstsoill);
 
@@ -1141,6 +1146,8 @@ void Cohort::updateMonthly_DIMgrd(const int & currmind, const bool & dslmodule) 
     ground.redivideSoilLayers();
     // and save the bgc data in double-linked structure back to 'bdall'
     soilbgc.assignCarbonLayer2BdMonthly();
+    // v5q-layern-fix: N back to 'bdall' with the C (legacy: bd N stays at the old index)
+    if (md->layer_n_remap_fix == 1) { soilbgc.assignNitrogenLayer2BdMonthly(); }
   }
 
   // update soil dimension

@@ -218,6 +218,15 @@ public:
   // transfer only into thawed receiver thickness, max(running max ALD, previous-year ALD);
   // 2 = transfer off). Integers 0/1/2 only; see Soil_Bgc.h for the scheme and references.
   int d2m_transfer_gate;
+  // v5q-layern-fix: model_settings.layer_n_remap_fix (0 = legacy, default, bit-identical;
+  // 1 = layer organic N (orgn) and inorganic N (avln) follow the C pools through the
+  // dynamic-soil-layer split/combine/remap, so per-layer C:N stays aligned and column N is
+  // conserved). Integers 0/1 only; see Ground.h / Soil_Bgc.h.
+  // Refs: layer structure and the organic-layer C<->thickness relation of the dynamic organic
+  //   soil (DOS) module: Yi et al. 2009, doi:10.1029/2008JG000841; Yi et al. 2010,
+  //   doi:10.1029/2010JG001302. The fix itself is a mass/stoichiometry bookkeeping
+  //   (conservation) bug fix: no published source for the remap rule (N follows C).
+  int layer_n_remap_fix;
   // Refs (N2): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 20b2723e); restores N mass conservation (N moves with C).
   // Refs (N3): no published source for the scheme; restores N mass conservation; bryophyte N uptake from the moss/peat layer: Turetsky 2003, doi:10.1639/05.
   // ET-split fixes (v5l), all OFF by default (0 = legacy, bit-identical); see

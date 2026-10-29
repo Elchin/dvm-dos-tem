@@ -115,6 +115,12 @@ Switch defaults: every switch below is 0/off by default, which is legacy behavio
 |---|---|---|
 | `d2m_transfer_gate` (0 legacy / 1 thaw-gated / 2 off) | 1 = the deep(humic)->mineral transfer of `Soil_Bgc::deltastate` step (II)3)-4) goes only into the part of the top 0.20 m of mineral soil above max(this year's running max ALD, previous year's ALD), scaled by that thawed fraction; C and N together at the donor C:N, receiver N `+=`, column C and N conserved; no transfer when ALD = 0. 2 = no transfer (physics-only spin-up phase). Previous-year ALD in the restart (`d2m_ald_prevyr`, optional; gate 0 files unchanged). | Permafrost SOM stays where frozen, transport only in the active layer [Koven2009]; [Koven2013]; CLM5/CTSM gating on max(altmax, altmax_lastyear) [Lawrence2019]. Spin-up to a stable ALD before carbon [Melton2019] (context). **No published source** for the f-scaling of the dvmdostem transfer. |
 
+### Layer N follows C in the dynamic soil-layer remap (v5q-layern-fix, branch v5q-layern-fix)
+
+| switch | what it does | references |
+|---|---|---|
+| `layer_n_remap_fix` (0 legacy / 1 fix) | 1 = (a) `Cohort::updateMonthly_DIMgrd` and the post-burn path copy layer `orgn`/`avln` from/to `bdall` around `Ground::redivideSoilLayers` together with the C pools (`Soil_Bgc::assignNitrogen{Bd2Layer,Layer2Bd}Monthly`; legacy copies only C, so after a layer split/combine the bd N stays at the old layer index while C moves); (b) organic `splitOneSoilLayer`: N and AVLN go to the new lower layer in the same fraction as its C (legacy: all N to the lower part, the upper part keeps its C with N = 0); a new deep layer formed from the last fibric layer takes N in the fraction of the C moved (legacy: all of the fibric N, fibric N = 0); (c) `combineTwoSoilLayersL2U` sums AVLN (legacy typo `usl->avln =+lsl->avln` assigns). Column C and N conserved; per-layer C:N follows C. No calibrated parameter changed. | Layer structure and the organic C–thickness relation of the dynamic organic soil module: [Yi2009], [Yi2010]. **No published source** for the remap rule: conservation / stoichiometry bookkeeping bug fix (N follows C). |
+
 ### Parameter test (not a switch)
 
 | change | status | references |
@@ -234,5 +240,6 @@ Format: commit — code location — principle — references.
 - [Woo2004] Woo, M.-K., Arain, M.A., Mollinga, M., Yi, S. (2004). A two-directional freeze and thaw algorithm for hydrologic and land surface modelling. Geophys. Res. Lett. 31, 2004GL019475 (article number as registered). https://doi.org/10.1029/2004GL019475
 - [Yazbeck2025] Yazbeck, T., Bohrer, G., Sonnentag, O., et al. (2025). Shrub expansion can counteract carbon losses from warming tundra. J. Geophys. Res. Biogeosci. 130, e2024JG008721. https://doi.org/10.1029/2024JG008721
 - [Yi2009] Yi, S., McGuire, A.D., Harden, J., Kasischke, E., et al. (2009). Interactions between soil thermal and hydrological dynamics in the response of Alaska ecosystems to fire disturbance. J. Geophys. Res. Biogeosci. 114. https://doi.org/10.1029/2008JG000841
+- [Yi2010] Yi, S., McGuire, A.D., Kasischke, E., Harden, J., Manies, K., Mack, M., Turetsky, M. (2010). A dynamic organic soil biogeochemical model for simulating the effects of wildfire on soil environmental conditions and carbon dynamics of black spruce forests. J. Geophys. Res. Biogeosci. 115. https://doi.org/10.1029/2010JG001302
 - [Yuan2012] Yuan, F.-M., Yi, S.-H., McGuire, A.D., Johnson, K.D., Liang, J., Harden, J.W., Kasischke, E.S., Kurz, W.A. (2012). Assessment of boreal forest historical C dynamics in the Yukon River Basin: relative roles of warming and fire regime change. Ecol. Appl. 22, 2091–2109. https://doi.org/10.1890/11-1957.1
 - [Zwieback2019] Zwieback, S., Chang, Q., Marsh, P., Berg, A. (2019). Shrub tundra ecohydrology: rainfall interception is a major component of the water balance. Environ. Res. Lett. 14, 055005. https://doi.org/10.1088/1748-9326/ab1049

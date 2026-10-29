@@ -249,6 +249,15 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     }
     d2m_transfer_gate = dg.asInt();
   }
+  // v5q-layern-fix: layer_n_remap_fix (0 = legacy, default). Refs: see Ground.h.
+  {
+    Json::Value lf = controldata["model_settings"].get("layer_n_remap_fix", 0);
+    if (!bnf::valid_int(lf, 0, 1)) {
+      std::cerr << "FATAL: model_settings.layer_n_remap_fix must be 0 (legacy) or 1 (layer N follows C in layer split/combine)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    layer_n_remap_fix = lf.asInt();
+  }
   // ET-split fixes S1-S4 (v5l), default 0 = off (legacy); see ModelData.h / Vegetation_Env.h
   et_fpc_once_fix    = controldata["model_settings"].get("et_fpc_once_fix", 0).asInt();
   nv_snow_bury_fix   = controldata["model_settings"].get("nv_snow_bury_fix", 0).asInt();
@@ -362,6 +371,7 @@ ModelData::ModelData():force_cmt(-1) {
   n_leach_fix = 0; // v5q-ndrain (off)
   soil_negpool_fix = 0; // v5q-negpool (off)
   d2m_transfer_gate = 0; // v5q-d2m-gate (legacy)
+  layer_n_remap_fix = 0; // v5q-layern-fix (legacy)
   nv_snow_bury_depth = 0.0;
   set_envmodule(false);
   set_bgcmodule(false);
