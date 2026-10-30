@@ -145,6 +145,14 @@ Switch defaults: every switch below is 0/off by default, which is legacy behavio
 |---|---|---|
 | `thawfrac_moist_mode` (0 sws/f / 1 layer mean; 1 requires `thawfrac_decomp` 1) | With `thawfrac_decomp` 1, selects the liquid saturation of the thawed part in `Soil_Bgc::thawfracModifier`: 0 = min(1, sws/f) (default, unchanged), 1 = the layer-mean sws. Nothing else changes. No calibrated parameter changed. | Per-layer moisture scalar from the layer liquid-water state in layer-resolved decomposition [Koven2013]; CLM5 [Lawrence2019]; layer frozen fraction from the Stefan fronts [Yi2009]. **No published source** for the mode choice itself. |
 
+### Humic sublayer cap, Stefan front-layer resistance, front-based ALD (v5q-humic-stefan, branch v5q-humic-stefan)
+
+| switch | what it does | references |
+|---|---|---|
+| `humic_max_thick` (0 off / cap in [0.02, 5.0] m) | After the legacy `DeepThickScheme` split, a humic sublayer thicker than the cap triggers an equal re-split into n = min(3, max(n_legacy, ceil(H/cap))) layers. MAX_DEP_LAY = 3 kept (restart layout unchanged), so the cap cannot be met when H > 3·cap. The split itself is the legacy `splitOneSoilLayer`. No calibrated parameter changed. | Layer structure and organic C–thickness relation of the DOS-TEM soil module [Yi2009]; [Yi2010]. **No published source** for the cap (discretization fix). |
+| `stefan_front_resist_fix` (0 legacy / 1 fix) | Thawing direction only: the front layer contributes (1−ff)·dz/tk (its thawed part) to the resistance above the front; ff·dz/tk is added once the front has passed the whole layer. Same result as splitting the layer at the front. Freezing direction unchanged. | Two-directional Stefan freeze/thaw algorithm [Woo2004]; its DOS-TEM implementation [Yi2009]. **No published source** for the correction (discretization fix). |
+| `ALD_FRONT` (output only) | Yearly max of the daily deepest thawing front, not gated on permafrost; equals `ALD_FLAG` in permafrost years. No feedback. | Front tracking [Woo2004]; [Yi2009]. Output definition: no published source (diagnostic). |
+
 ### Parameter test (not a switch)
 
 | change | status | references |

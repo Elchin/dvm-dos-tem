@@ -262,6 +262,15 @@ public:
   //   doi:10.1002/hyp.6920; Khosh et al. 2017, doi:10.1002/2016jg003377). The fix itself:
   //   no published source (code defect, see Soil_Bgc.h).
   int n_leach_curn_fix;
+  // v5q-humic-stefan (all three default off; see tests/README.md, docs/daily-mode-REFERENCES.md):
+  //  humic_max_thick (m): 0 = off (legacy, bit-identical); otherwise a finite number in
+  //    [0.02, 5.0] m = max thickness of a deep (humic) sublayer, see Organic.h. Anything else FATAL.
+  //  stefan_front_resist_fix: 0 = legacy, 1 = thawing-front resistance from the thawed part of the
+  //    front layer only, see Stefan.h. Integers 0/1 only, anything else FATAL.
+  // Refs: Yi et al. 2009, doi:10.1029/2008JG000841; Yi et al. 2010, doi:10.1029/2010JG001302;
+  //   Woo et al. 2004, doi:10.1029/2004GL019475. Both fixes: no published source (discretization).
+  double humic_max_thick;
+  int stefan_front_resist_fix;
   // Refs (N2): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 20b2723e); restores N mass conservation (N moves with C).
   // Refs (N3): no published source for the scheme; restores N mass conservation; bryophyte N uptake from the moss/peat layer: Turetsky 2003, doi:10.1639/05.
   // ET-split fixes (v5l), all OFF by default (0 = legacy, bit-identical); see

@@ -27,6 +27,22 @@ public:
   // the minimum front distance on every pass of combineExtraFronts() (legacy:
   // set once, which never terminates with more than one surplus pair).
   static int fronts_fix;
+  // v5q-humic-stefan: model_settings.stefan_front_resist_fix (0 = legacy, default, bit-identical;
+  // 1 = for a THAWING front, the soil layer that contains the front contributes only its thawed
+  // part (1 - frozenfrac) * dz / k_unf to the thermal resistance above the front (legacy: the full
+  // dz, i.e. the still-frozen part below the front is counted as resistance above it); if the front
+  // passes through the whole layer in the same step, the remaining part is added before the next
+  // layer, so deeper layers see the full layer as in legacy. The freezing direction is unchanged
+  // (possible extension). Integers 0/1 only, anything else FATAL.
+  // Refs: modified Stefan front tracking: Woo et al. 2004, doi:10.1029/2004GL019475; its use in
+  //   DOS-TEM: Yi et al. 2009, doi:10.1029/2008JG000841. The fix (resistance only above the front)
+  //   is a discretization bug fix: no published source.
+  static int front_resist_fix;
+  // Pure helper (unit-tested): resistance added now (res_now) and, if the front passes the whole
+  // layer this step, the extra resistance to add afterwards (res_after).
+  static void frontLayerResistance(int fix, double tdrv, bool isSoil, int frozen, int freezing,
+                                   double frozenfrac, double dz, double tkres,
+                                   double & res_now, double & res_after);
   // Refs (B3): no published source; loop-termination bug in combineExtraFronts (upstream 419a4eb3, fix commit 07f6c8d0); algorithm: Woo et al. 2004, doi:10.1029/2004GL019475.
 
 private:

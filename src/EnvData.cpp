@@ -203,6 +203,7 @@ void EnvData::grnd_beginOfYear() {
   y_soid.alc = 0.;
   y_soid.ald = MISSING_D;
   y_soid.aldflag = MISSING_D;
+  y_soid.aldfront = MISSING_D;  // v5q-humic-stefan (ALD_FRONT)
   y_soid.frasat = 0.;
   y_soid.rtdpthawpct  = 0.;
   y_soid.rtdpts   = 0.;
@@ -345,6 +346,7 @@ void EnvData::grnd_beginOfMonth() {
   m_soid.alc = 0.;
   m_soid.ald = MISSING_D;
   m_soid.aldflag = MISSING_D;
+  m_soid.aldfront = MISSING_D;  // v5q-humic-stefan (ALD_FRONT)
   m_soid.rtdpthawpct= 0.;
   m_soid.rtdpts     = 0.;
   //
@@ -611,6 +613,11 @@ void EnvData::grnd_endOfDay(const int & dinm, const int & doy) {
   if (m_soid.ald < d_soid.ald) {
     m_soid.ald = d_soid.ald;
   }
+  //   v5q-humic-stefan 'aldfront' (ALD_FRONT, output only): max of the daily deepest thawing
+  //   front, not permafrost-gated (Refs: front tracking, Woo et al. 2004, doi:10.1029/2004GL019475)
+  if (m_soid.aldfront < d_soid.aldflag) {
+    m_soid.aldfront = d_soid.aldflag;
+  }
   //   legacy 'aldflag' (thawing-front based, permafrost-gated)
   if (m_soid.permafrost ==1) {
     if (m_soid.aldflag < d_soid.aldflag) { // assuming the max. daily value
@@ -854,6 +861,10 @@ void EnvData::grnd_endOfMonth() {
   //   new 'ald' (0 degC isotherm): max of monthly values, not gated
   if (y_soid.ald < m_soid.ald) {
     y_soid.ald = m_soid.ald;
+  }
+  //   v5q-humic-stefan 'aldfront' (ALD_FRONT): max of monthly values, not gated
+  if (y_soid.aldfront < m_soid.aldfront) {
+    y_soid.aldfront = m_soid.aldfront;
   }
   //   legacy 'aldflag' (thawing-front based, permafrost-gated)
   if (y_soid.permafrost ==1) {

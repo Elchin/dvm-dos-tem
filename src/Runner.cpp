@@ -1310,6 +1310,27 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
   }//end ALD_FLAG
   map_itr = netcdf_outputs.end();
 
+  //ALD_FRONT (v5q-humic-stefan, output only): yearly max of the daily deepest thawing front, not
+  //  permafrost-gated (equals ALD_FLAG in permafrost years)
+  map_itr = netcdf_outputs.find("ALD_FRONT");
+  if(map_itr != netcdf_outputs.end()){
+    BOOST_LOG_SEV(glg, debug)<<"NetCDF output: ALD_FRONT";
+    curr_spec = map_itr->second;
+
+    //Store data intended for output
+    outhold.aldfront_for_output.push_back(cohort.edall->y_soid.aldfront);
+
+    //If set to output this timestep, do so
+    if(output_this_timestep){
+      #pragma omp critical(outputALDFRONT)
+      {
+        output_nc_3dim(&curr_spec, file_stage_suffix, &outhold.aldfront_for_output[0], 1, year_start_idx, years_to_output);
+        outhold.aldfront_for_output.clear();
+      }//end critical(outputALDFRONT)
+    }
+  }//end ALD_FRONT
+  map_itr = netcdf_outputs.end();
+
 
   //AVLN
   map_itr = netcdf_outputs.find("AVLN");

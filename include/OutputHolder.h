@@ -30,6 +30,7 @@ public:
 
   std::vector<double> ald_for_output;
   std::vector<double> aldflag_for_output;
+  std::vector<double> aldfront_for_output;  // v5q-humic-stefan (ALD_FRONT)
   std::vector<double> burnsoil2airc_for_output;
   std::vector<double> burnthick_for_output;
   std::vector<double> burnveg2airc_for_output;

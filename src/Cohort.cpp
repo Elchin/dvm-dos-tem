@@ -73,6 +73,7 @@ Cohort::Cohort(int y, int x, ModelData* modeldatapointer):
   Climate::vp_hpa_fix = modeldatapointer->vp_hpa_fix;
   Climate::svp_ice_fix = modeldatapointer->svp_ice_fix;   // Fix B1 (v5k)
   Stefan::fronts_fix = modeldatapointer->stefan_fronts_fix; // Fix B3 (v5k)
+  Stefan::front_resist_fix = modeldatapointer->stefan_front_resist_fix; // v5q-humic-stefan (0 = legacy)
   Snow_Env::albedo_fix = modeldatapointer->snow_albedo_fix; // Fix B4 (v5k)
   Integrator::nmin_tol_fix = modeldatapointer->soil_nmin_tol_fix; // Fix C1 (v5k)
   Integrator::n_safetynet_conserve = modeldatapointer->n_safetynet_conserve; // Fix L1 (v5m)
@@ -321,6 +322,7 @@ void Cohort::initialize_state_parameters() {
   soilbgc.n_leach_curn_fix = md->n_leach_curn_fix;     // v5q-leach-curn (0 = legacy)
   ground.layer_n_remap_fix = md->layer_n_remap_fix;    // v5q-layern-fix (0 = legacy)
   ground.layer_bookkeep_fix = md->layer_bookkeep_fix;  // v5q-layer-bookkeep (0 = legacy)
+  ground.organic.humic_max_thick = md->humic_max_thick; // v5q-humic-stefan (0 = off)
   for (int ip = 0; ip < NUM_PFT; ip++) { vegbgc[ip].n_nonvasc_extract = md->n_nonvasc_extract; } // Fix N3 (v5k)
   for (int ip = 0; ip < NUM_PFT; ip++) {   // ET-split fixes S1-S4 (v5l), default 0
     vegenv[ip].fpc_once_fix       = md->et_fpc_once_fix;

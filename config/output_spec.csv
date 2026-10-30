@@ -1,6 +1,7 @@
 Name,Description,Units,Yearly,Monthly,Daily,PFT,Compartments,Layers,Data Type,Placeholder
 ALD,Soil active layer depth (max depth of 0 degC isotherm),m,,invalid,invalid,invalid,invalid,invalid,double,
 ALD_FLAG,Legacy active layer depth (deepest thawing front; permafrost only),m,,invalid,invalid,invalid,invalid,invalid,double,
+ALD_FRONT,Active layer depth from the deepest thawing front (yearly max; not permafrost-gated),m,,invalid,invalid,invalid,invalid,invalid,double,
 AVLN,Total soil available N,g/m2,,,invalid,invalid,invalid,,double,
 BURNAIR2SOILN,Nitrogen deposit from fire emission,g/m2/time,,,invalid,invalid,invalid,invalid,double,
 BURNSOIL2AIRC,Burned soil C,g/m2/time,,,invalid,invalid,invalid,invalid,double,

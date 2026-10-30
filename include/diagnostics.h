@@ -109,6 +109,9 @@ struct soidiag_env {
               //  (daily value; monthly/yearly = max of daily values)
   double aldflag; //legacy active layer depth (m) from the deepest thawing
                   //  front, permafrost-gated (old 'ald'; output ALD_FLAG)
+  double aldfront; //v5q-humic-stefan, output only (ALD_FRONT): max of the daily
+                   //  deepest-thawing-front depth ('aldflag' daily value), NOT
+                   //  permafrost-gated (monthly/yearly; daily value unused)
 
   //variables used for estimating growing season and growth timing
   double rtdpts; //soil temperature over the active root zone depth 'rtdp4gdd'

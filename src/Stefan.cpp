@@ -1,6 +1,19 @@
 #include "../include/Stefan.h"
 
 int Stefan::fronts_fix = 0; // Fix B3 (v5k), default off (legacy)
+int Stefan::front_resist_fix = 0; // v5q-humic-stefan, default off (legacy); Refs: see Stefan.h
+
+void Stefan::frontLayerResistance(int fix, double tdrv, bool isSoil, int frozen, int freezing,
+                                  double frozenfrac, double dz, double tkres,
+                                  double & res_now, double & res_after) {
+  res_now = dz/tkres;   // legacy
+  res_after = 0.0;
+  if (fix == 1 && tdrv > 0.0 && isSoil && frozen != freezing
+      && std::isfinite(frozenfrac) && frozenfrac >= 0.0 && frozenfrac <= 1.0) {
+    res_now   = (1.0 - frozenfrac) * dz / tkres;  // thawed part above the front only
+    res_after = frozenfrac * dz / tkres;          // added only if the front passes the layer
+  }
+}
 
 Stefan::Stefan() {
 };
@@ -91,7 +104,15 @@ void Stefan::updateFronts(const double & tdrv, const double &timestep) {
       tkfront = tkfrz;
     }
 
-    sumresabv += currl->dz/tkres;
+    double res_after = 0.0;
+    if (front_resist_fix == 0) {
+      sumresabv += currl->dz/tkres;   // legacy
+    } else {   // v5q-humic-stefan (Refs: see Stefan.h)
+      double res_now = 0.0;
+      frontLayerResistance(front_resist_fix, tdrv1, currl->isSoil, currl->frozen, freezing1,
+                           currl->frozenfrac, currl->dz, tkres, res_now, res_after);
+      sumresabv += res_now;
+    }
 
     if (currl->frozen != freezing1){//if the layer has a different frozen status
       if(currl->isSnow) {
@@ -100,6 +121,7 @@ void Stefan::updateFronts(const double & tdrv, const double &timestep) {
         processNewFrontSoilLayerDown(freezing1, sumresabv, tkfront, dse, newfntz1, currl, timestep);
       }
     }
+    if (res_after > 0.0 && dse > 0.) { sumresabv += res_after; }  // front passed the whole layer
 
     currl=currl->nextl;
   }

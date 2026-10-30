@@ -306,6 +306,22 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
       exit(EXIT_FAILURE);
     }
   }
+  // v5q-humic-stefan: humic_max_thick (0 = off, default; else [0.02, 5.0] m) and
+  // stefan_front_resist_fix (0 = legacy, default; 1 = fix). Refs: see ModelData.h / Organic.h / Stefan.h.
+  {
+    Json::Value hm = controldata["model_settings"].get("humic_max_thick", 0.0);
+    if (!bnf::valid_num(hm) || !(hm.asDouble() == 0.0 || (hm.asDouble() >= 0.02 && hm.asDouble() <= 5.0))) {
+      std::cerr << "FATAL: model_settings.humic_max_thick must be 0 (off) or a number in [0.02, 5.0] m (max deep humic sublayer thickness)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    humic_max_thick = hm.asDouble();
+    Json::Value sr = controldata["model_settings"].get("stefan_front_resist_fix", 0);
+    if (!bnf::valid_int(sr, 0, 1)) {
+      std::cerr << "FATAL: model_settings.stefan_front_resist_fix must be 0 (legacy) or 1 (thawing-front resistance from the thawed part of the front layer only)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    stefan_front_resist_fix = sr.asInt();
+  }
   // ET-split fixes S1-S4 (v5l), default 0 = off (legacy); see ModelData.h / Vegetation_Env.h
   et_fpc_once_fix    = controldata["model_settings"].get("et_fpc_once_fix", 0).asInt();
   nv_snow_bury_fix   = controldata["model_settings"].get("nv_snow_bury_fix", 0).asInt();
@@ -424,6 +440,7 @@ ModelData::ModelData():force_cmt(-1) {
   thawfrac_decomp = 0; // v5q-thawfrac-decomp (legacy)
   thawfrac_moist_mode = 0; // v5q-thawfrac-lmoist (sws/f)
   n_leach_curn_fix = 0; // v5q-leach-curn (legacy)
+  humic_max_thick = 0.0; stefan_front_resist_fix = 0; // v5q-humic-stefan (off)
   nv_snow_bury_depth = 0.0;
   set_envmodule(false);
   set_bgcmodule(false);

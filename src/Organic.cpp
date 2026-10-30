@@ -1,6 +1,7 @@
 #include "../include/Organic.h"
+#include <cmath>
 
-Organic::Organic() {
+Organic::Organic() : humic_max_thick(0.0) {
 };
 
 Organic::~Organic() {
@@ -119,7 +120,30 @@ void Organic::DeepThickScheme(const double & totthickness) {
       deepnum =3;
     }
   }
+
+  // v5q-humic-stefan: optional max-thickness cap on the deep (humic) sublayers (0 = off, legacy)
+  if (humic_max_thick > 0.0) {
+    applyHumicMaxThick(humic_max_thick, deepthick, deepdz, deepnum);
+  }
 };
+
+// v5q-humic-stefan: equal re-split of the deep horizon so no sublayer exceeds 'cap' (if feasible
+// within MAX_DEP_LAY). No-op when cap <= 0, deepthick <= 0, or every current sublayer is <= cap.
+// Refs: humic layering and the organic C<->thickness relation of the dynamic organic soil module:
+//   Yi et al. 2009, doi:10.1029/2008JG000841; Yi et al. 2010, doi:10.1029/2010JG001302.
+//   The cap itself is a vertical-resolution (discretization) choice: no published source.
+bool Organic::applyHumicMaxThick(double cap, double deepthick, double deepdz[], int & deepnum) {
+  if (!(cap > 0.0) || !(deepthick > 0.0) || deepnum < 1) { return false; }
+  double maxdz = 0.0;
+  for (int k = 0; k < deepnum && k < MAX_DEP_LAY; k++) { maxdz = fmax(maxdz, deepdz[k]); }
+  if (maxdz <= cap * (1.0 + 1e-12)) { return false; }
+  int n = (int)std::ceil(deepthick / cap - 1e-12);
+  if (n < deepnum) { n = deepnum; }
+  if (n > MAX_DEP_LAY) { n = MAX_DEP_LAY; }
+  for (int k = 0; k < MAX_DEP_LAY; k++) { deepdz[k] = (k < n) ? deepthick / n : MISSING_D; }
+  deepnum = n;
+  return true;
+}
 
 // if shlw peat thickness from input soil profile
 void Organic::assignShlwThicknesses(int soiltype[], double soildz[],
