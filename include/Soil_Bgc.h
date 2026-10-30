@@ -129,6 +129,37 @@ public:
   static double d2mGateReceivers(const int n, const int type[], const double z[], const double dz[],
                                  const double xtopmlthick, const double zgate, double w[]);
   // Refs (N2): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 20b2723e); restores N mass conservation (N moves with C).
+  // v5q-thawfrac-decomp: model_settings.thawfrac_decomp (FATAL unless integer 0/1).
+  //  0 = legacy (default; code path unchanged): deltac() treats a layer as wholly frozen when its
+  //      monthly mean ts < 0 (rhmoist = rhmoistfrozen) and wholly thawed otherwise, so a layer that
+  //      is half thawed but whose mean ts is pinned just below 0 C by latent heat has no RH where
+  //      rhmoistfrozen = 0 (CMT51); deltan() mineralizes N only where ts > 0.
+  //  1 = for each soil layer, with f = 1 - m_sois.frozenfrac (the frozen thickness fraction set from
+  //      the Stefan freeze/thaw fronts, Ground::getLayerFrozenstatusByFronts, monthly mean; clamped
+  //      to [0,1]; legacy ts sign if not finite/missing):
+  //        E = f * rhmoist(sws_th) * Q10^(max(ts,0)/10) + (1-f) * rhmoistfrozen * Q10^(min(ts,0)/10)
+  //      thawed part: temperature max(ts, 0) (>= 0 C, the fronts are the 0 C isotherm; the layer-mean
+  //      ts of a partly frozen layer sits at ~0 C) and liquid saturation sws_th = min(1, sws/f) for f < 1 (the
+  //      liquid of a partly frozen layer is held in its unfrozen part, as in Soil_Env / Richards
+  //      liq = dz*(1-frozenfrac)*lwc); frozen part: the legacy frozen path at min(ts, 0).
+  //      E multiplies kd*C of every pool (rawc, soma, sompr, somcr; wood debris inherits the first
+  //      non-moss layer's E as in legacy); bd rhmoist[il] = E/rhq10[il] (rhq10 diagnostic legacy).
+  //      N: net mineralization/immobilization (getNetmin) uses the thawed-part RH share
+  //      f*E_th/E of the layer RH with the thaw gate open, the frozen part keeps the legacy closed
+  //      gate, so at f = 1 (ts > 0) and f = 0 (ts < 0) deltan() equals legacy. f = 0 / 1 give
+  //      the legacy frozen / thawed rate; linear in f in between. No calibrated parameter changed.
+  // Refs: vertically resolved, per-layer decomposition with frozen-soil limitation: Koven et al. 2013,
+  //   doi:10.5194/bg-10-7109-2013; Lawrence et al. 2019 (CLM5), doi:10.1029/2018MS001583. Layer
+  //   frozen fraction from the two-directional Stefan freeze/thaw fronts: Yi et al. 2009,
+  //   doi:10.1029/2008JG000841. The linear thawed-fraction blend of the dvmdostem modifier
+  //   (sub-layer mixing of the thawed and frozen parts): no published source.
+  int thawfrac_decomp = 0;
+  double tfd_thawshare[MAX_SOI_LAY] = {0};   // thawfrac_decomp 1: thawed share of the layer RH (last deltac)
+  // pure helper (unit-tested): thawed fraction f from a frozen fraction (clamped to [0,1]; not finite
+  // or outside [-0.5, 1.5] (MISSING) -> legacy indicator ts < 0 ? 0 : 1).
+  static double thawFraction(const double frozenfrac, const double ts);
+  // thawfrac_decomp 1: E (returned) and its thawed share (f*E_th/E, 0 if E == 0) for one layer.
+  double thawfracModifier(const double fthaw, const double ts, const double sws, double & thawshare);
   // Fix G1 (v5n), OFF by default: model_settings.n_extract_limiter.
   // The root N extraction rtnextract[il] is fixed for the whole month (it equals
   // the vegetation N uptake, computed from the month-start AVLN and integrated

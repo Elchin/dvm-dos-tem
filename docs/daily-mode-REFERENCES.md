@@ -127,6 +127,12 @@ Switch defaults: every switch below is 0/off by default, which is legacy behavio
 |---|---|---|
 | `layer_bookkeep_fix` (0 legacy / 1 fix; 1 requires `layer_n_remap_fix` 1) | 1 = (1) `Ground::redivideShlwLayers`: a new fibric layer (none left) takes its C, orgn and avln out of the layer below at that layer's C:N (legacy: rawc = the month's aboveground litterfall C, created, N = 0); (2) `Ground::redivideDeepLayers`, `deepnum == 0`: the C/N of the removed humic layers go to the next soil layer (legacy: lost); (3) `BgcData::prvltrfcnque` follows its layer through the January re-division (legacy: stays at the old layer index, so kd of a layer is set from another layer's litterfall C:N history); (4) organic `splitOneSoilLayer`: the lower part gets at most the whole layer's C (legacy: upper C can go negative). Column C and N conserved; per-layer C:N kept. No calibrated parameter changed. | Layer structure and the organic C–thickness relation of the dynamic organic soil module: [Yi2009], [Yi2010]. **No published source** for the fixes: these are mass-conservation bookkeeping bug fixes. |
 
+### Decomposition weighted by the layer thawed fraction (v5q-thawfrac-decomp, branch v5q-thawfrac-decomp)
+
+| switch | what it does | references |
+|---|---|---|
+| `thawfrac_decomp` (0 legacy / 1 blend) | 1 = in `Soil_Bgc::deltac` the decomposition modifier of each soil layer is E = f·rhmoist(sws_th)·Q10^(max(ts,0)/10) + (1−f)·rhmoistfrozen·Q10^(min(ts,0)/10) with f = 1 − frozenfrac (monthly mean of the Stefan-front layer frozen fraction; missing → legacy ts indicator) and sws_th = min(1, sws/f) (liquid in the unfrozen part); applied to all C pools and the wood debris; net N mineralization from the thawed-part RH only (frozen part: legacy closed gate). Legacy uses the indicator ts < 0 → frozen rate, so a partly thawed zero-curtain layer (ts ≈ −0.005 °C) decomposes at rhmoistfrozen (0 at TVC). No calibrated parameter changed. | Layer-resolved decomposition with frozen-soil limitation [Koven2013]; CLM5 [Lawrence2019]; layer frozen fraction from the Stefan freeze/thaw fronts of the DOS-TEM soil module [Yi2009]. **No published source** for the linear thawed-fraction blend and the sws/f choice. |
+
 ### Parameter test (not a switch)
 
 | change | status | references |

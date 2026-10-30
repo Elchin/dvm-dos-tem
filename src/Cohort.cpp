@@ -316,6 +316,7 @@ void Cohort::initialize_state_parameters() {
   soilbgc.bnfp = md->bnf;                              // v5q BNF (scheme 0 = off)
   soilbgc.n_leach_fix = md->n_leach_fix;               // v5q-ndrain (0 = legacy)
   soilbgc.d2m_transfer_gate = md->d2m_transfer_gate;   // v5q-d2m-gate (0 = legacy)
+  soilbgc.thawfrac_decomp = md->thawfrac_decomp;       // v5q-thawfrac-decomp (0 = legacy)
   ground.layer_n_remap_fix = md->layer_n_remap_fix;    // v5q-layern-fix (0 = legacy)
   ground.layer_bookkeep_fix = md->layer_bookkeep_fix;  // v5q-layer-bookkeep (0 = legacy)
   for (int ip = 0; ip < NUM_PFT; ip++) { vegbgc[ip].n_nonvasc_extract = md->n_nonvasc_extract; } // Fix N3 (v5k)

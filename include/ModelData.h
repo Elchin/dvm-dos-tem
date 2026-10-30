@@ -234,6 +234,15 @@ public:
   //   doi:10.1029/2008JG000841; Yi et al. 2010, doi:10.1029/2010JG001302. The fixes are
   //   mass-conservation bookkeeping bug fixes: no published source.
   int layer_bookkeep_fix;
+  // v5q-thawfrac-decomp: model_settings.thawfrac_decomp (0 = legacy, default, bit-identical;
+  // 1 = soil decomposition environmental modifier of each layer blended by its thawed fraction,
+  // see Soil_Bgc.h). Integers 0/1 only, anything else FATAL.
+  // Refs: vertically resolved, per-layer decomposition with frozen-soil limitation: Koven et al. 2013,
+  //   doi:10.5194/bg-10-7109-2013; Lawrence et al. 2019 (CLM5), doi:10.1029/2018MS001583. Layer
+  //   frozen fraction from the two-directional Stefan freeze/thaw fronts: Yi et al. 2009,
+  //   doi:10.1029/2008JG000841. The linear thawed-fraction blend of the dvmdostem modifier
+  //   (sub-layer mixing of the thawed and frozen parts): no published source.
+  int thawfrac_decomp;
   // Refs (N2): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 20b2723e); restores N mass conservation (N moves with C).
   // Refs (N3): no published source for the scheme; restores N mass conservation; bryophyte N uptake from the moss/peat layer: Turetsky 2003, doi:10.1639/05.
   // ET-split fixes (v5l), all OFF by default (0 = legacy, bit-identical); see

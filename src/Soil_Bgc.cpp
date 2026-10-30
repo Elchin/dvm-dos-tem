@@ -784,6 +784,12 @@ void Soil_Bgc::deltac() {
                                            bgcpar.moistopt );
     }
     bd->m_soid.rhq10[il] = getRhq10(ed->m_sois.ts[il]);
+    if (thawfrac_decomp == 1) {   // v5q-thawfrac-decomp: thawed-fraction-weighted modifier, see Soil_Bgc.h
+      const double fthaw = thawFraction(ed->m_sois.frozenfrac[il], ed->m_sois.ts[il]);
+      const double E = thawfracModifier(fthaw, ed->m_sois.ts[il], ed->m_soid.sws[il],
+                                        tfd_thawshare[il]);
+      bd->m_soid.rhmoist[il] = E / bd->m_soid.rhq10[il];   // rhq10 = Q10^(ts/10) > 0
+    }
     krawc = bgcpar.kdrawc[il];
     ksoma = bgcpar.kdsoma[il];
     ksompr = bgcpar.kdsompr[il];
@@ -861,9 +867,16 @@ void Soil_Bgc::deltan() {
                                 bd->m_soid.knmoist[i], bgcpar.kn2);
 
       del_soi2soi.nimmob[i] = nimmob;
+      if (thawfrac_decomp == 1) {   // v5q-thawfrac-decomp: thawed part (gate open) only, see Soil_Bgc.h
+        const double ts_gate = (tfd_thawshare[i] > 0.0) ? 1.0 : ed->m_sois.ts[i];
+        del_soi2soi.netnmin[i] = getNetmin(nimmob, totc, tmp_sois.orgn[i],
+                                           rhsum * tfd_thawshare[i], bgcpar.nmincnsoil,
+                                           decay, calpar.micbnup, ts_gate);
+      } else {
       del_soi2soi.netnmin[i] = getNetmin(nimmob, totc, tmp_sois.orgn[i],
                                          rhsum ,bgcpar.nmincnsoil,
                                          decay, calpar.micbnup, ed->m_sois.ts[i]);
+      }
 
       totnetnmin += del_soi2soi.netnmin[i];
     }
@@ -1484,6 +1497,33 @@ int Soil_Bgc::get_baseline() {
 }
 
 
+
+// v5q-thawfrac-decomp (thawfrac_decomp 1), see Soil_Bgc.h.
+// Refs: Koven et al. 2013, doi:10.5194/bg-10-7109-2013; Lawrence et al. 2019 (CLM5),
+//   doi:10.1029/2018MS001583 (vertically resolved decomposition, frozen-soil limitation);
+//   Yi et al. 2009, doi:10.1029/2008JG000841 (freeze/thaw fronts -> layer frozen fraction).
+//   The linear thawed-fraction blend: no published source.
+double Soil_Bgc::thawFraction(const double frozenfrac, const double ts) {
+  if (!std::isfinite(frozenfrac) || frozenfrac < -0.5 || frozenfrac > 1.5) {
+    return (ts < 0.0) ? 0.0 : 1.0;   // missing: legacy indicator
+  }
+  return 1.0 - fmin(1.0, fmax(0.0, frozenfrac));
+}
+
+double Soil_Bgc::thawfracModifier(const double fthaw, const double ts, const double sws,
+                                  double & thawshare) {
+  const double f = fmin(1.0, fmax(0.0, fthaw));
+  double eth = 0.0;
+  if (f > 0.0) {
+    const double sws_th = (f < 1.0) ? fmin(1.0, sws / f) : sws;   // liquid held in the unfrozen part
+    eth = getRhmoist(sws_th, bgcpar.moistmin, bgcpar.moistmax, bgcpar.moistopt)
+          * getRhq10(fmax(ts, 0.0));
+  }
+  const double efr = bgcpar.rhmoistfrozen * getRhq10(fmin(ts, 0.0));
+  const double E = f * eth + (1.0 - f) * efr;
+  thawshare = (E > 0.0) ? (f * eth) / E : 0.0;
+  return E;
+}
 
 // v5p daily_c_split (output only): same factors as Soil_Bgc::deltac.
 double Soil_Bgc::ds_rh_weight(double ts, double sws) {
