@@ -220,6 +220,28 @@ public:
   //   doi:10.1002/hyp.6920; Khosh et al. 2017, doi:10.1002/2016jg003377.
   int n_leach_fix = 0;
   double leach_drain = 0.0, leach_over = 0.0;   // n_leach_fix 1: parts of avlnlost (set in deltan)
+  // v5q-leach-curn: model_settings.n_leach_curn_fix (0 = legacy, default; 1 = fix; needs n_leach_fix 1).
+  // Legacy deltan(): drainage part of avlnlost = totdzavln/totdzliq*fnloss*qdrain with totdzavln
+  // built once per month in prepareIntegration() from the month-start AVLN (bd->m_sois.avln). It
+  // is a constant-rate (zero-order) sink during the month: with n_leach_fix 1 it is charged to
+  // the drainage-zone layers even after their AVLN is used up (e.g. a frozen moss layer 0 that
+  // holds the whole drainage zone, emptied by the overland part under a cap raised by netnmin
+  // of deeper layers), AVLN goes negative and adapt() gives up (V5Q_STEP8 doc section 13).
+  // 1 = the drainage part uses the current (integrator-state, tmp_sois) AVLN of the same zone
+  // (drainZoneAvln, same fdz as prepareIntegration): rate = k*AVLN_zone(t), which goes smoothly
+  // to 0 as the zone empties (the overland part already uses tmp_sois.avln[0]). The cap, its
+  // netnmin rescale, the drain/overland split and leachLayers are unchanged (cap still uses the
+  // month-start totdzavln). totdzliq, qdrain, fnloss unchanged.
+  // Refs: positivity of a non-negative ODE state needs a sink that vanishes with the state
+  //   (Shampine et al. 2005, doi:10.1016/j.amc.2004.12.011; Burchard et al. 2003,
+  //   doi:10.1016/S0168-9274(03)00101-6); leaching context as n_leach_fix (McNamara et al. 2008,
+  //   doi:10.1002/hyp.6920; Khosh et al. 2017, doi:10.1002/2016jg003377). The fix itself:
+  //   no published source (code defect, see Soil_Bgc.h).
+  int n_leach_curn_fix = 0;
+  // pure helper (unit-tested): sum over the drainage zone of max(0, avln[i])*fdz[i], zone and fdz
+  // exactly as prepareIntegration() builds totdzavln.
+  static double drainZoneAvln(const int n, const double z[], const double dz[], const double avln[],
+                              const double draindepth);
   // pure helper (unit-tested): per-layer leaching removal ndrain[0..n-1] for n_leach_fix 1;
   // returns sum(ndrain) (= drain + over up to round-off).
   static double leachLayers(const int n, const double z[], const double dz[], const double liq[],

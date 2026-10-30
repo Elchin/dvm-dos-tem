@@ -111,6 +111,20 @@ double Soil_Bgc::leachLayers(const int n, const double z[], const double dz[], c
   return t;
 }
 
+// v5q-leach-curn (n_leach_curn_fix 1): drainage-zone AVLN from a given state; same zone / fdz /
+// break as prepareIntegration(). See Soil_Bgc.h.
+double Soil_Bgc::drainZoneAvln(const int n, const double z[], const double dz[], const double avln[],
+                               const double draindepth) {
+  double s = 0.0;
+  const int nn = (n < MAX_SOI_LAY) ? n : MAX_SOI_LAY;
+  for (int i = 0; i < nn; i++) {
+    if ((z[i] + dz[i]) <= draindepth) { s += fmax(0., avln[i]); }
+    else if (z[i] < draindepth) { s += fmax(0., avln[i]) * ((draindepth - z[i]) / dz[i]); }
+    else { break; }
+  }
+  return s;
+}
+
 double Soil_Bgc::limitedExtraction(const double r, const double A, const double tau) {
   if (!(r > 0.0)) {
     return r;
@@ -906,7 +920,12 @@ void Soil_Bgc::deltan() {
       del_soi2l.avlnlost = 0.;  // N leaching out with drainage water
 
       if(totdzliq>0) {
-        del_soi2l.avlnlost = totdzavln / totdzliq * bgcpar.fnloss
+        // v5q-leach-curn: 1 = drainage-zone AVLN of the current state (rate -> 0 as the zone
+        // empties); 0 = legacy month-start totdzavln. Refs: see Soil_Bgc.h.
+        const double dzavln = (n_leach_curn_fix == 1)
+            ? drainZoneAvln(cd->m_soil.numsl, cd->m_soil.z, cd->m_soil.dz, tmp_sois.avln, ed->m_sois.draindepth)
+            : totdzavln;
+        del_soi2l.avlnlost = dzavln / totdzliq * bgcpar.fnloss
                              * ed->m_soi2l.qdrain;
       }
       const double raw_drain = del_soi2l.avlnlost;   // v5q-ndrain (n_leach_fix 1 split only)

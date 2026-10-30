@@ -243,6 +243,16 @@ public:
   //   doi:10.1029/2008JG000841. The linear thawed-fraction blend of the dvmdostem modifier
   //   (sub-layer mixing of the thawed and frozen parts): no published source.
   int thawfrac_decomp;
+  // v5q-leach-curn: model_settings.n_leach_curn_fix (0 = legacy, default, bit-identical; 1 = the
+  // drainage part of the N leaching rate uses the current (integrator-state) AVLN of the drainage
+  // zone instead of the month-start AVLN, see Soil_Bgc.h). Integers 0/1 only, anything else FATAL;
+  // 1 requires n_leach_fix = 1.
+  // Refs: positivity of a non-negative ODE state needs a sink that vanishes with the state
+  //   (Shampine et al. 2005, doi:10.1016/j.amc.2004.12.011; Burchard et al. 2003,
+  //   doi:10.1016/S0168-9274(03)00101-6); leaching context as n_leach_fix (McNamara et al. 2008,
+  //   doi:10.1002/hyp.6920; Khosh et al. 2017, doi:10.1002/2016jg003377). The fix itself:
+  //   no published source (code defect, see Soil_Bgc.h).
+  int n_leach_curn_fix;
   // Refs (N2): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 20b2723e); restores N mass conservation (N moves with C).
   // Refs (N3): no published source for the scheme; restores N mass conservation; bryophyte N uptake from the moss/peat layer: Turetsky 2003, doi:10.1639/05.
   // ET-split fixes (v5l), all OFF by default (0 = legacy, bit-identical); see

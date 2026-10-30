@@ -133,6 +133,12 @@ Switch defaults: every switch below is 0/off by default, which is legacy behavio
 |---|---|---|
 | `thawfrac_decomp` (0 legacy / 1 blend) | 1 = in `Soil_Bgc::deltac` the decomposition modifier of each soil layer is E = f·rhmoist(sws_th)·Q10^(max(ts,0)/10) + (1−f)·rhmoistfrozen·Q10^(min(ts,0)/10) with f = 1 − frozenfrac (monthly mean of the Stefan-front layer frozen fraction; missing → legacy ts indicator) and sws_th = min(1, sws/f) (liquid in the unfrozen part); applied to all C pools and the wood debris; net N mineralization from the thawed-part RH only (frozen part: legacy closed gate). Legacy uses the indicator ts < 0 → frozen rate, so a partly thawed zero-curtain layer (ts ≈ −0.005 °C) decomposes at rhmoistfrozen (0 at TVC). No calibrated parameter changed. | Layer-resolved decomposition with frozen-soil limitation [Koven2013]; CLM5 [Lawrence2019]; layer frozen fraction from the Stefan freeze/thaw fronts of the DOS-TEM soil module [Yi2009]. **No published source** for the linear thawed-fraction blend and the sws/f choice. |
 
+### N drainage leaching from the current drainage-zone AVLN (v5q-leach-curn, branch v5q-leach-curn)
+
+| switch | what it does | references |
+|---|---|---|
+| `n_leach_curn_fix` (0 legacy / 1 fix; 1 requires `n_leach_fix` 1) | 1 = in `Soil_Bgc::deltan` the drainage part of the inorganic N leaching `avlnlost` uses the current (integrator-state) AVLN of the drainage zone (fdz as `prepareIntegration`) instead of the month-start AVLN, so it goes to 0 as the zone empties. Legacy: a constant-rate sink during the month that drove an emptied frozen moss layer 0 negative (adapt() give-up, safety net; TVC P2, V5Q_STEP8 §13). Cap, split and per-layer removal (`n_leach_fix`) unchanged. | **No published source for the fix** (code defect). Principle: a zero-order sink drives a non-negative state below zero in finite time; positivity requires a state-dependent sink [Shampine2005]; [Burchard2003]. Leaching context as `n_leach_fix`: [McNamara2008], [Khosh2017]. |
+
 ### Parameter test (not a switch)
 
 | change | status | references |

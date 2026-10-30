@@ -280,6 +280,19 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     }
     thawfrac_decomp = tf.asInt();
   }
+  // v5q-leach-curn: n_leach_curn_fix (0 = legacy, default; 1 needs n_leach_fix = 1). Refs: see Soil_Bgc.h.
+  {
+    Json::Value lc = controldata["model_settings"].get("n_leach_curn_fix", 0);
+    if (!bnf::valid_int(lc, 0, 1)) {
+      std::cerr << "FATAL: model_settings.n_leach_curn_fix must be 0 (legacy) or 1 (N drainage leaching from the current drainage-zone AVLN)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    n_leach_curn_fix = lc.asInt();
+    if (n_leach_curn_fix == 1 && n_leach_fix != 1) {
+      std::cerr << "FATAL: model_settings.n_leach_curn_fix = 1 requires n_leach_fix = 1 (pools lose exactly NLOST)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+  }
   // ET-split fixes S1-S4 (v5l), default 0 = off (legacy); see ModelData.h / Vegetation_Env.h
   et_fpc_once_fix    = controldata["model_settings"].get("et_fpc_once_fix", 0).asInt();
   nv_snow_bury_fix   = controldata["model_settings"].get("nv_snow_bury_fix", 0).asInt();
@@ -396,6 +409,7 @@ ModelData::ModelData():force_cmt(-1) {
   layer_n_remap_fix = 0; // v5q-layern-fix (legacy)
   layer_bookkeep_fix = 0; // v5q-layer-bookkeep (legacy)
   thawfrac_decomp = 0; // v5q-thawfrac-decomp (legacy)
+  n_leach_curn_fix = 0; // v5q-leach-curn (legacy)
   nv_snow_bury_depth = 0.0;
   set_envmodule(false);
   set_bgcmodule(false);
