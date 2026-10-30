@@ -1529,12 +1529,21 @@ double Soil_Bgc::thawFraction(const double frozenfrac, const double ts) {
   return 1.0 - fmin(1.0, fmax(0.0, frozenfrac));
 }
 
+// v5q-thawfrac-lmoist (thawfrac_moist_mode), see Soil_Bgc.h.
+// Refs: Koven et al. 2013, doi:10.5194/bg-10-7109-2013; Lawrence et al. 2019 (CLM5),
+//   doi:10.1029/2018MS001583; Yi et al. 2009, doi:10.1029/2008JG000841. The mode choice: no
+//   published source.
+double Soil_Bgc::thawedPartSws(const double sws, const double fthaw, const int mode) {
+  if (mode == 1) { return sws; }                                  // layer-mean moisture
+  return (fthaw < 1.0) ? fmin(1.0, sws / fthaw) : sws;            // liquid held in the unfrozen part
+}
+
 double Soil_Bgc::thawfracModifier(const double fthaw, const double ts, const double sws,
                                   double & thawshare) {
   const double f = fmin(1.0, fmax(0.0, fthaw));
   double eth = 0.0;
   if (f > 0.0) {
-    const double sws_th = (f < 1.0) ? fmin(1.0, sws / f) : sws;   // liquid held in the unfrozen part
+    const double sws_th = thawedPartSws(sws, f, thawfrac_moist_mode);   // mode 0: sws/f, 1: layer mean
     eth = getRhmoist(sws_th, bgcpar.moistmin, bgcpar.moistmax, bgcpar.moistopt)
           * getRhq10(fmax(ts, 0.0));
   }

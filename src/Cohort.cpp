@@ -317,6 +317,7 @@ void Cohort::initialize_state_parameters() {
   soilbgc.n_leach_fix = md->n_leach_fix;               // v5q-ndrain (0 = legacy)
   soilbgc.d2m_transfer_gate = md->d2m_transfer_gate;   // v5q-d2m-gate (0 = legacy)
   soilbgc.thawfrac_decomp = md->thawfrac_decomp;       // v5q-thawfrac-decomp (0 = legacy)
+  soilbgc.thawfrac_moist_mode = md->thawfrac_moist_mode; // v5q-thawfrac-lmoist (0 = sws/f)
   soilbgc.n_leach_curn_fix = md->n_leach_curn_fix;     // v5q-leach-curn (0 = legacy)
   ground.layer_n_remap_fix = md->layer_n_remap_fix;    // v5q-layern-fix (0 = legacy)
   ground.layer_bookkeep_fix = md->layer_bookkeep_fix;  // v5q-layer-bookkeep (0 = legacy)

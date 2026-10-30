@@ -139,6 +139,12 @@ Switch defaults: every switch below is 0/off by default, which is legacy behavio
 |---|---|---|
 | `n_leach_curn_fix` (0 legacy / 1 fix; 1 requires `n_leach_fix` 1) | 1 = in `Soil_Bgc::deltan` the drainage part of the inorganic N leaching `avlnlost` uses the current (integrator-state) AVLN of the drainage zone (fdz as `prepareIntegration`) instead of the month-start AVLN, so it goes to 0 as the zone empties. Legacy: a constant-rate sink during the month that drove an emptied frozen moss layer 0 negative (adapt() give-up, safety net; TVC P2, V5Q_STEP8 §13). Cap, split and per-layer removal (`n_leach_fix`) unchanged. | **No published source for the fix** (code defect). Principle: a zero-order sink drives a non-negative state below zero in finite time; positivity requires a state-dependent sink [Shampine2005]; [Burchard2003]. Leaching context as `n_leach_fix`: [McNamara2008], [Khosh2017]. |
 
+### Layer-mean moisture for the thawed part (v5q-thawfrac-lmoist, branch v5q-thawfrac-lmoist)
+
+| switch | what it does | references |
+|---|---|---|
+| `thawfrac_moist_mode` (0 sws/f / 1 layer mean; 1 requires `thawfrac_decomp` 1) | With `thawfrac_decomp` 1, selects the liquid saturation of the thawed part in `Soil_Bgc::thawfracModifier`: 0 = min(1, sws/f) (default, unchanged), 1 = the layer-mean sws. Nothing else changes. No calibrated parameter changed. | Per-layer moisture scalar from the layer liquid-water state in layer-resolved decomposition [Koven2013]; CLM5 [Lawrence2019]; layer frozen fraction from the Stefan fronts [Yi2009]. **No published source** for the mode choice itself. |
+
 ### Parameter test (not a switch)
 
 | change | status | references |

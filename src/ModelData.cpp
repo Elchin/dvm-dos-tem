@@ -280,6 +280,19 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     }
     thawfrac_decomp = tf.asInt();
   }
+  // v5q-thawfrac-lmoist: thawfrac_moist_mode (0 = sws/f, default; 1 = layer-mean; 1 needs thawfrac_decomp = 1). Refs: see Soil_Bgc.h.
+  {
+    Json::Value tm = controldata["model_settings"].get("thawfrac_moist_mode", 0);
+    if (!bnf::valid_int(tm, 0, 1)) {
+      std::cerr << "FATAL: model_settings.thawfrac_moist_mode must be 0 (thawed-part moisture min(1, sws/f)) or 1 (layer-mean moisture)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    thawfrac_moist_mode = tm.asInt();
+    if (thawfrac_moist_mode == 1 && thawfrac_decomp != 1) {
+      std::cerr << "FATAL: model_settings.thawfrac_moist_mode = 1 requires thawfrac_decomp = 1 (it only acts in the thawed-fraction modifier)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+  }
   // v5q-leach-curn: n_leach_curn_fix (0 = legacy, default; 1 needs n_leach_fix = 1). Refs: see Soil_Bgc.h.
   {
     Json::Value lc = controldata["model_settings"].get("n_leach_curn_fix", 0);
@@ -409,6 +422,7 @@ ModelData::ModelData():force_cmt(-1) {
   layer_n_remap_fix = 0; // v5q-layern-fix (legacy)
   layer_bookkeep_fix = 0; // v5q-layer-bookkeep (legacy)
   thawfrac_decomp = 0; // v5q-thawfrac-decomp (legacy)
+  thawfrac_moist_mode = 0; // v5q-thawfrac-lmoist (sws/f)
   n_leach_curn_fix = 0; // v5q-leach-curn (legacy)
   nv_snow_bury_depth = 0.0;
   set_envmodule(false);

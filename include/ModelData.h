@@ -243,6 +243,15 @@ public:
   //   doi:10.1029/2008JG000841. The linear thawed-fraction blend of the dvmdostem modifier
   //   (sub-layer mixing of the thawed and frozen parts): no published source.
   int thawfrac_decomp;
+  // v5q-thawfrac-lmoist: model_settings.thawfrac_moist_mode (0 = default, thawed-part moisture
+  // min(1, sws/f), bit-identical to v5q-leach-curn; 1 = layer-mean sws in the thawed part, see
+  // Soil_Bgc.h). Integers 0/1 only, anything else FATAL; 1 requires thawfrac_decomp = 1.
+  // Refs: layer-resolved decomposition with a per-layer moisture scalar from the layer liquid-water
+  //   state and frozen-soil limitation: Koven et al. 2013, doi:10.5194/bg-10-7109-2013; Lawrence et
+  //   al. 2019 (CLM5), doi:10.1029/2018MS001583. Layer frozen fraction from the Stefan freeze/thaw
+  //   fronts: Yi et al. 2009, doi:10.1029/2008JG000841. The choice between thawed-part (sws/f) and
+  //   layer-mean moisture for a partly frozen layer: no published source.
+  int thawfrac_moist_mode;
   // v5q-leach-curn: model_settings.n_leach_curn_fix (0 = legacy, default, bit-identical; 1 = the
   // drainage part of the N leaching rate uses the current (integrator-state) AVLN of the drainage
   // zone instead of the month-start AVLN, see Soil_Bgc.h). Integers 0/1 only, anything else FATAL;

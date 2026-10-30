@@ -154,6 +154,21 @@ public:
   //   doi:10.1029/2008JG000841. The linear thawed-fraction blend of the dvmdostem modifier
   //   (sub-layer mixing of the thawed and frozen parts): no published source.
   int thawfrac_decomp = 0;
+  // v5q-thawfrac-lmoist: model_settings.thawfrac_moist_mode (FATAL unless integer 0/1; 1 requires
+  //   thawfrac_decomp = 1). Thawed-part liquid saturation sws_th used by thawfracModifier:
+  //   0 = min(1, sws/f) for f < 1, sws for f = 1 (default; v5q-thawfrac-decomp unchanged: the layer
+  //       liquid is assumed to sit in the unfrozen part);
+  //   1 = layer-mean sws for every f (no sub-layer redistribution of the layer liquid).
+  //   Only the moisture argument of rhmoist() in the thawed part changes; f, the temperatures, the
+  //   frozen part, the N thawed share and all parameters are as thawfrac_decomp 1. Equal at f = 1.
+  // Refs: layer-resolved decomposition with a per-layer moisture scalar from the layer liquid-water
+  //   state and frozen-soil limitation: Koven et al. 2013, doi:10.5194/bg-10-7109-2013; Lawrence et
+  //   al. 2019 (CLM5), doi:10.1029/2018MS001583. Layer frozen fraction from the Stefan freeze/thaw
+  //   fronts: Yi et al. 2009, doi:10.1029/2008JG000841. The choice between thawed-part (sws/f) and
+  //   layer-mean moisture for a partly frozen layer: no published source.
+  int thawfrac_moist_mode = 0;
+  // pure helper (unit-tested): thawed-part saturation for fthaw in (0,1] and mode 0/1 (see above).
+  static double thawedPartSws(const double sws, const double fthaw, const int mode);
   double tfd_thawshare[MAX_SOI_LAY] = {0};   // thawfrac_decomp 1: thawed share of the layer RH (last deltac)
   // pure helper (unit-tested): thawed fraction f from a frozen fraction (clamped to [0,1]; not finite
   // or outside [-0.5, 1.5] (MISSING) -> legacy indicator ts < 0 ? 0 : 1).
