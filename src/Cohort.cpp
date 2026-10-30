@@ -317,6 +317,7 @@ void Cohort::initialize_state_parameters() {
   soilbgc.n_leach_fix = md->n_leach_fix;               // v5q-ndrain (0 = legacy)
   soilbgc.d2m_transfer_gate = md->d2m_transfer_gate;   // v5q-d2m-gate (0 = legacy)
   ground.layer_n_remap_fix = md->layer_n_remap_fix;    // v5q-layern-fix (0 = legacy)
+  ground.layer_bookkeep_fix = md->layer_bookkeep_fix;  // v5q-layer-bookkeep (0 = legacy)
   for (int ip = 0; ip < NUM_PFT; ip++) { vegbgc[ip].n_nonvasc_extract = md->n_nonvasc_extract; } // Fix N3 (v5k)
   for (int ip = 0; ip < NUM_PFT; ip++) {   // ET-split fixes S1-S4 (v5l), default 0
     vegenv[ip].fpc_once_fix       = md->et_fpc_once_fix;
@@ -1143,7 +1144,10 @@ void Cohort::updateMonthly_DIMgrd(const int & currmind, const bool & dslmodule) 
       }
     }
 
+    // v5q-layer-bookkeep (3): litterfall C:N history follows its layer (Refs: see Ground.h)
+    if (md->layer_bookkeep_fix == 1) { ground.snapshotLitterCNQueues(); }
     ground.redivideSoilLayers();
+    if (md->layer_bookkeep_fix == 1) { ground.remapLitterCNQueues(); }
     // and save the bgc data in double-linked structure back to 'bdall'
     soilbgc.assignCarbonLayer2BdMonthly();
     // v5q-layern-fix: N back to 'bdall' with the C (legacy: bd N stays at the old index)

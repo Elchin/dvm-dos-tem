@@ -121,6 +121,12 @@ Switch defaults: every switch below is 0/off by default, which is legacy behavio
 |---|---|---|
 | `layer_n_remap_fix` (0 legacy / 1 fix) | 1 = (a) `Cohort::updateMonthly_DIMgrd` and the post-burn path copy layer `orgn`/`avln` from/to `bdall` around `Ground::redivideSoilLayers` together with the C pools (`Soil_Bgc::assignNitrogen{Bd2Layer,Layer2Bd}Monthly`; legacy copies only C, so after a layer split/combine the bd N stays at the old layer index while C moves); (b) organic `splitOneSoilLayer`: N and AVLN go to the new lower layer in the same fraction as its C (legacy: all N to the lower part, the upper part keeps its C with N = 0); a new deep layer formed from the last fibric layer takes N in the fraction of the C moved (legacy: all of the fibric N, fibric N = 0); (c) `combineTwoSoilLayersL2U` sums AVLN (legacy typo `usl->avln =+lsl->avln` assigns). Column C and N conserved; per-layer C:N follows C. No calibrated parameter changed. | Layer structure and the organic C–thickness relation of the dynamic organic soil module: [Yi2009], [Yi2010]. **No published source** for the remap rule: conservation / stoichiometry bookkeeping bug fix (N follows C). |
 
+### Dynamic soil-layer C/N bookkeeping fixes (v5q-layer-bookkeep, branch v5q-layer-bookkeep)
+
+| switch | what it does | references |
+|---|---|---|
+| `layer_bookkeep_fix` (0 legacy / 1 fix; 1 requires `layer_n_remap_fix` 1) | 1 = (1) `Ground::redivideShlwLayers`: a new fibric layer (none left) takes its C, orgn and avln out of the layer below at that layer's C:N (legacy: rawc = the month's aboveground litterfall C, created, N = 0); (2) `Ground::redivideDeepLayers`, `deepnum == 0`: the C/N of the removed humic layers go to the next soil layer (legacy: lost); (3) `BgcData::prvltrfcnque` follows its layer through the January re-division (legacy: stays at the old layer index, so kd of a layer is set from another layer's litterfall C:N history); (4) organic `splitOneSoilLayer`: the lower part gets at most the whole layer's C (legacy: upper C can go negative). Column C and N conserved; per-layer C:N kept. No calibrated parameter changed. | Layer structure and the organic C–thickness relation of the dynamic organic soil module: [Yi2009], [Yi2010]. **No published source** for the fixes: these are mass-conservation bookkeeping bug fixes. |
+
 ### Parameter test (not a switch)
 
 | change | status | references |

@@ -1346,11 +1346,22 @@ COMBINEBEGIN:
     //bd->m_soid.shlwc? As seen Soil_Bgc.cpp:73
     //if(organic.shlwc > 0.0){
     double abvgfallC = bd->m_v2soi.ltrfalcall - bd->m_v2soi.ltrfalc[I_root];
-    if(abvgfallC > 0.0){
+    // v5q-layer-bookkeep (1): with the fix the new layer's C comes out of 'nextsl'
+    //   (Refs: see Ground.h); no layer if 'nextsl' holds no C
+    double bk_f = 1.0;
+    if (layer_bookkeep_fix == 1) {
+      bk_f = (nextsl == NULL) ? 0.0 : shlwFromBelowFrac(abvgfallC,
+                               nextsl->rawc + nextsl->soma + nextsl->sompr + nextsl->somcr);
+    }
+    if(abvgfallC > 0.0 && bk_f > 0.0){
     //if(cfall_ls_tot > 0.0){
     //if(bd->m_v2soi.ltrfalcall > 0.0){
       organic.shlwchanged =true;
-      double thick = thicknessFromCarbon(abvgfallC, soildimpar.coefshlwa, soildimpar.coefshlwb);
+      double newc = abvgfallC;
+      if (layer_bookkeep_fix == 1) {   // C actually moved (== abvgfallC unless 'nextsl' has less)
+        newc = bk_f * (nextsl->rawc + nextsl->soma + nextsl->sompr + nextsl->somcr);
+      }
+      double thick = thicknessFromCarbon(newc, soildimpar.coefshlwa, soildimpar.coefshlwb);
       //organic.ShlwThickScheme(MINSLWTHICK);
       organic.ShlwThickScheme(thick);
       OrganicLayer* plnew = new OrganicLayer(organic.shlwdz[0], 1, chtlu);
@@ -1372,12 +1383,22 @@ COMBINEBEGIN:
 
       plnew->tem = nextsl->tem;
       getLayerFrozenstatusByFronts(plnew);
-      plnew->rawc  = abvgfallC;
-      plnew->soma  = 0.;
-      plnew->sompr = 0.;
-      plnew->somcr = 0.;
-      plnew->orgn  = 0.;
-      plnew->avln  = 0.;
+      if (layer_bookkeep_fix == 1) {
+        // v5q-layer-bookkeep (1): move a fraction bk_f of every pool (C:N of 'nextsl' kept)
+        plnew->rawc  = nextsl->rawc  * bk_f;  nextsl->rawc  -= plnew->rawc;
+        plnew->soma  = nextsl->soma  * bk_f;  nextsl->soma  -= plnew->soma;
+        plnew->sompr = nextsl->sompr * bk_f;  nextsl->sompr -= plnew->sompr;
+        plnew->somcr = nextsl->somcr * bk_f;  nextsl->somcr -= plnew->somcr;
+        plnew->orgn  = nextsl->orgn  * bk_f;  nextsl->orgn  -= plnew->orgn;
+        plnew->avln  = nextsl->avln  * bk_f;  nextsl->avln  -= plnew->avln;
+      } else {
+        plnew->rawc  = abvgfallC;   // legacy: not subtracted from any pool
+        plnew->soma  = 0.;
+        plnew->sompr = 0.;
+        plnew->somcr = 0.;
+        plnew->orgn  = 0.;
+        plnew->avln  = 0.;
+      }
       plnew->derivePhysicalProperty();
       insertBefore(plnew, nextsl);
       // adjust properties for the following layer
@@ -1437,9 +1458,21 @@ void Ground::redivideDeepLayers() {
     if(organic.deepnum==0) { //remove all deep layer(s) from the
                              //  double-linked structure
       currl = fstdeepl;
+      // v5q-layer-bookkeep (2): receiver of the removed layers' C/N (Refs: see Ground.h)
+      Layer* bk_rcv = NULL;
+      if (layer_bookkeep_fix == 1) {
+        Layer* b = fstdeepl;
+        while (b != NULL && b->isHumic) { b = b->nextl; }
+        if (b != NULL && b->isSoil) {
+          bk_rcv = b;
+        } else if (fstdeepl->prevl != NULL && fstdeepl->prevl->isSoil) {
+          bk_rcv = fstdeepl->prevl;
+        }
+      }
 
       while (currl!=NULL && currl->isHumic) {
         Layer * next = currl->nextl;
+        if (bk_rcv != NULL) { addLayerCN(bk_rcv, currl); }   // v5q-layer-bookkeep (2)
         removeLayer(currl); //Note: here acutally the double-linked
                             //        structure has changed
         currl = next;
@@ -1540,6 +1573,78 @@ double Ground::layerNSplitFrac(const double c_part, const double c_whole, const 
   if (!(f > 0.0)) f = 0.0;   // also NaN
   if (f > 1.0) f = 1.0;
   return f;
+}
+
+// v5q-layer-bookkeep helpers (Refs: see Ground.h)
+double Ground::shlwFromBelowFrac(const double c_want, const double c_have) {
+  if (!(c_want > 0.0) || !(c_have > 0.0)) return 0.0;   // also NaN
+  return (c_want >= c_have) ? 1.0 : c_want / c_have;
+}
+
+void Ground::addLayerCN(Layer* to, const Layer* from) {
+  to->rawc  += from->rawc;
+  to->soma  += from->soma;
+  to->sompr += from->sompr;
+  to->somcr += from->somcr;
+  to->orgn  += from->orgn;
+  to->avln  += from->avln;
+}
+
+int Ground::layerHorizonClass(const Layer* l) {
+  if (l->isMoss)    return 0;
+  if (l->isFibric)  return 1;
+  if (l->isHumic)   return 2;
+  if (l->isMineral) return 3;
+  return 4;
+}
+
+// index of the snapshot layer whose history a new layer takes: same horizon class and
+// containing the new layer's mid depth relative to the horizon top; else the same-class layer
+// nearest in relative depth; else (class absent before) the layer nearest in absolute depth.
+int Ground::ltrcnSourceIndex(const std::vector<LtrCNSnap>& s, const int cls, const double rmid,
+                             const double amid) {
+  int best = -1; double bd_ = 0.;
+  for (int k = 0; k < (int)s.size(); ++k) {
+    if (s[k].cls != cls) continue;
+    if (rmid >= s[k].rtop && rmid < s[k].rbot) return k;
+    double d = fabs(rmid - 0.5 * (s[k].rtop + s[k].rbot));
+    if (best < 0 || d < bd_) { best = k; bd_ = d; }
+  }
+  if (best >= 0) return best;
+  for (int k = 0; k < (int)s.size(); ++k) {
+    double d = fabs(amid - s[k].amid);
+    if (best < 0 || d < bd_) { best = k; bd_ = d; }
+  }
+  return best;
+}
+
+void Ground::snapshotLitterCNQueues() {
+  ltrcn_snap.clear();
+  if (bd == NULL) return;
+  int pcls = -1; double htop = 0.;
+  for (Layer* l = fstsoill; l != NULL && l->isSoil; l = l->nextl) {
+    const int cls = layerHorizonClass(l);
+    if (cls != pcls) { htop = l->z; pcls = cls; }
+    if (l->solind < 1 || l->solind > MAX_SOI_LAY) continue;
+    LtrCNSnap s;
+    s.cls = cls; s.rtop = l->z - htop; s.rbot = s.rtop + l->dz; s.amid = l->z + 0.5 * l->dz;
+    s.q = bd->prvltrfcnque[l->solind - 1];
+    ltrcn_snap.push_back(s);
+  }
+}
+
+void Ground::remapLitterCNQueues() {
+  if (bd != NULL && !ltrcn_snap.empty()) {
+    int pcls = -1; double htop = 0.;
+    for (Layer* l = fstsoill; l != NULL && l->isSoil; l = l->nextl) {
+      const int cls = layerHorizonClass(l);
+      if (cls != pcls) { htop = l->z; pcls = cls; }
+      if (l->solind < 1 || l->solind > MAX_SOI_LAY) continue;
+      const int k = ltrcnSourceIndex(ltrcn_snap, cls, l->z - htop + 0.5 * l->dz, l->z + 0.5 * l->dz);
+      if (k >= 0) bd->prvltrfcnque[l->solind - 1] = ltrcn_snap[k].q;
+    }
+  }
+  ltrcn_snap.clear();
 }
 
 void Ground::splitOneSoilLayer(SoilLayer*usl, SoilLayer* lsl,
@@ -1656,6 +1761,12 @@ void Ground::splitOneSoilLayer(SoilLayer*usl, SoilLayer* lsl,
     double pldtop = updeptop + usl->dz;   //usl->dz has been updated above
     double pldbot = pldtop + lsl->dz;
     getOslCarbon5Thickness(lsl, pldtop, pldbot);
+    if (layer_bookkeep_fix == 1 &&
+        lsl->rawc + lsl->soma + lsl->sompr + lsl->somcr > c_whole) {
+      // v5q-layer-bookkeep (4): at most the whole layer's C goes down (upper C stays >= 0);
+      //   exact copy so the upper pools become exactly 0. Refs: see Ground.h
+      lsl->rawc = usl->rawc; lsl->soma = usl->soma; lsl->sompr = usl->sompr; lsl->somcr = usl->somcr;
+    }
     if (layer_n_remap_fix == 1) {
       // v5q-layern-fix: N follows C (legacy: all N to 'lsl'). Refs: see Ground.h
       const double c_low = lsl->rawc + lsl->soma + lsl->sompr + lsl->somcr;

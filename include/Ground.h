@@ -6,6 +6,7 @@
 #include <cmath>
 #include <iostream>
 #include <deque>
+#include <vector>
 using namespace std;
 
 #include "DoubleLinkedList.h"
@@ -147,6 +148,41 @@ public :
   // fraction of N that goes with the C part c_part of a layer holding c_whole (clamped to
   // [0,1]); 'fallback' (thickness fraction) if c_whole <= 0. Unit-tested.
   static double layerNSplitFrac(const double c_part, const double c_whole, const double fallback);
+
+  // v5q-layer-bookkeep: model_settings.layer_bookkeep_fix (0 = legacy, default, bit-identical;
+  //  1 = fix; 1 requires layer_n_remap_fix 1, checked in ModelData). Conservation bug fixes of
+  //  the dynamic soil-layer bookkeeping, no physics/parameter change:
+  //  (1) redivideShlwLayers, no fibric layer left: the new fibric layer's C is moved out of the
+  //      layer below it (all four C pools, orgn and avln in the same fraction; at most all of
+  //      that layer's C; no new layer if it holds no C). Legacy: rawc = aboveground litterfall
+  //      C of the month, not subtracted from any pool (C created; orgn = avln = 0).
+  //  (2) redivideDeepLayers, deepnum == 0: C and N of the removed humic layer(s) are added to
+  //      the next soil layer below (the layer above if there is none). Legacy: lost.
+  //  (3) BgcData::prvltrfcnque (12-month litterfall C:N per layer index, sets kd in
+  //      Soil_Bgc::updateKdyrly4all): carried to the new layers after the January re-division
+  //      in Cohort::updateMonthly_DIMgrd (same horizon type, relative depth in the horizon).
+  //      Legacy: stays at the old layer index after layers are split/combined.
+  //  (4) splitOneSoilLayer, organic: the new lower layer gets at most the C of the layer being
+  //      split, so the upper part keeps C >= 0. Legacy: no cap (upper C can go negative when
+  //      the layer thickness is not on the C-thickness curve).
+  // Refs: layer structure and the organic-layer C<->thickness relation of the dynamic organic
+  //   soil (DOS) module: Yi et al. 2009, doi:10.1029/2008JG000841; Yi et al. 2010,
+  //   doi:10.1029/2010JG001302. The fixes themselves are mass-conservation bookkeeping
+  //   bug fixes: no published source.
+  int layer_bookkeep_fix = 0;
+  // (1): fraction of the layer below moved into a new fibric layer that needs c_want; c_have =
+  //      C of the layer below. min(c_want, c_have)/c_have, 0 if c_have <= 0 or c_want <= 0.
+  static double shlwFromBelowFrac(const double c_want, const double c_have);
+  // (2): add all C/N pools of 'from' to 'to'
+  static void addLayerCN(Layer* to, const Layer* from);
+  // (3): litterfall C:N history snapshot before the re-division, remap after it
+  struct LtrCNSnap { int cls; double rtop, rbot, amid; std::deque<double> q; };
+  std::vector<LtrCNSnap> ltrcn_snap;
+  static int layerHorizonClass(const Layer* l);   // 0 moss, 1 fibric, 2 humic, 3 mineral, 4 other
+  static int ltrcnSourceIndex(const std::vector<LtrCNSnap>& s, const int cls, const double rmid,
+                              const double amid);
+  void snapshotLitterCNQueues();
+  void remapLitterCNQueues();
 
   // thawing/freezing fronts
   void setFstLstFrontLayers();

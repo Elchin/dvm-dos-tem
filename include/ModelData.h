@@ -227,6 +227,13 @@ public:
   //   doi:10.1029/2010JG001302. The fix itself is a mass/stoichiometry bookkeeping
   //   (conservation) bug fix: no published source for the remap rule (N follows C).
   int layer_n_remap_fix;
+  // v5q-layer-bookkeep: model_settings.layer_bookkeep_fix (0 = legacy, default, bit-identical;
+  // 1 = four dynamic-soil-layer C/N bookkeeping (conservation) bug fixes, see Ground.h;
+  // requires layer_n_remap_fix = 1). Integers 0/1 only, anything else FATAL.
+  // Refs: layer structure / organic C<->thickness relation: Yi et al. 2009,
+  //   doi:10.1029/2008JG000841; Yi et al. 2010, doi:10.1029/2010JG001302. The fixes are
+  //   mass-conservation bookkeeping bug fixes: no published source.
+  int layer_bookkeep_fix;
   // Refs (N2): no published source; code bug in Soil_Bgc::deltastate (upstream 419a4eb3, fix commit 20b2723e); restores N mass conservation (N moves with C).
   // Refs (N3): no published source for the scheme; restores N mass conservation; bryophyte N uptake from the moss/peat layer: Turetsky 2003, doi:10.1639/05.
   // ET-split fixes (v5l), all OFF by default (0 = legacy, bit-identical); see

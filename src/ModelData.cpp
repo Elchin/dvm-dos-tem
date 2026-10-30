@@ -258,6 +258,19 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     }
     layer_n_remap_fix = lf.asInt();
   }
+  // v5q-layer-bookkeep: layer_bookkeep_fix (0 = legacy, default). Refs: see Ground.h.
+  {
+    Json::Value bk = controldata["model_settings"].get("layer_bookkeep_fix", 0);
+    if (!bnf::valid_int(bk, 0, 1)) {
+      std::cerr << "FATAL: model_settings.layer_bookkeep_fix must be 0 (legacy) or 1 (dynamic soil-layer C/N bookkeeping fixes)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    layer_bookkeep_fix = bk.asInt();
+    if (layer_bookkeep_fix == 1 && layer_n_remap_fix != 1) {
+      std::cerr << "FATAL: model_settings.layer_bookkeep_fix = 1 requires layer_n_remap_fix = 1 (layer N must follow C)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+  }
   // ET-split fixes S1-S4 (v5l), default 0 = off (legacy); see ModelData.h / Vegetation_Env.h
   et_fpc_once_fix    = controldata["model_settings"].get("et_fpc_once_fix", 0).asInt();
   nv_snow_bury_fix   = controldata["model_settings"].get("nv_snow_bury_fix", 0).asInt();
@@ -372,6 +385,7 @@ ModelData::ModelData():force_cmt(-1) {
   soil_negpool_fix = 0; // v5q-negpool (off)
   d2m_transfer_gate = 0; // v5q-d2m-gate (legacy)
   layer_n_remap_fix = 0; // v5q-layern-fix (legacy)
+  layer_bookkeep_fix = 0; // v5q-layer-bookkeep (legacy)
   nv_snow_bury_depth = 0.0;
   set_envmodule(false);
   set_bgcmodule(false);
