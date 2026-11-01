@@ -26,6 +26,8 @@
 #include "../include/TEMLogger.h"
 
 #include "../include/Soil_Bgc.h"
+#include "../include/Ground.h"        // v5q-rh-frozen (layer texture, porosity)
+#include "../include/MineralLayer.h"  // v5q-rh-frozen
 #include "../include/DailyCSplit.h"
 
 extern src::severity_logger< severity_level > glg;
@@ -256,6 +258,7 @@ void Soil_Bgc::prepareIntegration(const bool &mdnfeedback,
   this->set_nfeed(mdnfeedback);
   this->set_avlnflg(mdavlnflg);
   this->set_baseline(mdbaseline);
+  if (rh_frozen_mode == 1) { rhFrozenSetLayers(); }   // v5q-rh-frozen: texture, porosity per layer
 
   // moss death rate if any (from Vegetation_bgc.cpp)
   mossdeathc    = bd->m_v2soi.mossdeathc;
@@ -783,6 +786,9 @@ void Soil_Bgc::deltac() {
   double ksoma = 0.0;     // for active SOM (in model, soma)
   double ksompr = 0.0;    // for PR SOM (in model, sompr)
   double ksomcr = 0.0;    // for CR SOM (in model, somcr)
+  // v5q-rh-frozen (rh_frozen_mode 1): permafrost table depth, see Soil_Bgc.h
+  const double rhf_zt = (rh_frozen_mode == 1)
+                        ? rhFrozenTableDepth(ed->m_soid.ald, ed->y_soid.ald, cd->d2m_ald_prevyr) : 0.0;
 
   for (int il =0; il<cd->m_soil.numsl; il++) {
     //HG: 01122023 - this condition allows for winter respiration
@@ -800,8 +806,15 @@ void Soil_Bgc::deltac() {
     bd->m_soid.rhq10[il] = getRhq10(ed->m_sois.ts[il]);
     if (thawfrac_decomp == 1) {   // v5q-thawfrac-decomp: thawed-fraction-weighted modifier, see Soil_Bgc.h
       const double fthaw = thawFraction(ed->m_sois.frozenfrac[il], ed->m_sois.ts[il]);
-      const double E = thawfracModifier(fthaw, ed->m_sois.ts[il], ed->m_soid.sws[il],
-                                        tfd_thawshare[il]);
+      double E;
+      if (rh_frozen_mode == 1) {   // v5q-rh-frozen: unfrozen-water rate above the permafrost table
+        const double w_al = fracAboveDepth(cd->m_soil.z[il], cd->m_soil.dz[il], rhf_zt);
+        const double efr_al = (w_al > 0.0) ? rhFrozenEfr(il, ed->m_sois.ts[il]) : 0.0;
+        E = thawfracModifier(fthaw, ed->m_sois.ts[il], ed->m_soid.sws[il], tfd_thawshare[il],
+                             w_al, efr_al);
+      } else {
+        E = thawfracModifier(fthaw, ed->m_sois.ts[il], ed->m_soid.sws[il], tfd_thawshare[il]);
+      }
       bd->m_soid.rhmoist[il] = E / bd->m_soid.rhq10[il];   // rhq10 = Q10^(ts/10) > 0
     }
     krawc = bgcpar.kdrawc[il];
@@ -1540,6 +1553,11 @@ double Soil_Bgc::thawedPartSws(const double sws, const double fthaw, const int m
 
 double Soil_Bgc::thawfracModifier(const double fthaw, const double ts, const double sws,
                                   double & thawshare) {
+  return thawfracModifier(fthaw, ts, sws, thawshare, 0.0, 0.0);
+}
+
+double Soil_Bgc::thawfracModifier(const double fthaw, const double ts, const double sws,
+                                  double & thawshare, const double w_al, const double efr_al) {
   const double f = fmin(1.0, fmax(0.0, fthaw));
   double eth = 0.0;
   if (f > 0.0) {
@@ -1547,10 +1565,87 @@ double Soil_Bgc::thawfracModifier(const double fthaw, const double ts, const dou
     eth = getRhmoist(sws_th, bgcpar.moistmin, bgcpar.moistmax, bgcpar.moistopt)
           * getRhq10(fmax(ts, 0.0));
   }
-  const double efr = bgcpar.rhmoistfrozen * getRhq10(fmin(ts, 0.0));
+  double efr = bgcpar.rhmoistfrozen * getRhq10(fmin(ts, 0.0));
+  if (w_al > 0.0) {   // v5q-rh-frozen (rh_frozen_mode 1) only; w_al = 0: legacy expression unchanged
+    const double w = fmin(1.0, w_al);
+    efr = (1.0 - w) * efr + w * efr_al;
+  }
   const double E = f * eth + (1.0 - f) * efr;
   thawshare = (E > 0.0) ? (f * eth) / E : 0.0;
   return E;
+}
+
+// v5q-rh-frozen (rh_frozen_mode), see Soil_Bgc.h.
+// Refs: Schaefer & Jafarov 2016, doi:10.5194/bg-13-1991-2016 (Eqs. 3-6, Table 1);
+//   Romanovsky & Osterkamp 2000, doi:10.1002/1099-1530(200007/09)11:3<219::AID-PPP352>3.0.CO;2-7;
+//   Nicolsky et al. 2009, doi:10.1016/j.coldregions.2008.03.003; Kurylyk & Watanabe 2013,
+//   doi:10.1016/j.advwatres.2013.07.016 (unfrozen-water power law); active-layer gate as
+//   d2m_transfer_gate: Koven et al. 2013, doi:10.5194/bg-10-7109-2013, Lawrence et al. 2019,
+//   doi:10.1029/2018MS001583; frozen-soil respiration observed: Mikan et al. 2002,
+//   doi:10.1016/S0038-0717(02)00168-2, Natali et al. 2019, doi:10.1038/s41558-019-0592-8.
+//   The permafrost-table restriction and the forg = 1 choices: no published source.
+double Soil_Bgc::sjPhiPure(const double t, const double b) {
+  if (t > 0.0) { return 1.0; }
+  return pow((0.1 - t) / 0.01, b);   // SJ2016 Eq. 4, Tref = 0.1 degC, T* = 0.01 degC
+}
+
+double Soil_Bgc::sjLayerPhi(const double t, const double forg, const double fc, const double fsi,
+                            const double fsa) {
+  const double phio = sjPhiPure(t, -1.0);   // Table 1: organic b = -1.0
+  double fo = fmin(1.0, fmax(0.0, forg));
+  const double c = fmax(0.0, fc), si = fmax(0.0, fsi), sa = fmax(0.0, fsa);
+  const double sum = c + si + sa;
+  if (!(sum > 0.0)) { return phio; }   // no mineral texture: organic
+  const double phim = (c * sjPhiPure(t, -0.3) + si * sjPhiPure(t, -0.5) + sa * sjPhiPure(t, -0.9)) / sum;
+  return (1.0 - fo) * phim + fo * phio;   // SJ2016 Eq. 5
+}
+
+double Soil_Bgc::sjOrgFraction(const double somc_gm2, const double dz) {
+  if (!(dz > 0.0)) { return 1.0; }
+  const double mo = 2.0 * fmax(0.0, somc_gm2) / 1000.0;   // kg organic matter m-2 (50 % C)
+  return fmin(1.0, mo / (dz * 140.0));                     // SJ2016 Eq. 6, rho_o = 140 kg m-3
+}
+
+double Soil_Bgc::rhFrozenTableDepth(const double ald_mon, const double ald_yr, const double ald_prevyr) {
+  return fmax(d2mGateDepth(ald_yr, ald_prevyr), (ald_mon > 0.0) ? ald_mon : 0.0);   // MISSING -> 0
+}
+
+double Soil_Bgc::fracAboveDepth(const double z, const double dz, const double zt) {
+  if (!(dz > 0.0)) { return (z < zt) ? 1.0 : 0.0; }
+  return fmin(1.0, fmax(0.0, (zt - z) / dz));
+}
+
+double Soil_Bgc::totalSaturation(const double sws, const double iwc, const double por) {
+  const double s = fmax(0.0, std::isfinite(sws) ? sws : 0.0)
+                   + ((por > 0.0 && std::isfinite(iwc)) ? fmax(0.0, iwc) / por : 0.0);
+  return fmin(1.0, s);
+}
+
+void Soil_Bgc::rhFrozenSetLayers() {
+  for (int il = 0; il < MAX_SOI_LAY; il++) {
+    rhf_fclay[il] = 0.0; rhf_fsilt[il] = 0.0; rhf_fsand[il] = 0.0; rhf_por[il] = 0.0; rhf_texok[il] = 0;
+  }
+  if (ground == NULL) { return; }
+  int il = 0;
+  for (Layer* l = ground->fstsoill; l != NULL && l->isSoil && il < MAX_SOI_LAY; l = l->nextl, il++) {
+    if (SoilLayer* sl = dynamic_cast<SoilLayer*>(l)) { rhf_por[il] = sl->poro; }
+    if (MineralLayer* ml = dynamic_cast<MineralLayer*>(l)) {
+      rhf_fclay[il] = ml->pctclay; rhf_fsilt[il] = ml->pctsilt; rhf_fsand[il] = ml->pctsand;
+      rhf_texok[il] = (rhf_fclay[il] + rhf_fsilt[il] + rhf_fsand[il] > 0.0) ? 1 : 0;
+    }
+  }
+}
+
+double Soil_Bgc::rhFrozenEfr(const int il, const double ts) {
+  const double t = fmin(ts, 0.0);
+  double forg = 1.0;   // moss/peat layers and mineral layers without texture: organic
+  if (cd->m_soil.type[il] == 3 && rhf_texok[il] == 1) {
+    forg = sjOrgFraction(tmp_sois.rawc[il] + tmp_sois.soma[il] + tmp_sois.sompr[il] + tmp_sois.somcr[il],
+                         cd->m_soil.dz[il]);
+  }
+  const double phi = sjLayerPhi(t, forg, rhf_fclay[il], rhf_fsilt[il], rhf_fsand[il]);
+  const double stot = totalSaturation(ed->m_soid.sws[il], ed->m_soid.iwc[il], rhf_por[il]);
+  return phi * getRhmoist(stot, bgcpar.moistmin, bgcpar.moistmax, bgcpar.moistopt) * getRhq10(t);
 }
 
 // v5p daily_c_split (output only): same factors as Soil_Bgc::deltac.

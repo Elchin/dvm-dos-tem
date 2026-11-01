@@ -319,6 +319,7 @@ void Cohort::initialize_state_parameters() {
   soilbgc.d2m_transfer_gate = md->d2m_transfer_gate;   // v5q-d2m-gate (0 = legacy)
   soilbgc.thawfrac_decomp = md->thawfrac_decomp;       // v5q-thawfrac-decomp (0 = legacy)
   soilbgc.thawfrac_moist_mode = md->thawfrac_moist_mode; // v5q-thawfrac-lmoist (0 = sws/f)
+  soilbgc.rh_frozen_mode = md->rh_frozen_mode;           // v5q-rh-frozen (0 = legacy)
   soilbgc.n_leach_curn_fix = md->n_leach_curn_fix;     // v5q-leach-curn (0 = legacy)
   ground.layer_n_remap_fix = md->layer_n_remap_fix;    // v5q-layern-fix (0 = legacy)
   ground.layer_bookkeep_fix = md->layer_bookkeep_fix;  // v5q-layer-bookkeep (0 = legacy)
@@ -505,8 +506,9 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
   if(currmind == 11) {
     BOOST_LOG_SEV(glg, debug) << "Clean up at end of year.";
 
-    // v5q-d2m-gate: keep this year's ALD for next year's gate (Refs: see Soil_Bgc.h)
-    if (md->d2m_transfer_gate != 0 && md->get_envmodule()) {
+    // v5q-d2m-gate: keep this year's ALD for next year's gate (Refs: see Soil_Bgc.h);
+    // v5q-rh-frozen: rh_frozen_mode 1 uses the same previous-year ALD for its permafrost table.
+    if ((md->d2m_transfer_gate != 0 || md->rh_frozen_mode != 0) && md->get_envmodule()) {
       cd.d2m_ald_prevyr = fmax(0.0, edall->y_soid.ald);
     }
 
@@ -1739,7 +1741,8 @@ void Cohort::set_restartdata_from_state() {
   restartdata.numsl  = cd.d_soil.numsl;     // actual number of soil layers
   restartdata.monthsfrozen   = edall->monthsfrozen;
   // v5q-d2m-gate: written only when d2m_transfer_gate != 0 (gate 0 restart files unchanged)
-  restartdata.d2m_ald_prevyr = (md->d2m_transfer_gate != 0) ? cd.d2m_ald_prevyr : MISSING_D;
+  //   (v5q-rh-frozen: also when rh_frozen_mode != 0)
+  restartdata.d2m_ald_prevyr = (md->d2m_transfer_gate != 0 || md->rh_frozen_mode != 0) ? cd.d2m_ald_prevyr : MISSING_D;
   restartdata.rtfrozendays   = edall->rtfrozendays;
   restartdata.rtunfrozendays = edall->rtunfrozendays;
   restartdata.watertab   = edall->d_sois.watertab;

@@ -153,6 +153,12 @@ Switch defaults: every switch below is 0/off by default, which is legacy behavio
 | `stefan_front_resist_fix` (0 legacy / 1 fix) | Thawing direction only: the front layer contributes (1−ff)·dz/tk (its thawed part) to the resistance above the front; ff·dz/tk is added once the front has passed the whole layer. Same result as splitting the layer at the front. Freezing direction unchanged. | Two-directional Stefan freeze/thaw algorithm [Woo2004]; its DOS-TEM implementation [Yi2009]. **No published source** for the correction (discretization fix). |
 | `ALD_FRONT` (output only) | Yearly max of the daily deepest thawing front, not gated on permafrost; equals `ALD_FLAG` in permafrost years. No feedback. | Front tracking [Woo2004]; [Yi2009]. Output definition: no published source (diagnostic). |
 
+### Frozen-part heterotrophic respiration from unfrozen water (v5q-rh-frozen, branch v5q-rh-frozen)
+
+| switch | what it does | references |
+|---|---|---|
+| `rh_frozen_mode` (0 legacy / 1 unfrozen water; 1 requires `thawfrac_decomp` 1) | 1 = the frozen part of a layer above the permafrost table (max of this month's, this year's running and last year's ALD) respires at φ(T)·rhmoist(liquid+ice saturation)·Q10^(min(ts,0)/10), with φ the unfrozen water fraction from the SJ2016 power law (texture b values, organic fraction from layer SOC); below the table the legacy `rhmoistfrozen` rate is kept. N-mineralisation gate stays closed for the frozen part. No calibrated parameter changed. | Unfrozen water and frozen-soil respiration [Schaefer2016] (Eqs. 4–6, Table 1); unfrozen-water power law [Romanovsky2000]; [Nicolsky2009]; [KurylykWatanabe2013]; respiration in frozen tundra soil [Mikan2002]; [Natali2019]; active-layer gating [Koven2013]; [Lawrence2019]. **No published source** for the permafrost-table restriction, forg = 1 in moss/peat layers and the closed N gate. |
+
 ### Parameter test (not a switch)
 
 | change | status | references |
@@ -256,6 +262,12 @@ Format: commit — code location — principle — references.
 - [Koven2013] Koven, C.D., Riley, W.J., Subin, Z.M., Tang, J.Y., Torn, M.S., Collins, W.D., Bonan, G.B., Lawrence, D.M., Swenson, S.C. (2013). The effect of vertically resolved soil biogeochemistry and alternate soil C and N models on C dynamics of CLM4. Biogeosciences 10, 7109–7131. https://doi.org/10.5194/bg-10-7109-2013
 - [Lawrence2019] Lawrence, D.M., et al. (2019). The Community Land Model Version 5: Description of New Features, Benchmarking, and Impact of Forcing Uncertainty. J. Adv. Model. Earth Syst. 11, 4245–4287. https://doi.org/10.1029/2018MS001583
 - [Melton2019] Melton, J.R., Verseghy, D.L., Sospedra-Alfonso, R., Gruber, S. (2019). Improving permafrost physics in the coupled Canadian Land Surface Scheme (v.3.6.2) and Canadian Terrestrial Ecosystem Model (v.2.1) (CLASS-CTEM). Geosci. Model Dev. 12, 4443–4467. https://doi.org/10.5194/gmd-12-4443-2019
+- [Schaefer2016] Schaefer, K., Jafarov, E. (2016). A parameterization of respiration in frozen soils based on substrate availability. Biogeosciences 13, 1991–2001. https://doi.org/10.5194/bg-13-1991-2016
+- [Romanovsky2000] Romanovsky, V.E., Osterkamp, T.E. (2000). Effects of unfrozen water on heat and mass transport processes in the active layer and permafrost. Permafrost Periglac. Process. 11, 219–239. https://doi.org/10.1002/1099-1530(200007/09)11:3<219::AID-PPP352>3.0.CO;2-7
+- [Nicolsky2009] Nicolsky, D.J., Romanovsky, V.E., Panteleev, G.G. (2009). Estimation of soil thermal properties using in-situ temperature measurements in the active layer and permafrost. Cold Reg. Sci. Technol. 55, 120–129. https://doi.org/10.1016/j.coldregions.2008.03.003
+- [KurylykWatanabe2013] Kurylyk, B.L., Watanabe, K. (2013). The mathematical representation of freezing and thawing processes in variably-saturated, non-deformable soils. Adv. Water Resour. 60, 160–177. https://doi.org/10.1016/j.advwatres.2013.07.016
+- [Mikan2002] Mikan, C.J., Schimel, J.P., Doyle, A.P. (2002). Temperature controls of microbial respiration in arctic tundra soils above and below freezing. Soil Biol. Biochem. 34, 1785–1795. https://doi.org/10.1016/S0038-0717(02)00168-2
+- [Natali2019] Natali, S.M., et al. (2019). Large loss of CO2 in winter observed across the northern permafrost region. Nat. Clim. Change 9, 852–857. https://doi.org/10.1038/s41558-019-0592-8
 - [Shampine2005] Shampine, L.F., Thompson, S., Kierzenka, J.A., Byrne, G.D. (2005). Non-negative solutions of ODEs. Appl. Math. Comput. 170, 556–569. https://doi.org/10.1016/j.amc.2004.12.011
 - [Stewart2011] Stewart, K.J., Coxson, D., Grogan, P. (2011). Nitrogen inputs by associative cyanobacteria across a low Arctic tundra landscape. Arct. Antarct. Alp. Res. 43, 267–278. https://doi.org/10.1657/1938-4246-43.2.267
 - [Sturm1997] Sturm, M., Holmgren, J., König, M., Morris, K. (1997). The thermal conductivity of seasonal snow. J. Glaciol. 43, 26–41. https://doi.org/10.3189/S0022143000002781

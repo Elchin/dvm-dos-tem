@@ -293,6 +293,20 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
       exit(EXIT_FAILURE);
     }
   }
+  // v5q-rh-frozen: rh_frozen_mode (0 = legacy, default; 1 = unfrozen-water frozen-part RH above the
+  // permafrost table; 1 needs thawfrac_decomp = 1). Refs: see Soil_Bgc.h.
+  {
+    Json::Value rf = controldata["model_settings"].get("rh_frozen_mode", 0);
+    if (!bnf::valid_int(rf, 0, 1)) {
+      std::cerr << "FATAL: model_settings.rh_frozen_mode must be 0 (legacy frozen-part rate) or 1 (unfrozen-water frozen-part rate above the permafrost table, Schaefer & Jafarov 2016)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    rh_frozen_mode = rf.asInt();
+    if (rh_frozen_mode == 1 && thawfrac_decomp != 1) {
+      std::cerr << "FATAL: model_settings.rh_frozen_mode = 1 requires thawfrac_decomp = 1 (it only acts in the frozen part of the thawed-fraction modifier)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+  }
   // v5q-leach-curn: n_leach_curn_fix (0 = legacy, default; 1 needs n_leach_fix = 1). Refs: see Soil_Bgc.h.
   {
     Json::Value lc = controldata["model_settings"].get("n_leach_curn_fix", 0);
@@ -439,6 +453,7 @@ ModelData::ModelData():force_cmt(-1) {
   layer_bookkeep_fix = 0; // v5q-layer-bookkeep (legacy)
   thawfrac_decomp = 0; // v5q-thawfrac-decomp (legacy)
   thawfrac_moist_mode = 0; // v5q-thawfrac-lmoist (sws/f)
+  rh_frozen_mode = 0; // v5q-rh-frozen (legacy)
   n_leach_curn_fix = 0; // v5q-leach-curn (legacy)
   humic_max_thick = 0.0; stefan_front_resist_fix = 0; // v5q-humic-stefan (off)
   nv_snow_bury_depth = 0.0;

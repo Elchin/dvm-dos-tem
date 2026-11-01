@@ -252,6 +252,19 @@ public:
   //   fronts: Yi et al. 2009, doi:10.1029/2008JG000841. The choice between thawed-part (sws/f) and
   //   layer-mean moisture for a partly frozen layer: no published source.
   int thawfrac_moist_mode;
+  // v5q-rh-frozen: model_settings.rh_frozen_mode (0 = default, legacy frozen-part rate
+  // rhmoistfrozen*Q10^(min(ts,0)/10) everywhere, bit-identical to v5q-humic-stefan; 1 = in the part of a
+  // layer above the permafrost table the frozen-part rate is the unfrozen-water (thawed-substrate)
+  // fraction phi(T) x rhmoist(liquid+ice saturation) x Q10^(min(ts,0)/10), see Soil_Bgc.h). Integers 0/1
+  // only, anything else FATAL; 1 requires thawfrac_decomp = 1.
+  // Refs: Schaefer & Jafarov 2016, doi:10.5194/bg-13-1991-2016 (Eqs. 3-6, Table 1);
+//   Romanovsky & Osterkamp 2000, doi:10.1002/1099-1530(200007/09)11:3<219::AID-PPP352>3.0.CO;2-7;
+//   Nicolsky et al. 2009, doi:10.1016/j.coldregions.2008.03.003; Kurylyk & Watanabe 2013,
+//   doi:10.1016/j.advwatres.2013.07.016 (unfrozen-water power law); active-layer gate as
+//   d2m_transfer_gate: Koven et al. 2013, doi:10.5194/bg-10-7109-2013, Lawrence et al. 2019,
+//   doi:10.1029/2018MS001583; frozen-soil respiration observed: Mikan et al. 2002,
+//   doi:10.1016/S0038-0717(02)00168-2, Natali et al. 2019, doi:10.1038/s41558-019-0592-8.
+  int rh_frozen_mode;
   // v5q-leach-curn: model_settings.n_leach_curn_fix (0 = legacy, default, bit-identical; 1 = the
   // drainage part of the N leaching rate uses the current (integrator-state) AVLN of the drainage
   // zone instead of the month-start AVLN, see Soil_Bgc.h). Integers 0/1 only, anything else FATAL;

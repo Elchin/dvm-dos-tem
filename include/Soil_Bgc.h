@@ -175,6 +175,56 @@ public:
   static double thawFraction(const double frozenfrac, const double ts);
   // thawfrac_decomp 1: E (returned) and its thawed share (f*E_th/E, 0 if E == 0) for one layer.
   double thawfracModifier(const double fthaw, const double ts, const double sws, double & thawshare);
+  // v5q-rh-frozen: as above, with the frozen-part rate blended per layer:
+  //   efr = (1 - w_al)*rhmoistfrozen*Q10^(min(ts,0)/10) + w_al*efr_al  (w_al = 0: the 4-argument form).
+  double thawfracModifier(const double fthaw, const double ts, const double sws, double & thawshare,
+                          const double w_al, const double efr_al);
+  // v5q-rh-frozen: model_settings.rh_frozen_mode (FATAL unless integer 0/1; 1 requires thawfrac_decomp
+  //   = 1). Frozen-part (1 - f) decomposition rate of the thawed-fraction modifier:
+  //   0 = rhmoistfrozen * Q10^(min(ts,0)/10) in every frozen layer part (default, legacy; TVC CMT51 has
+  //       rhmoistfrozen = 0, so no frozen-soil RH at all; > 0 respires the whole permafrost column).
+  //   1 = for the fraction w_al of the layer above the permafrost table zt (w_al = clamp((zt - z)/dz, 0, 1),
+  //       zt = max(this month's ALD, this year's running-max ALD, previous year's ALD), the same
+  //       previous-year ALD as d2m_transfer_gate): efr_al = phi(T) * rhmoist(s_tot) * Q10^(T/10),
+  //       T = min(ts, 0); below zt the legacy rate. Schaefer & Jafarov (2016): only the carbon in the
+  //       thin unfrozen water films ("thawed" carbon, fraction phi = liquid water fraction) decays below
+  //       0 degC, with the normal kinetic temperature and moisture factors (this replaces an extra
+  //       frozen Q10, which made permafrost C decay). phi(T): Eq. 4 power law phi_i = ((Tref - T)/T*)^b_i,
+  //       Tref = 0.1 degC, T* = 0.01 degC, b = -0.3 clay, -0.5 silt, -0.9 sand, -1.0 organic (Table 1);
+  //       Eq. 5 phi = (1 - forg)(fc phi_c + fsi phi_si + fsa phi_sa) + forg phi_o; Eq. 6 forg = Mo/(dz rho_o),
+  //       Mo = 2 x layer SOM C (50 % C), rho_o = 140 kg m-3 (capped at 1). dvmdostem frozen layer parts
+  //       hold no liquid (the Stefan scheme puts the layer liquid in the thawed part), so phi comes from
+  //       the power law, not from the layer liquid. s_tot = sws + iwc/poro (liquid + ice pore saturation,
+  //       the SiBCASA moisture argument in SJ2016), evaluated with the dvmdostem rhmoist() curve and the
+  //       CMT moistmin/opt/max. Deviations from SJ2016 (no published source): dvmdostem moss/peat layers
+  //       (type 0-2) use forg = 1; mineral layers without texture use forg = 1; the film-frozen ->
+  //       thawed pool transfers of SJ2016 are not modelled (phi scales the rate of the single layer
+  //       pool, the dvmdostem pools are not split); the frozen-part RH keeps the legacy closed
+  //       N-mineralisation gate (tfd_thawshare = thawed share), as for rhmoistfrozen > 0.
+  // Refs: Schaefer & Jafarov 2016, doi:10.5194/bg-13-1991-2016 (Eqs. 3-6, Table 1);
+//   Romanovsky & Osterkamp 2000, doi:10.1002/1099-1530(200007/09)11:3<219::AID-PPP352>3.0.CO;2-7;
+//   Nicolsky et al. 2009, doi:10.1016/j.coldregions.2008.03.003; Kurylyk & Watanabe 2013,
+//   doi:10.1016/j.advwatres.2013.07.016 (unfrozen-water power law); active-layer gate as
+//   d2m_transfer_gate: Koven et al. 2013, doi:10.5194/bg-10-7109-2013, Lawrence et al. 2019,
+//   doi:10.1029/2018MS001583; frozen-soil respiration observed: Mikan et al. 2002,
+//   doi:10.1016/S0038-0717(02)00168-2, Natali et al. 2019, doi:10.1038/s41558-019-0592-8.
+  //   The permafrost-table restriction and the forg = 1 choices: no published source.
+  int rh_frozen_mode = 0;
+  // rh_frozen_mode 1: per soil layer, set from the Ground layers at prepareIntegration (if ground set):
+  double rhf_fclay[MAX_SOI_LAY] = {0}, rhf_fsilt[MAX_SOI_LAY] = {0}, rhf_fsand[MAX_SOI_LAY] = {0};
+  double rhf_por[MAX_SOI_LAY] = {0};
+  int rhf_texok[MAX_SOI_LAY] = {0};   // 1 = mineral layer with texture (fractions sum > 0)
+  void rhFrozenSetLayers();
+  // rh_frozen_mode 1: active-layer frozen-part rate efr_al of soil layer il at layer temperature ts.
+  double rhFrozenEfr(const int il, const double ts);
+  // pure helpers (unit-tested), SJ2016 Eqs. 4-6, Table 1:
+  static double sjPhiPure(const double t, const double b);         // 1 for t > 0, else ((0.1 - t)/0.01)^b
+  static double sjLayerPhi(const double t, const double forg, const double fc, const double fsi,
+                           const double fsa);                        // Eq. 5 (texture renormalised)
+  static double sjOrgFraction(const double somc_gm2, const double dz);  // Eq. 6, capped at 1
+  static double rhFrozenTableDepth(const double ald_mon, const double ald_yr, const double ald_prevyr);
+  static double fracAboveDepth(const double z, const double dz, const double zt);
+  static double totalSaturation(const double sws, const double iwc, const double por);
   // Fix G1 (v5n), OFF by default: model_settings.n_extract_limiter.
   // The root N extraction rtnextract[il] is fixed for the whole month (it equals
   // the vegetation N uptake, computed from the month-start AVLN and integrated
