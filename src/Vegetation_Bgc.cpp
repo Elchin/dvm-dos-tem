@@ -374,6 +374,11 @@ void Vegetation_Bgc::delta() {
   //GPP without N limitation
   double gpp_all = getGPP(co2, par, fleaf, ffoliage,
                            bd->m_vegd.ftemp, bd->m_vegd.gv);
+  // v5q-gpp-fleaf. Refs: Raich et al. 1991, doi:10.2307/1941899; McGuire et al. 1992, doi:10.1029/92GB00219
+  // (TEM GPP x phenology factor). Applying it to the dvmdostem PFTs (incl. moss/lichen): no published source.
+  if (gpp_fleaf_mode != 0) {   // v5q-gpp-fleaf (0 = legacy: this block is skipped)
+    gpp_all *= gppFleafScale(gpp_fleaf_mode, cd->m_veg.ifwoody[ipft], fleaf);
+  }
 
 
   // First compute maintenance respiration based on GPP, respiration
@@ -876,6 +881,14 @@ void Vegetation_Bgc::afterIntegration() {
 /////////////////////////////////////////
 /// private functions
 /////////////////////////////////////////
+
+// v5q-gpp-fleaf: GPP phenology factor (see Vegetation_Bgc.h). mode 0, or mode 2 for a woody PFT: 1.
+// Refs: Raich et al. 1991, doi:10.2307/1941899; McGuire et al. 1992, doi:10.1029/92GB00219 (see Vegetation_Bgc.h caveat).
+double Vegetation_Bgc::gppFleafScale(int mode, int ifwoody, double fleaf) {
+  if (mode == 0 || (mode == 2 && ifwoody != 0)) { return 1.0; }
+  if (!(fleaf > 0.0)) { return 0.0; }   // also NaN -> 0
+  return (fleaf < 1.0) ? fleaf : 1.0;
+}
 
 //Note that - fpc not adjusted here
 double  Vegetation_Bgc::getGPP(const double &co2, const double &par,

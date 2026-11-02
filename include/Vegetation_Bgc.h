@@ -30,6 +30,19 @@ public:
   // The non-vascular uptake is then capped at 95 % of the available N in those
   // layers (as for vascular plants in their root zone).
   int n_nonvasc_extract = 1;   // v5o default (was 0)
+  // v5q-gpp-fleaf: model_settings.gpp_fleaf_mode (0 = legacy, default: no multiplication at all,
+  // bit-identical; 1 = gpp_all *= fleaf for every PFT; 2 = only for PFTs with ifwoody == 0).
+  // fleaf = cd->m_vegd.fleaf[ipft] of the same month (Vegetation::phenology runs before the BGC step),
+  // clamped to [0,1]; it scales the N-unlimited GPP (INGPP), so it acts in nfeed and nonfeed runs.
+  // Refs: Raich et al. 1991, doi:10.2307/1941899 (TEM GPP with f(PHENOLOGY));
+//   McGuire et al. 1992, doi:10.1029/92GB00219. Using the dvmdostem fleaf (normalised
+//   transpiration recursion, Vegetation::phenology) as that factor: no published source.
+//   Caveat: fleaf as a direct GPP multiplier is the original TEM formulation (EET-based relative leaf
+//   area, Raich 1991 / McGuire 1992, for vascular vegetation types); applying it to the dvmdostem PFT
+//   set, in particular non-vascular PFTs (Sphagnum, lichen) and CMT51 sedges, has NO published source
+//   of its own (calibration choice, step22 / GPP_RECO_OPTIONS.md). DOIs checked on Crossref 2026-11-02.
+  int gpp_fleaf_mode = 0;
+  static double gppFleafScale(int mode, int ifwoody, double fleaf);
   // Refs (N3): no published source for the scheme; restores N mass conservation; bryophyte N uptake from the moss/peat layer: Turetsky 2003, doi:10.1639/05.
   ~Vegetation_Bgc();
   // v5q Phase 2 (model_settings.bnf_to_plant = 1 only, else 0): symbiotic BNF

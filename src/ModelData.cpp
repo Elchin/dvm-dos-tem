@@ -307,6 +307,16 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
       exit(EXIT_FAILURE);
     }
   }
+  // v5q-gpp-fleaf: gpp_fleaf_mode (0 = legacy, default; 1 = GPP x fleaf, all PFTs; 2 = non-woody PFTs only).
+  // Refs: Raich et al. 1991, doi:10.2307/1941899; McGuire et al. 1992, doi:10.1029/92GB00219; see ModelData.h.
+  {
+    Json::Value gf = controldata["model_settings"].get("gpp_fleaf_mode", 0);
+    if (!bnf::valid_int(gf, 0, 2)) {
+      std::cerr << "FATAL: model_settings.gpp_fleaf_mode must be 0 (legacy, no phenology factor in GPP), 1 (GPP x fleaf, all PFTs) or 2 (GPP x fleaf, non-woody PFTs)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    gpp_fleaf_mode = gf.asInt();
+  }
   // v5q-leach-curn: n_leach_curn_fix (0 = legacy, default; 1 needs n_leach_fix = 1). Refs: see Soil_Bgc.h.
   {
     Json::Value lc = controldata["model_settings"].get("n_leach_curn_fix", 0);
@@ -454,6 +464,7 @@ ModelData::ModelData():force_cmt(-1) {
   thawfrac_decomp = 0; // v5q-thawfrac-decomp (legacy)
   thawfrac_moist_mode = 0; // v5q-thawfrac-lmoist (sws/f)
   rh_frozen_mode = 0; // v5q-rh-frozen (legacy)
+  gpp_fleaf_mode = 0; // v5q-gpp-fleaf (legacy)
   n_leach_curn_fix = 0; // v5q-leach-curn (legacy)
   humic_max_thick = 0.0; stefan_front_resist_fix = 0; // v5q-humic-stefan (off)
   nv_snow_bury_depth = 0.0;

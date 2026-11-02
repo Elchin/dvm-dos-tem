@@ -265,6 +265,18 @@ public:
 //   doi:10.1029/2018MS001583; frozen-soil respiration observed: Mikan et al. 2002,
 //   doi:10.1016/S0038-0717(02)00168-2, Natali et al. 2019, doi:10.1038/s41558-019-0592-8.
   int rh_frozen_mode;
+  // v5q-gpp-fleaf: model_settings.gpp_fleaf_mode (0 = default, legacy: GPP has no leaf-phenology factor,
+  // bit-identical; 1 = monthly GPP of every PFT is multiplied by the PFT's phenology index fleaf in [minleaf,1]
+  // (restores the commented-out "gpp *= leaf" of Vegetation_Bgc::getGPP); 2 = as 1 for non-woody PFTs only).
+  // Integers 0..2 only, anything else FATAL. See Vegetation_Bgc.h.
+  // Refs: Raich et al. 1991, doi:10.2307/1941899 (TEM GPP with f(PHENOLOGY));
+//   McGuire et al. 1992, doi:10.1029/92GB00219. Using the dvmdostem fleaf (normalised
+//   transpiration recursion, Vegetation::phenology) as that factor: no published source.
+//   Caveat: fleaf as a direct GPP multiplier is the original TEM formulation (EET-based relative leaf
+//   area, Raich 1991 / McGuire 1992, for vascular vegetation types); applying it to the dvmdostem PFT
+//   set, in particular non-vascular PFTs (Sphagnum, lichen) and CMT51 sedges, has NO published source
+//   of its own (calibration choice, step22 / GPP_RECO_OPTIONS.md). DOIs checked on Crossref 2026-11-02.
+  int gpp_fleaf_mode;
   // v5q-leach-curn: model_settings.n_leach_curn_fix (0 = legacy, default, bit-identical; 1 = the
   // drainage part of the N leaching rate uses the current (integrator-state) AVLN of the drainage
   // zone instead of the month-start AVLN, see Soil_Bgc.h). Integers 0/1 only, anything else FATAL;

@@ -159,6 +159,12 @@ Switch defaults: every switch below is 0/off by default, which is legacy behavio
 |---|---|---|
 | `rh_frozen_mode` (0 legacy / 1 unfrozen water; 1 requires `thawfrac_decomp` 1) | 1 = the frozen part of a layer above the permafrost table (max of this month's, this year's running and last year's ALD) respires at φ(T)·rhmoist(liquid+ice saturation)·Q10^(min(ts,0)/10), with φ the unfrozen water fraction from the SJ2016 power law (texture b values, organic fraction from layer SOC); below the table the legacy `rhmoistfrozen` rate is kept. N-mineralisation gate stays closed for the frozen part. No calibrated parameter changed. | Unfrozen water and frozen-soil respiration [Schaefer2016] (Eqs. 4–6, Table 1); unfrozen-water power law [Romanovsky2000]; [Nicolsky2009]; [KurylykWatanabe2013]; respiration in frozen tundra soil [Mikan2002]; [Natali2019]; active-layer gating [Koven2013]; [Lawrence2019]. **No published source** for the permafrost-table restriction, forg = 1 in moss/peat layers and the closed N gate. |
 
+### TEM leaf-phenology factor in GPP (v5q-gpp-fleaf, branch v5q-gpp-fleaf2)
+
+| switch | what it does | references |
+|---|---|---|
+| `gpp_fleaf_mode` (0 legacy / 1 all PFTs / 2 non-woody PFTs) | 1 = monthly N-unlimited GPP (INGPP) is multiplied by the PFT's phenology index fleaf (normalised-EET recursion, clamped to [0, 1]), restoring the commented-out `gpp *= leaf` of `Vegetation_Bgc::getGPP`; 2 = only PFTs with `ifwoody` 0. 0 = unchanged (bit-identical). No calibrated parameter changed by the switch (the TVC S22 set retunes cmax ×1.05 separately). | TEM GPP with the leaf-phenology factor f(PHENOLOGY) [Raich1991]; [McGuire1992]. **No published source** for applying the factor to the dvmdostem PFT set, in particular the non-vascular PFTs (Sphagnum, lichen) and CMT51 sedges; this is a calibration choice. DOIs re-checked on Crossref 2026-11-02. |
+
 ### Parameter test (not a switch)
 
 | change | status | references |
