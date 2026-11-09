@@ -1,6 +1,6 @@
 /*! \file EnthalpySolver.h
- * Stage B (standalone, NOT used by the model): implicit, globally convergent
- * enthalpy solver for 1-D snow/soil/rock heat conduction with phase change.
+ * Implicit, globally convergent enthalpy solver (Stage B library; used by the model
+ * through Soil_Env_enthalpy.cpp when model_settings.thermal_solver = 1, Stage C) for 1-D snow/soil/rock heat conduction with phase change.
  * Design: /workspace/tem-dev/enthalpy_solver_design.md (enthalpy/stageB).
  *
  * Discretisation: cell-centred finite volumes (one cell per dvmdostem Layer),
@@ -55,6 +55,40 @@ double liq(const Cell& c, double T);        // kg m-2, consistent with H(T)
 double invertH(const Cell& c, double h);    // T with H(T) = h (monotone; bisection-safeguarded Newton)
 double conductivity(const Cell& c, double T); // lam_u^(1-f) lam_f^f, f = ice/W
 bool hasLatent(const Cell& c);
+
+// ---- Stage C helpers (pure functions, used by Soil_Env_enthalpy.cpp) ----
+// General enthalpy of a cell state that may be off the curve (T, liq, ice), J m-2.
+double Hstate(const Cell& c, double T, double liq, double ice);
+// True if (T, liq) is on the curve of c (|liq - liq(c,T)| <= tol_kg).
+bool onCurve(const Cell& c, double T, double liqv, double tol_kg);
+// Put a cell on its curve keeping its enthalpy h (J m-2): returns T, sets liq/ice (sum c.W).
+double equilibrate(const Cell& c, double h, double& liqv, double& icev);
+// Merge two cells conservatively: temperature of the merged cell for summed heat capacities
+// C = Cs + liq c_w + ice c_i and summed liq/ice (keeps Hstate exactly).
+double mergeT(double Cu, double Tu, double Cl, double Tl);
+
+// Front reconstruction from a soil profile (top to bottom; soil cells only).
+struct FrontIn {
+  std::vector<double> z, dz, T, ice, ice_eps, W;  // layer top (m), thickness, temperature, ice,
+                                                   // ice at T = -eps (curve), total water
+  std::vector<int> latent;                         // 1 if the cell has latent capacity
+  double Tabove;   // temperature above the first soil cell (snow cell or surface)
+  double Tbelow;   // temperature below the last soil cell (rock)
+  double eps;      // ramp width (degC)
+  int maxfronts;   // MAX_NUM_FNT
+};
+struct FrontOut {
+  std::vector<double> fz;     // front depths, top to bottom (m)
+  std::vector<int> ftype;     // 1 = freezing front (frozen above), -1 = thawing front (thawed above)
+  std::vector<int> frozen;    // per cell: 1 frozen, -1 thawed, 0 holds a front
+  std::vector<double> frozenfrac; // per cell: frozen thickness fraction
+};
+// Cells are classified frozen (T < -eps), thawed (no ice) or ramp (latent heat partly released).
+// A run of ramp cells holds one front (or a lens pair) placed so that the frozen thickness equals
+// sum_k f_k dz_k, f_k = ice_k / ice_k(-eps); a 0 degC crossing between two non-ramp neighbours is
+// placed by linear interpolation between their mid-points. Fronts are capped at maxfronts by
+// removing the closest adjacent pairs. Cell states follow the legacy front convention.
+void reconstructFronts(const FrontIn& in, FrontOut& out);
 
 struct BC {
   int top_type;    // 0 Dirichlet T_s at the surface, 1 Robin: conductance cn_top to T_s

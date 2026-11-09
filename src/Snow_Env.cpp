@@ -50,6 +50,9 @@ void Snow_Env::updateDailyM(const double & tdrv) {
     //sublimating of existed surface snow layers accompanying snow surface
     //  energy budget process (Yuan: need further thinking here ???)
     updateDailySurfFlux(ground->toplayer, tsurface);
+    // Option C: with thermal_solver = 1 the radiation/SEB melt energy already went into the
+    // snow cells in the thermal step (melt water is collected from liq below); no mass removal.
+    if (thermal_solver == 1) { rad_melt = 0.; }
     // melting below snow layers, if any
     ed->d_snw2soi.melt = meltSnowLayersAfterT(ground->toplayer);
     // DRAFT: radiation-driven melt (computed in updateDailySurfFlux) goes to
@@ -391,3 +394,18 @@ void Snow_Env::setEnvData(EnvData* edp) {
 };
 
 
+
+// Option C (thermal_solver = 1), see Snow_Env.h.
+double Snow_Env::radMeltPotential(const double & tsurface) {
+  if (ground == NULL || ground->toplayer == NULL || !ground->toplayer->isSnow) { return 0.; }
+  Layer* toplayer = ground->toplayer;
+  double albnir = getAlbedoNir(toplayer->tem);
+  double albvis = getAlbedoVis(toplayer->tem);
+  double insw =  ed->d_v2g.swthfl * cd->m_vegd.fpcsum
+                 + ed->d_a2l.nirr *(1.- cd->m_vegd.fpcsum);
+  double swrefl = insw *0.5 * albnir + insw *0.5 * albvis;
+  double rn = insw - swrefl;
+  double pradmelt = 0.;
+  getSublimation(rn, ed->d_snws.swesum, tsurface, pradmelt);
+  return pradmelt;
+}

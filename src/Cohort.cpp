@@ -300,6 +300,26 @@ void Cohort::initialize_state_parameters() {
   soilenv.soil_evap_beta = md->soil_evap_beta;       // DRAFT (daily-structural)
   soilenv.seb_scheme    = md->seb_scheme;           // Option 4 (v5j) SEB
   soilenv.energy_diag   = md->energy_diag;          // phase 2b energy-closure diagnostic (0 = off)
+  // Option C: thermal solver switch (0 = legacy, default; see ModelData.h)
+  soilenv.thermal_solver    = md->thermal_solver;
+  soilenv.thermal_sfcc      = md->thermal_sfcc;
+  soilenv.thermal_face_mode = md->thermal_face_mode;
+  soilenv.thermal_nl_solver = md->thermal_nl_solver;
+  soilenv.thermal_substeps  = md->thermal_substeps;
+  snowenv.thermal_solver    = md->thermal_solver;
+  ground.enthalpy_remap     = (md->thermal_solver == 1) ? 1 : 0;
+  soilenv.geothermal_flux_Wm2 = 0.0;
+  if (md->geothermal_flux_mode == 1) {
+    soilenv.geothermal_flux_Wm2 = md->geothermal_flux;
+  } else if (md->geothermal_flux_mode == 2) {
+    const double g = temutil::get_scalar<double>(md->geothermal_flux_file, "geothermal_flux", y, x);
+    if (!(g == g) || fabs(g) > 10.0) {
+      std::cerr << "FATAL: geothermal_flux at (y,x) = (" << y << "," << x << ") in " << md->geothermal_flux_file
+                << " must be finite and within [-10, 10] W m-2 (got " << g << ")" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    soilenv.geothermal_flux_Wm2 = g;
+  }
   soilenv.seb_z0_snow   = md->seb_z0_snow;
   soilenv.seb_z0_soil   = md->seb_z0_soil;
   soilenv.seb_zwind     = md->seb_zwind;
@@ -473,6 +493,8 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
   }
 
   BOOST_LOG_SEV(glg, debug) << "Update the current dimension/structure of veg-snow/soil column (domain).";
+  // Option C (thermal_solver 1): enthalpy change of layer thickness/redivision and BGC
+  const double enth_hl = (md->thermal_solver == 1) ? soilenv.columnEnthalpyE() : 0.0;
   updateMonthly_DIMveg(currmind, md->get_dynamic_lai_module());
   updateMonthly_DIMgrd(currmind, md->get_dslmodule());
 
@@ -484,10 +506,13 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
     BOOST_LOG_SEV(glg, debug) << "RIGHT AFTER updateMonthly_Bgc()" << ground.layer_report_string("depth CN");
 
   }
+  if (md->thermal_solver == 1) { soilenv.enth_bk_layer += soilenv.columnEnthalpyE() - enth_hl; }
 
   if(md->get_dsbmodule()) {
     BOOST_LOG_SEV(glg, debug) << "Run the disturbance model.";
+    const double enth_hf = (md->thermal_solver == 1) ? soilenv.columnEnthalpyE() : 0.0;
     updateMonthly_Dsb(yrcnt, currmind, stage);
+    if (md->thermal_solver == 1) { soilenv.enth_bk_fire += soilenv.columnEnthalpyE() - enth_hf; }
   }
 
   BOOST_LOG_SEV(glg, debug) << "Clean up at the end of the month";
@@ -790,12 +815,22 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
       static long edg_day = 0;
       std::ofstream ef((md->output_dir + "energy_daily.csv").c_str(), std::ios::app);
       if (edg_day == 0) {
-        ef << "day,doy,tsurf,snow,nsnow,nfront,h0,h1,gtop,gbot,res,snowmk\n";
+        ef << "day,doy,tsurf,snow,nsnow,nfront,h0,h1,gtop,gbot,res,snowmk";
+        if (md->thermal_solver == 1) { // Option C columns (see Soil_Env.h EnergyDiag)
+          ef << ",src,clip,init,equil,bsnow,bwater,blayer,bfire,unattr,resday,solves,fallbacks";
+        }
+        ef << "\n";
       }
       const EnergyDiag& q = soilenv.energydiag;
       ef.precision(10);
       ef << edg_day << "," << doy << "," << q.tsurf << "," << (ground.toplayer->isSnow ? 1 : 0) << "," << q.nsnow << ","
-         << q.nfront << "," << q.h0 << "," << q.h1 << "," << q.gtop << "," << q.gbot << "," << q.res << "," << q.snowmk << "\n";
+         << q.nfront << "," << q.h0 << "," << q.h1 << "," << q.gtop << "," << q.gbot << "," << q.res << "," << q.snowmk;
+      if (md->thermal_solver == 1) {
+        ef << "," << q.src << "," << q.clip << "," << q.init << "," << q.equil << "," << q.bsnow << "," << q.bwater
+           << "," << q.blayer << "," << q.bfire << "," << q.unattr << "," << q.resday << "," << q.solves << ","
+           << q.fallbacks;
+      }
+      ef << "\n";
       edg_day++;
     }
     if (md->seb_diag > 0) { // Option 4 (v5j) SEB: daily diagnostics (output only)
@@ -817,14 +852,22 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
       seb_day++;
     }
     //snow water/thickness changing - must be done after 'T' because of melting
-    snowenv.updateDailyM(tdrv);
+    { // Option C (thermal_solver 1): book the enthalpy change of the snow module
+      const double hb = (md->thermal_solver == 1) ? soilenv.columnEnthalpyE() : 0.0;
+      snowenv.updateDailyM(tdrv);
+      if (md->thermal_solver == 1) { soilenv.enth_bk_snow += soilenv.columnEnthalpyE() - hb; }
+    }
     //Capture daily snow water equivalent and thickness for NetCDF output
     edall->daily_swesum[id] = edall->d_snws.swesum;
     edall->daily_snowthick[id] = edall->d_snws.snowthick;
 
     //get the new bottom drainage layer and its depth
     ground.setDrainL();
-    soilenv.updateDailySM(weighted_veg_tran);  //soil moisture
+    { // Option C (thermal_solver 1): book the enthalpy change of the soil water module
+      const double hb = (md->thermal_solver == 1) ? soilenv.columnEnthalpyE() : 0.0;
+      soilenv.updateDailySM(weighted_veg_tran);  //soil moisture
+      if (md->thermal_solver == 1) { soilenv.enth_bk_water += soilenv.columnEnthalpyE() - hb; }
+    }
     if (md->nonvasc_trans_withdraw == 1) {
       // Fix (c) (v5j): transpiration whose uptake updateDailySM did not apply
       // (frozen-top branch skips frozen layers; Richards ignores layers below

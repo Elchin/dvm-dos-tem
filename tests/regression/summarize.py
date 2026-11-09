@@ -14,12 +14,13 @@ def main():
     ap.add_argument("--expect-identical", type=int, default=1); ap.add_argument("--repeat", type=int, default=1); ap.add_argument("--strict", type=int, default=0)
     ap.add_argument("--wtol", type=float, default=1.0); ap.add_argument("--ctol", type=float, default=0.5); ap.add_argument("--ntol", type=float, default=1.0)
     ap.add_argument("--etol", type=float, default=3.0)
+    ap.add_argument("--etol-enth", type=float, default=1e-6)
     a = ap.parse_args(); out = Path(a.out); rows = []; fails = []; warns = []
     soft = fails if a.strict else warns   # relative-closure and safety-net checks
     for c in a.cases:
         r = dict(case=c); A, B, R = out / "A" / c, out / "B" / c, out / "R" / c
         try:
-            ea = closure.evaluate(A, a.wtol, a.ctol, a.ntol, etol=a.etol); eb = closure.evaluate(B, a.wtol, a.ctol, a.ntol, etol=a.etol)
+            ea = closure.evaluate(A, a.wtol, a.ctol, a.ntol, etol=a.etol, etol_enth=a.etol_enth); eb = closure.evaluate(B, a.wtol, a.ctol, a.ntol, etol=a.etol, etol_enth=a.etol_enth)
         except Exception as e:
             fails.append(f"{c}: cannot evaluate ({e})"); rows.append(r); continue
         r["A"] = ea; r["B"] = eb

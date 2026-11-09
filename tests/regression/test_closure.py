@@ -32,6 +32,39 @@ class E(unittest.TestCase):   # phase 2b: energy() on a synthetic energy_daily.c
             self.assertAlmostEqual(r["E_other_mean_Wm2"], 0.0); self.assertEqual(r["E_days_front"], 365)
             self.assertAlmostEqual(r["E_resid_rms_daily_Wm2"], (0.5 * 9 + 0.5 * 1) ** 0.5)
 
+class Enth(unittest.TestCase):   # Stage C: strict full-day enthalpy balance when thermal_solver = 1
+    def write(self, d, resday_bad=0.0, res_bad=0.0, fb=0):
+        f = Path(d) / "energy_daily.csv"
+        L = ["day,doy,tsurf,snow,nsnow,nfront,h0,h1,gtop,gbot,res,snowmk,src,clip,init,equil,bsnow,bwater,blayer,bfire,unattr,resday,solves,fallbacks"]
+        for i in range(400):
+            res = 1e-3 if i != 7 else res_bad * 86400.0; rd = res + (resday_bad * 86400.0 if i == 9 else 0.0)
+            L.append(f"{i},{i%365},0,0,0,0,0,0,0,0,{res},0,1,0,0,0,0,0,0,0,{rd - res},{rd},1,{fb if i == 3 else 0}")
+        f.write_text("\n".join(L) + "\n"); return f
+    def test_metrics(self):
+        with tempfile.TemporaryDirectory() as d:
+            r = closure.energy(self.write(d, resday_bad=2e-6))
+            self.assertEqual(r["Enth_check"], "on"); self.assertAlmostEqual(r["Enth_resday_max_abs_Wm2"], 2e-6 + 1e-3 / 86400.)
+            self.assertAlmostEqual(r["Enth_res_max_abs_Wm2"], 1e-3 / 86400.); self.assertEqual(r["Enth_solves"], 400)
+    def gate(self, **kw):
+        with tempfile.TemporaryDirectory() as d:
+            rd = mkrun(d, "c", {}); o = rd / "main/output"; o.mkdir(parents=True)
+            e = closure.energy(self.write(o, **kw)); c = closure.closure
+            closure.closure = lambda _: dict(n_years=75, W_resid_pctP=0.0, C_resid_max_abs_annual=0.0,
+                                             N_resid_mean_gm2yr=0.0, N_resid_max_abs_annual=0.0, **e)
+            try: return closure.evaluate(rd, n_defaults="v5o")
+            finally: closure.closure = c
+    def test_pass(self): self.assertTrue(self.gate()["closure_pass"])
+    def test_fail_resday(self):
+        r = self.gate(resday_bad=2e-6); self.assertFalse(r["closure_pass"]); self.assertIn("full-day", r["closure_fail"][0])
+    def test_fail_res(self):
+        r = self.gate(res_bad=5e-6); self.assertFalse(r["closure_pass"]); self.assertTrue(any("solve resid" in x for x in r["closure_fail"]))
+    def test_fail_fallback(self):
+        r = self.gate(fb=1); self.assertFalse(r["closure_pass"]); self.assertIn("converge", r["closure_fail"][0])
+    def test_legacy_file_unchanged(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "energy_daily.csv"; f.write_text("day,doy,tsurf,snow,nsnow,nfront,h0,h1,gtop,gbot,res\n0,0,0,0,0,0,0,0,0,0,0\n")
+            self.assertEqual(closure.energy(f)["Enth_check"], "off")
+
 class T(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); self.root = self.tmp.name

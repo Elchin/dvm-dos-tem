@@ -16,6 +16,7 @@
 #include "CohortLookup.h"
 
 #include "Ground.h"
+#include "EnthalpySolver.h"
 
 class Snow_Env;
 
@@ -32,6 +33,19 @@ struct EnergyDiag {
   // melt as liq += ice; the melt water is removed later by Snow_Env, whose degree-day melt supplies
   // that energy outside this step). Excluded from res (phase 2d): res = dH - (gtop + gbot) - snowmk.
   double snowmk = 0.0;
+  // Option C (thermal_solver = 1 only; all J/m2 per day, + = into the column):
+  //  src    radiation/SEB snow-melt energy applied as a heat source to the top snow cell
+  //  clip   enthalpy of ice expelled by the pore-volume cap (and checkWaterValidity rounding)
+  //  init   switch-on / restart projection onto the freezing curve at fixed T (first day only)
+  //  equil  change of H by putting cells back on the curve (H-conserving; round-off only)
+  //  bsnow, bwater, blayer, bfire: enthalpy changes booked by the non-thermal modules since the
+  //         previous thermal step (Snow_Env::updateDailyM, Soil_Env::updateDailySM, monthly
+  //         layer thickness/redivision, fire), measured around each call (Cohort.cpp)
+  //  unattr change of H between two thermal steps not booked by any module (must be 0)
+  //  resday full-day residual = res + equil + unattr (pass/fail <= 1e-6 W/m2 in the harness)
+  double src = 0.0, clip = 0.0, init = 0.0, equil = 0.0, bsnow = 0.0, bwater = 0.0, blayer = 0.0,
+         bfire = 0.0, unattr = 0.0, resday = 0.0;
+  int solves = 0, fallbacks = 0, enth = 0;
 };
 
 struct SebDiag {
@@ -104,6 +118,33 @@ public:
   // the dvmdostem-specific residual.
   int energy_diag = 0;
   EnergyDiag energydiag;
+  // Option C: enthalpy thermal solver (see ModelData.h; Soil_Env_enthalpy.cpp). thermal_solver
+  // 0 = legacy (default; none of the members below is used), 1 = enthalpy solver.
+  int thermal_solver = 0, thermal_sfcc = 1, thermal_face_mode = 0, thermal_nl_solver = 0,
+      thermal_substeps = 1;
+  double geothermal_flux_Wm2 = 0.0;   // bottom heat flux into the column (W m-2), this cohort
+  // between-step enthalpy bookings (J m-2), added by Cohort around the non-thermal modules
+  double enth_bk_snow = 0.0, enth_bk_water = 0.0, enth_bk_layer = 0.0, enth_bk_fire = 0.0;
+  double enth_h_last = 0.0;          // column enthalpy at the end of the last thermal step
+  bool enth_have_last = false;
+  bool enth_init_pending = true;     // project onto the curve at fixed T on the next step
+  long enth_fallbacks = 0;           // steps that needed dt halving (non-convergence)
+  long enth_failures = 0;            // steps still not converged after halving
+  double enth_init_maxdliq = 0.0;    // max |liq change| of the switch-on projection (kg m-2)
+  enthalpy::ColumnSolver enth_solver;
+  // enthalpy of one layer as used by the enthalpy solver (J m-2): Cs*T + liq*c_w*T + ice*(c_i*T - L_f),
+  // Cs = vhcsolid*(1-poro)*dz (soil), vhcsolid*dz (rock), 0 (snow)
+  static double enthLayerCs(Layer* l);
+  static double enthLayerH(Layer* l);
+  double columnEnthalpyE() const;
+  // solver cell of a layer (texture/organic fraction for SFCC 1 as Soil_Bgc::rhFrozenEfr)
+  void enthalpyCell(Layer* l, enthalpy::Cell& c) const;
+  // radiation / SEB snow-melt energy (W m-2) applied to the top snow cell (0 without snow)
+  double enthMeltSource(const double tsurface) const;
+  // Core of one daily enthalpy step on the ground column (no ed/cd access; unit-testable):
+  // equilibrate, solve, scatter, melt-excess hand-off, ice cap, fronts and layer states.
+  void enthalpyThermalStep(const double tsurface, const double qmelt_Wm2, EnergyDiag& q);
+  void updateDailyGroundT_enthalpy(const double tsurface);
   // Enthalpy of one layer, J/m2: (solid heat capacity)*T + liq*c_liq*T + ice*(c_ice*T - L_f),
   // solid part = getMixVolHeatCapa()*dz - liq*c_liq - ice*c_ice (0 for snow).
   static double layerEnthalpy(Layer* l);

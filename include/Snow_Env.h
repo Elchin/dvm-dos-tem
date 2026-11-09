@@ -37,6 +37,12 @@ public:
   void set_state_from_restartdata(const RestartData & rdata);
 
   void updateDailyM(const double & tdrv);
+  // Option C (thermal_solver = 1): radiation-driven melt is applied as energy in the thermal
+  // step (Soil_Env::enthMeltSource) instead of being removed as mass here.
+  int thermal_solver = 0;
+  // potential radiation-driven melt today (mm/day = kg m-2 day-1) with the same expressions as
+  // updateDailySurfFlux (no SEB), without changing any state; 0 if the top layer is not snow
+  double radMeltPotential(const double & tsurface);
   void checkSnowLayersT(Layer* frontl);
   friend class Soil_Env; // Option 4 (v5j) SEB: snow albedo in Soil_Env::solveSEB
 

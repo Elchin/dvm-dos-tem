@@ -18,6 +18,7 @@
 #include <boost/tokenizer.hpp>
 
 #include "../include/Ground.h"
+#include "../include/EnthalpySolver.h"
 #include "../include/TEMLogger.h"
 
 extern src::severity_logger< severity_level > glg;
@@ -1647,6 +1648,15 @@ void Ground::remapLitterCNQueues() {
   ltrcn_snap.clear();
 }
 
+// Option C: total heat capacity of a soil/rock layer (J m-2 K-1); see Soil_Env::enthLayerCs.
+double Ground::enthHeatCap(const Layer* l) {
+  if (l == NULL) { return 0.0; }
+  double cs = 0.0;
+  if (l->isSoil) { cs = l->vhcsolid * (1.0 - l->poro) * l->dz; }
+  else if (l->isRock) { cs = l->vhcsolid * l->dz; }
+  return cs + fmax(l->liq, 0.0) * SHCLIQ + fmax(l->ice, 0.0) * SHCICE;
+}
+
 void Ground::splitOneSoilLayer(SoilLayer*usl, SoilLayer* lsl,
                                const double & updeptop, const double &lsldz) {
   double lslfrac = lsldz/usl->dz;
@@ -1660,7 +1670,9 @@ void Ground::splitOneSoilLayer(SoilLayer*usl, SoilLayer* lsl,
 
   //update layer temperature first, because it's needed for determine
   //  frozen status below
-  if(usl->nextl==NULL) {
+  if (enthalpy_remap == 1) {   // Option C: both parts keep the parent's temperature
+    lsl->tem = usl->tem;
+  } else if(usl->nextl==NULL) {
     lsl->tem = usl->tem;
   } else {
     double ultem = usl->tem;
@@ -1705,7 +1717,10 @@ void Ground::splitOneSoilLayer(SoilLayer*usl, SoilLayer* lsl,
 
   //If either are partially or completely frozen based on frozen
   // fraction, not state
-  if(f1>0.0 or f2>0.0){
+  if (enthalpy_remap == 1) {   // Option C: same specific water content in both parts
+    ice2 = totice * lslfrac;
+    ice1 = totice - ice2;
+  } else if(f1>0.0 or f2>0.0){
     double lower_frozen_ratio = lower_frozen_dz/total_frozen_dz;
     ice2 = lower_frozen_ratio * totice;
     ice1 = totice - ice2;
@@ -1731,7 +1746,10 @@ void Ground::splitOneSoilLayer(SoilLayer*usl, SoilLayer* lsl,
   double total_unfrozen_dz = upper_unfrozen_dz + lower_unfrozen_dz;
 
   //if either are partially or completely unfrozen
-  if(unf1>0.0 or unf2>0.0){
+  if (enthalpy_remap == 1) {   // Option C
+    liq2 = totliq * lslfrac;
+    liq1 = totliq - liq2;
+  } else if(unf1>0.0 or unf2>0.0){
     double lower_unfrozen_ratio = lower_unfrozen_dz/total_unfrozen_dz;
     liq2 = lower_unfrozen_ratio * totliq;
     liq1 = totliq - liq2;
@@ -1797,6 +1815,7 @@ void Ground::splitOneSoilLayer(SoilLayer*usl, SoilLayer* lsl,
 // after calling this, 'usl' must be removed
 
 void Ground::combineTwoSoilLayersU2L(SoilLayer* usl, SoilLayer* lsl) {
+  const double cu = enthHeatCap(usl), cl = enthHeatCap(lsl); // Option C (before the merge)
   // update water content
   lsl->z    = usl->z;   //note - z is the top of a layer from ground surface
   lsl->dz  += usl->dz;
@@ -1804,8 +1823,12 @@ void Ground::combineTwoSoilLayersU2L(SoilLayer* usl, SoilLayer* lsl) {
   lsl->ice += usl->ice;
   // update temperature
   double upfrac = usl->dz/lsl->dz;
+  if (enthalpy_remap == 1) {   // Option C: heat-capacity weighted (conserves enthalpy)
+    lsl->tem = enthalpy::mergeT(cu, usl->tem, cl, lsl->tem);
+  } else {
   lsl->tem *= (1.-upfrac);
   lsl->tem += usl->tem*upfrac;
+  }
   // update C content:
   lsl->rawc +=usl->rawc;
   lsl->soma +=usl->soma;
@@ -1821,14 +1844,19 @@ void Ground::combineTwoSoilLayersU2L(SoilLayer* usl, SoilLayer* lsl) {
 };
 
 void Ground::combineTwoSoilLayersL2U(SoilLayer* lsl, SoilLayer* usl) {
+  const double cu = enthHeatCap(usl), cl = enthHeatCap(lsl); // Option C (before the merge)
   // update water content
   usl->dz  +=lsl->dz;
   usl->liq +=lsl->liq;
   usl->ice +=lsl->ice;
   // update temperature
   double lsfrac = lsl->dz/usl->dz;
+  if (enthalpy_remap == 1) {   // Option C: heat-capacity weighted (conserves enthalpy)
+    usl->tem = enthalpy::mergeT(cu, usl->tem, cl, lsl->tem);
+  } else {
   usl->tem *= (1.-lsfrac);
   usl->tem += lsl->tem*lsfrac;
+  }
   // update C content:
   usl->rawc +=lsl->rawc;
   usl->soma +=lsl->soma;

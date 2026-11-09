@@ -3,6 +3,7 @@
  */
 #include "../include/EnthalpySolver.h"
 #include "../include/physicalconst.h"
+#include "../include/SJCurve.h"
 
 #include <cmath>
 #include <algorithm>
@@ -16,12 +17,8 @@ const double CW = SHCLIQ;   // J kg-1 K-1 (physicalconst.h, same values as layer
 const double CI = SHCICE;
 const double LF = LHFUS;    // J kg-1
 
-// Copy of Soil_Bgc::sjPhiPure / sjLayerPhi (SJ2016 Eqs. 4-5), kept textually
-// identical; tests/unit/test_enthalpy_solver.cpp checks bitwise equality.
-double sjPhiPure(const double t, const double b) {
-  if (t > 0.0) { return 1.0; }
-  return pow((0.1 - t) / 0.01, b);
-}
+// The SJ2016 curve is the shared sjcurve:: implementation (SJCurve.cpp), the same code
+// Soil_Bgc::sjLayerPhi calls; tests/unit checks bitwise equality.
 double sjDPhiPure(const double t, const double b) {   // d/dt of sjPhiPure for t <= 0
   if (t > 0.0) { return 0.0; }
   return -b / 0.01 * pow((0.1 - t) / 0.01, b - 1.0);
@@ -66,13 +63,7 @@ Stats::Stats() : outer(0), inner(0), solves(0), converged(false), res_max(0), dH
   gbot(0), src(0), closure(0) {}
 
 double sjPhi(double t, double forg, double fc, double fsi, double fsa) {
-  const double phio = sjPhiPure(t, -1.0);   // Table 1: organic b = -1.0
-  double fo = fmin(1.0, fmax(0.0, forg));
-  const double c = fmax(0.0, fc), si = fmax(0.0, fsi), sa = fmax(0.0, fsa);
-  const double sum = c + si + sa;
-  if (!(sum > 0.0)) { return phio; }   // no mineral texture: organic
-  const double phim = (c * sjPhiPure(t, -0.3) + si * sjPhiPure(t, -0.5) + sa * sjPhiPure(t, -0.9)) / sum;
-  return (1.0 - fo) * phim + fo * phio;   // SJ2016 Eq. 5
+  return sjcurve::layerPhi(t, forg, fc, fsi, fsa);
 }
 
 double phimin(const Cell& c) {
@@ -319,6 +310,106 @@ bool ColumnSolver::stepKatz(const std::vector<Cell>& cells, std::vector<double>&
   finish(cells, T, dt, bc, S, st);
   st.converged = ok;
   return ok;
+}
+
+// ---------------------------------------------------------------------------
+// Stage C helpers
+double Hstate(const Cell& c, double T, double liqv, double icev) {
+  return c.Cs * T + liqv * CW * T + icev * (CI * T - LF);
+}
+
+bool onCurve(const Cell& c, double T, double liqv, double tol_kg) {
+  return fabs(liqv - liq(c, T)) <= tol_kg;
+}
+
+double equilibrate(const Cell& c, double h, double& liqv, double& icev) {
+  const double T = invertH(c, h);
+  liqv = liq(c, T);
+  icev = fmax(0.0, c.W - liqv);
+  return T;
+}
+
+double mergeT(double Cu, double Tu, double Cl, double Tl) {
+  const double C = Cu + Cl;
+  return (C > 0.0) ? (Cu * Tu + Cl * Tl) / C : 0.5 * (Tu + Tl);
+}
+
+void reconstructFronts(const FrontIn& in, FrontOut& out) {
+  const int n = (int)in.T.size();
+  out.fz.clear(); out.ftype.clear();
+  out.frozen.assign(n, 1); out.frozenfrac.assign(n, 1.0);
+  std::vector<int> st(n); std::vector<double> f(n, 1.0);
+  for (int i = 0; i < n; ++i) {
+    if (!in.latent[i]) { st[i] = (in.T[i] > 0.0) ? -1 : 1; f[i] = (st[i] == 1) ? 1.0 : 0.0; continue; }
+    const double fi = (in.ice_eps[i] > 0.0) ? fmin(1.0, fmax(0.0, in.ice[i] / in.ice_eps[i])) : 0.0;
+    f[i] = fi;
+    if (in.ice[i] <= 1.0e-12 * fmax(in.W[i], 1.0) || fi <= 1.0e-12) { st[i] = -1; f[i] = 0.0; }
+    else if (in.T[i] < -in.eps || fi >= 1.0 - 1.0e-12) { st[i] = 1; f[i] = 1.0; }
+    else { st[i] = 0; }
+  }
+  std::vector<double> fz; std::vector<int> ft;
+  int prev_state = (in.Tabove > 0.0) ? -1 : 1, prev_idx = -1, ra = -1;
+  for (int i = 0; i <= n; ++i) {
+    const bool end = (i == n);
+    if (!end && st[i] == 0) { if (ra < 0) ra = i; continue; }
+    const int s = end ? ((in.Tbelow > 0.0) ? -1 : 1) : st[i];
+    if (ra >= 0) {   // ramp run [ra, i-1] between prev_state (above) and s (below)
+      const int rb = i - 1;
+      const double ztop = in.z[ra], zbot = in.z[rb] + in.dz[rb];
+      double F = 0.0, U = 0.0;
+      for (int k = ra; k <= rb; ++k) { F += f[k] * in.dz[k]; U += (1.0 - f[k]) * in.dz[k]; }
+      const double zc = 0.5 * (ztop + zbot), lo = ztop + 1.0e-9 * (zbot - ztop);
+      if (prev_state == -1 && s == 1)      { fz.push_back(fmax(lo, zbot - F)); ft.push_back(-1); }
+      else if (prev_state == 1 && s == -1) { fz.push_back(fmin(zbot, fmax(lo, ztop + F))); ft.push_back(1); }
+      else if (prev_state == -1 && s == -1) {
+        if (F > 0.0) { fz.push_back(fmax(lo, zc - 0.5 * F)); ft.push_back(-1); fz.push_back(fmin(zbot, zc + 0.5 * F)); ft.push_back(1); }
+      } else {
+        if (U > 0.0) { fz.push_back(fmax(lo, zc - 0.5 * U)); ft.push_back(1); fz.push_back(fmin(zbot, zc + 0.5 * U)); ft.push_back(-1); }
+      }
+      ra = -1;
+    } else if (!end && prev_idx >= 0 && prev_state != s) {   // sharp crossing between two cells
+      const int p = prev_idx;
+      const double zp = in.z[p] + 0.5 * in.dz[p], zi = in.z[i] + 0.5 * in.dz[i];
+      const double d = in.T[p] - in.T[i];
+      double w = (d != 0.0) ? in.T[p] / d : 0.5;
+      w = fmin(1.0, fmax(0.0, w));
+      double z0 = zp + w * (zi - zp);
+      const double zt = in.z[p], zb = in.z[i] + in.dz[i];
+      z0 = fmin(zb, fmax(zt + 1.0e-9 * (zb - zt), z0));
+      fz.push_back(z0); ft.push_back(prev_state == 1 ? 1 : -1);
+    }
+    if (!end) { prev_state = s; prev_idx = i; }
+  }
+  // cap the number of fronts: remove the closest adjacent pair
+  while ((int)fz.size() > in.maxfronts && fz.size() >= 2) {
+    size_t kmin = 0; double dmin = 1.0e300;
+    for (size_t k = 0; k + 1 < fz.size(); ++k) { if (fz[k + 1] - fz[k] < dmin) { dmin = fz[k + 1] - fz[k]; kmin = k; } }
+    fz.erase(fz.begin() + kmin, fz.begin() + kmin + 2); ft.erase(ft.begin() + kmin, ft.begin() + kmin + 2);
+  }
+  out.fz = fz; out.ftype = ft;
+  // cell states from the fronts (legacy convention, cf. Ground::getLayerFrozenstatusByFronts)
+  for (int i = 0; i < n; ++i) {
+    const double zt = in.z[i], zb = in.z[i] + in.dz[i];
+    double pprev = zt, frz = 0.0; int nin = 0, last = 0;
+    for (size_t k = 0; k < fz.size(); ++k) {
+      if (fz[k] > zt && fz[k] <= zb) {
+        if (ft[k] == 1) frz += fz[k] - pprev;
+        pprev = fz[k]; last = ft[k]; nin++;
+      }
+    }
+    if (nin > 0) {
+      if (last == -1) frz += zb - pprev;
+      out.frozen[i] = 0; out.frozenfrac[i] = fmin(1.0, fmax(0.0, frz / in.dz[i]));
+      continue;
+    }
+    int s = st[i];
+    int above = 0, below = 0;
+    for (size_t k = 0; k < fz.size(); ++k) { if (fz[k] <= zt) above = ft[k]; }
+    for (size_t k = fz.size(); k-- > 0;) { if (fz[k] > zb) below = ft[k]; }
+    if (above != 0) s = -above; else if (below != 0) s = below;
+    else if (s == 0) s = (f[i] >= 0.5) ? 1 : -1;
+    out.frozen[i] = s; out.frozenfrac[i] = (s == 1) ? 1.0 : 0.0;
+  }
 }
 
 } // namespace enthalpy

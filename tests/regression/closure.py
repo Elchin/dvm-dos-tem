@@ -28,7 +28,15 @@ Formulas as /workspace/v5h/seb_explore/scripts/metrics_tvc.py:
                      from the known deltastate/uptake bugs N1 (rootless-layer netnmin lost), N2 (SOM
                      N move overwritten, sink) and N3 (moss N uptake not extracted, source); with
                      all three fixes on it closes to <= 2e-4 gN/m2/yr (float output round-off).
-usage: closure.py RUNDIR [--wtol 1.0] [--ctol 0.5] [--ntol 1.0] [--n-defaults v5o|legacy]   (prints JSON; exit 0 if PASS)"""
+  enthalpy (Stage C, only when energy_daily.csv has the 'resday' column, i.e. thermal_solver = 1):
+                     full-day energy balance of the enthalpy solver. Per day resday = res + equil + unattr
+                     [J/m2] where res is the solve residual, equil the H-conserving equilibration of
+                     off-curve cells (0 up to round-off) and unattr = (H at the start of the thermal step -
+                     H at the end of the previous one) - (booked enthalpy changes of the snow, soil water,
+                     layer/BGC and fire windows). PASS iff max_day |res|/86400 <= etol_enth AND
+                     max_day |resday|/86400 <= etol_enth (default 1e-6 W/m2) AND no step needed the
+                     dt-halving fallback beyond its limit (fallbacks column: number of failed steps).
+usage: closure.py RUNDIR [--wtol 1.0] [--ctol 0.5] [--ntol 1.0] [--etol-enth 1e-6] [--n-defaults v5o|legacy]   (prints JSON; exit 0 if PASS)"""
 import argparse, json, os, re, sys
 from pathlib import Path
 import numpy as np, netCDF4 as nc
@@ -87,6 +95,19 @@ def energy(csvpath):
     r["E_other_mean_Wm2"] = float(((h0[1:] - h1[:-1]) / 86400.).mean()) if len(res) > 1 else 0.0
     r["E_dH_run_Wm2"] = float((h1[-1] - h0[0]) / 86400. / len(res))
     if "snowmk" in rows[0]: r["E_snowmk_mean_Wm2"] = float((g("snowmk") / 86400.).mean())
+    if "resday" in rows[0]:   # Stage C enthalpy solver (thermal_solver = 1)
+        rd = g("resday") / 86400.
+        r["Enth_check"] = "on"
+        r["Enth_res_max_abs_Wm2"] = float(np.abs(res).max())
+        r["Enth_resday_max_abs_Wm2"] = float(np.abs(rd).max())
+        r["Enth_resday_mean_Wm2"] = float(rd.mean())
+        r["Enth_unattr_max_abs_Wm2"] = float(np.abs(g("unattr") / 86400.).max())
+        r["Enth_fallback_failures"] = int(g("fallbacks").sum())
+        r["Enth_solves"] = int(g("solves").sum())
+        for k in ("src", "clip", "init", "equil", "bsnow", "bwater", "blayer", "bfire"):
+            r[f"Enth_{k}_mean_Wm2"] = float((g(k) / 86400.).mean())
+    else:
+        r["Enth_check"] = "off"
     return r
 
 def closure(rundir):
@@ -132,7 +153,7 @@ def closure(rundir):
     if ef.exists(): r.update(energy(ef))
     return r
 
-def evaluate(rundir, wtol=1.0, ctol=0.5, ntol=1.0, n_defaults=None, etol=3.0):
+def evaluate(rundir, wtol=1.0, ctol=0.5, ntol=1.0, n_defaults=None, etol=3.0, etol_enth=1e-6):
     meta = json.loads((Path(rundir) / "meta.json").read_text())
     r = dict(run=str(rundir), case=meta["case"], status=meta["status"])
     for s in ("spin", "main"):
@@ -147,7 +168,14 @@ def evaluate(rundir, wtol=1.0, ctol=0.5, ntol=1.0, n_defaults=None, etol=3.0):
         r.update(closure(rundir))
         if abs(r["W_resid_pctP"]) >= wtol: fails.append(f"water |resid| {r['W_resid_pctP']:.3f}% P >= {wtol}%")
         if r["C_resid_max_abs_annual"] >= ctol: fails.append(f"C max |annual resid| {r['C_resid_max_abs_annual']:.3g} >= {ctol}")
-        if r.get("E_resid_mean_Wm2") is not None and abs(r["E_resid_mean_Wm2"]) >= etol:
+        if r.get("Enth_check") == "on":   # Stage C: strict full-day balance replaces the legacy mean check
+            if r["Enth_res_max_abs_Wm2"] > etol_enth:
+                fails.append(f"enthalpy max |solve resid| {r['Enth_res_max_abs_Wm2']:.3g} W/m2 > {etol_enth}")
+            if r["Enth_resday_max_abs_Wm2"] > etol_enth:
+                fails.append(f"enthalpy max |full-day resid| {r['Enth_resday_max_abs_Wm2']:.3g} W/m2 > {etol_enth}")
+            if r["Enth_fallback_failures"] > 0:
+                fails.append(f"enthalpy solver failed to converge on {r['Enth_fallback_failures']} steps")
+        elif r.get("E_resid_mean_Wm2") is not None and abs(r["E_resid_mean_Wm2"]) >= etol:
             fails.append(f"energy |mean thermal-step resid| {r['E_resid_mean_Wm2']:.3f} W/m2 >= {etol}")
         if r["N_resid_mean_gm2yr"] is None: fails.append("N closure outputs missing")
         elif n_on:
@@ -163,7 +191,8 @@ if __name__ == "__main__":
     ap = argparse.ArgumentParser(); ap.add_argument("rundir"); ap.add_argument("--wtol", type=float, default=1.0)
     ap.add_argument("--ctol", type=float, default=0.5); ap.add_argument("--ntol", type=float, default=1.0)
     ap.add_argument("--etol", type=float, default=3.0)
+    ap.add_argument("--etol-enth", type=float, default=1e-6)
     ap.add_argument("--n-defaults", choices=sorted(N_FIX_DEFAULTS), default=None,
                     help="defaults of the binary for missing N1-N3 keys (default $REG_N_DEFAULTS or v5o)")
-    a = ap.parse_args(); r = evaluate(a.rundir, a.wtol, a.ctol, a.ntol, a.n_defaults, a.etol); print(json.dumps(r))
+    a = ap.parse_args(); r = evaluate(a.rundir, a.wtol, a.ctol, a.ntol, a.n_defaults, a.etol, a.etol_enth); print(json.dumps(r))
     sys.exit(0 if r["closure_pass"] else 1)

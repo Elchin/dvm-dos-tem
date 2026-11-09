@@ -212,6 +212,8 @@ void Soil_Env::initializeState() {
   }
 
   ground->setFstLstFrontLayers();
+  enth_init_pending = true; // Option C (thermal_solver 1): project onto the curve on the first step
+  enth_have_last = false;
   //misc. items
   ed->d_atms.dsr     = 0;
   ed->monthsfrozen   = 0;
@@ -260,6 +262,8 @@ void Soil_Env::set_state_from_restartdata(const RestartData & rdata) {
   ed->rtfrozendays   = rdata.rtfrozendays;
   ed->rtunfrozendays = rdata.rtunfrozendays;
   ed->d_soid.rtdpgdd = rdata.growingttime[0];
+  enth_init_pending = true; // Option C: project the restart state onto the curve (thermal_solver 1)
+  enth_have_last = false;
 };
 
 // Ground (snow-soil) thermal process
@@ -285,6 +289,12 @@ void Soil_Env::updateDailyGroundT(const double & tdrv, const double & dayl) {
       ground->seb_on = true;
       ground->seb_ts = tsurface;
     }
+  }
+
+  // Option C: enthalpy solver (thermal_solver = 1); the legacy path below is unchanged.
+  if (thermal_solver == 1) {
+    updateDailyGroundT_enthalpy(tsurface);
+    return;
   }
 
   // solution for snow-soil column thermal process

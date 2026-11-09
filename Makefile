@@ -70,6 +70,8 @@ SOURCES= 	src/TEM.o \
 		src/TemperatureUpdator.o \
 		src/CrankNicholson.o \
 		src/EnthalpySolver.o \
+		src/SJCurve.o \
+		src/Soil_Env_enthalpy.o \
 		src/tbc-debug-util.o \
 		src/Vegetation_Bgc.o \
 		src/Vegetation_Env.o \
@@ -114,6 +116,9 @@ OBJECTS =	ArgHandler.o \
 		SoilParent_Env.o \
 		Stefan.o \
 		CrankNicholson.o \
+		EnthalpySolver.o \
+		SJCurve.o \
+		Soil_Env_enthalpy.o \
 		tbc-debug-util.o \
 		Vegetation_Bgc.o \
 		Vegetation_Env.o \

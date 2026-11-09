@@ -170,6 +170,11 @@ public :
   //   doi:10.1029/2010JG001302. The fixes themselves are mass-conservation bookkeeping
   //   bug fixes: no published source.
   int layer_bookkeep_fix = 0;
+  // Option C (thermal_solver = 1): enthalpy-conserving soil layer split/merge (split: both parts
+  // keep the parent's T and specific liq/ice; merge: heat-capacity-weighted T with summed
+  // liq/ice). 0 = legacy (default; gradient/thickness-weighted T, front-based water split).
+  int enthalpy_remap = 0;
+  static double enthHeatCap(const Layer* l); // Cs + liq c_w + ice c_i (J m-2 K-1), soil/rock
   // (1): fraction of the layer below moved into a new fibric layer that needs c_want; c_have =
   //      C of the layer below. min(c_want, c_have)/c_have, 0 if c_have <= 0 or c_want <= 0.
   static double shlwFromBelowFrac(const double c_want, const double c_have);

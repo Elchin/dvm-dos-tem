@@ -9,6 +9,7 @@
 
 #include "../include/TEMLogger.h"
 #include "../include/TEMUtilityFunctions.h"
+#include <cmath>
 
 extern src::severity_logger< severity_level > glg;
 
@@ -390,6 +391,38 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     }
     energy_diag = ev.asInt();
   }
+  // Option C: thermal solver switch (see ModelData.h)
+  {
+    Json::Value ms = controldata["model_settings"];
+    Json::Value v_solver = ms.get("thermal_solver", 0), v_sfcc = ms.get("thermal_sfcc", 1),
+                v_face = ms.get("thermal_face_mode", 0), v_nl = ms.get("thermal_nl_solver", 0),
+                v_sub = ms.get("thermal_substeps", 1), v_gm = ms.get("geothermal_flux_mode", 0),
+                v_gf = ms.get("geothermal_flux", 0.0);
+    if (!bnf::valid_int(v_solver, 0, 1) || !bnf::valid_int(v_sfcc, 0, 1) || !bnf::valid_int(v_face, 0, 1)
+        || !bnf::valid_int(v_nl, 0, 1) || !bnf::valid_int(v_sub, 1, 24) || !bnf::valid_int(v_gm, 0, 2)
+        || !bnf::valid_num(v_gf)) {
+      std::cerr << "FATAL: model_settings thermal_solver, thermal_sfcc, thermal_face_mode, thermal_nl_solver"
+                << " must be integers 0/1, thermal_substeps 1/2/4/8/24, geothermal_flux_mode 0/1/2,"
+                << " geothermal_flux a number (W m-2)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    thermal_solver = v_solver.asInt(); thermal_sfcc = v_sfcc.asInt(); thermal_face_mode = v_face.asInt();
+    thermal_nl_solver = v_nl.asInt(); thermal_substeps = v_sub.asInt();
+    geothermal_flux_mode = v_gm.asInt(); geothermal_flux = v_gf.asDouble();
+    geothermal_flux_file = controldata["IO"].get("geothermal_flux_file", "").asString();
+    const std::string err = thermal_switches_error(thermal_solver, thermal_sfcc, thermal_face_mode,
+                                                   thermal_nl_solver, thermal_substeps, geothermal_flux_mode,
+                                                   geothermal_flux, geothermal_flux_file);
+    if (!err.empty()) {
+      std::cerr << "FATAL: " << err << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    if (thermal_solver == 1 && stefan_front_resist_fix != 0) {
+      std::cerr << "WARNING: model_settings.stefan_front_resist_fix is ignored with thermal_solver = 1"
+                << " (no Stefan fronts are integrated)" << std::endl;
+      stefan_front_resist_fix = 0;
+    }
+  }
   seb_snow_tc   = controldata["model_settings"].get("seb_snow_tc", 0).asInt();
   if (climate_timestep.empty()) {
     climate_timestep = "monthly";
@@ -487,6 +520,8 @@ ModelData::ModelData():force_cmt(-1) {
   humic_max_thick = 0.0; stefan_front_resist_fix = 0; // v5q-humic-stefan (off)
   nv_snow_bury_depth = 0.0;
   energy_diag = 0; // phase 2b energy-closure diagnostic (off)
+  thermal_solver = 0; thermal_sfcc = 1; thermal_face_mode = 0; thermal_nl_solver = 0; // Option C (legacy)
+  thermal_substeps = 1; geothermal_flux_mode = 0; geothermal_flux = 0.0; geothermal_flux_file = "";
   set_envmodule(false);
   set_bgcmodule(false);
   set_dynamic_lai_module(false);
@@ -1126,3 +1161,23 @@ void ModelData::create_netCDF_output_files(int ysize, int xsize,
 
 
 
+
+// Option C: validity of the thermal-solver settings ("" = valid).
+std::string ModelData::thermal_switches_error(int solver, int sfcc, int face, int nl, int sub,
+                                              int gmode, double gflux, const std::string& gfile) {
+  if (solver != 0 && solver != 1) { return "model_settings.thermal_solver must be 0 (legacy) or 1 (enthalpy)"; }
+  if (sfcc != 0 && sfcc != 1) { return "model_settings.thermal_sfcc must be 0 (free water) or 1 (SJ2016)"; }
+  if (face != 0 && face != 1) { return "model_settings.thermal_face_mode must be 0 (harmonic) or 1 (max rule)"; }
+  if (nl != 0 && nl != 1) { return "model_settings.thermal_nl_solver must be 0 (nested Newton) or 1 (Katzenelson)"; }
+  if (!(sub == 1 || sub == 2 || sub == 4 || sub == 8 || sub == 24)) { return "model_settings.thermal_substeps must be 1, 2, 4, 8 or 24"; }
+  if (gmode < 0 || gmode > 2) { return "model_settings.geothermal_flux_mode must be 0 (zero), 1 (single value) or 2 (map file)"; }
+  if (!(gflux == gflux) || fabs(gflux) > 10.0) { return "model_settings.geothermal_flux must be a finite number in [-10, 10] W m-2"; }
+  if (solver == 0 && (sfcc != 1 || face != 0 || nl != 0 || sub != 1)) {
+    return "thermal_sfcc / thermal_face_mode / thermal_nl_solver / thermal_substeps apply to thermal_solver = 1 only (keep the defaults with thermal_solver = 0)";
+  }
+  if (solver == 0 && gmode != 0) { return "geothermal_flux_mode 1/2 requires thermal_solver = 1 (the legacy solver has a zero-flux bottom)"; }
+  if (nl == 1 && sfcc != 0) { return "thermal_nl_solver = 1 (Katzenelson) requires thermal_sfcc = 0 (piecewise-affine free-water curve)"; }
+  if (gmode != 1 && gflux != 0.0) { return "model_settings.geothermal_flux is used with geothermal_flux_mode = 1 only (leave it 0 otherwise)"; }
+  if (gmode == 2 && gfile.empty()) { return "geothermal_flux_mode = 2 requires IO.geothermal_flux_file (NetCDF, variable geothermal_flux, W m-2)"; }
+  return "";
+}

@@ -26,6 +26,7 @@
 #include "../include/TEMLogger.h"
 
 #include "../include/Soil_Bgc.h"
+#include "../include/SJCurve.h"
 #include "../include/Ground.h"        // v5q-rh-frozen (layer texture, porosity)
 #include "../include/MineralLayer.h"  // v5q-rh-frozen
 #include "../include/DailyCSplit.h"
@@ -1589,26 +1590,19 @@ double Soil_Bgc::thawfracModifier(const double fthaw, const double ts, const dou
 //   doi:10.1029/2018MS001583; frozen-soil respiration observed: Mikan et al. 2002,
 //   doi:10.1016/S0038-0717(02)00168-2, Natali et al. 2019, doi:10.1038/s41558-019-0592-8.
 //   The permafrost-table restriction and the forg = 1 choices: no published source.
+// The curve itself lives in SJCurve.cpp (shared with the enthalpy thermal solver,
+// thermal_solver = 1); these wrappers keep the Soil_Bgc API. Same arithmetic as before.
 double Soil_Bgc::sjPhiPure(const double t, const double b) {
-  if (t > 0.0) { return 1.0; }
-  return pow((0.1 - t) / 0.01, b);   // SJ2016 Eq. 4, Tref = 0.1 degC, T* = 0.01 degC
+  return sjcurve::phiPure(t, b);
 }
 
 double Soil_Bgc::sjLayerPhi(const double t, const double forg, const double fc, const double fsi,
                             const double fsa) {
-  const double phio = sjPhiPure(t, -1.0);   // Table 1: organic b = -1.0
-  double fo = fmin(1.0, fmax(0.0, forg));
-  const double c = fmax(0.0, fc), si = fmax(0.0, fsi), sa = fmax(0.0, fsa);
-  const double sum = c + si + sa;
-  if (!(sum > 0.0)) { return phio; }   // no mineral texture: organic
-  const double phim = (c * sjPhiPure(t, -0.3) + si * sjPhiPure(t, -0.5) + sa * sjPhiPure(t, -0.9)) / sum;
-  return (1.0 - fo) * phim + fo * phio;   // SJ2016 Eq. 5
+  return sjcurve::layerPhi(t, forg, fc, fsi, fsa);
 }
 
 double Soil_Bgc::sjOrgFraction(const double somc_gm2, const double dz) {
-  if (!(dz > 0.0)) { return 1.0; }
-  const double mo = 2.0 * fmax(0.0, somc_gm2) / 1000.0;   // kg organic matter m-2 (50 % C)
-  return fmin(1.0, mo / (dz * 140.0));                     // SJ2016 Eq. 6, rho_o = 140 kg m-3
+  return sjcurve::orgFraction(somc_gm2, dz);
 }
 
 double Soil_Bgc::rhFrozenTableDepth(const double ald_mon, const double ald_yr, const double ald_prevyr) {

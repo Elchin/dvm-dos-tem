@@ -349,6 +349,26 @@ public:
   // of the snow/soil thermal step written to output_dir/energy_daily.csv; output only). See
   // Soil_Env.h (EnergyDiag) and tests/regression/closure.py (energy check).
   int energy_diag;
+  // Option C (enthalpy/stageC): thermal solver switch and its settings (model_settings).
+  //  thermal_solver       0 = legacy Stefan fronts + Crank-Nicolson (default, bit-identical),
+  //                       1 = implicit enthalpy solver (EnthalpySolver: nested Newton, Casulli &
+  //                           Zanolli 2010 / Tubini et al. 2021), energy-conserving to round-off.
+  //  thermal_sfcc         (solver 1) 1 = Schaefer & Jafarov 2016 curve (default), 0 = free water.
+  //  thermal_face_mode    (solver 1) 0 = harmonic face conductivity (default), 1 = Tubini max rule.
+  //  thermal_nl_solver    (solver 1) 0 = nested Newton (default), 1 = Katzenelson (sfcc 0 only).
+  //  thermal_substeps     (solver 1) backward-Euler steps per day: 1 (default), 2, 4, 8 or 24.
+  //  geothermal_flux_mode 0 = zero bottom flux (default, legacy), 1 = geothermal_flux [W m-2],
+  //                       2 = per-cell map IO.geothermal_flux_file (variable geothermal_flux,
+  //                       W m-2, Y/X grid of the run mask). Modes 1/2 need thermal_solver 1.
+  //  Non-default solver-1 settings with thermal_solver 0 are FATAL. stefan_front_resist_fix is
+  //  ignored (with a warning) under thermal_solver 1. Design: tools/enthalpy_bench/enthalpy_solver_design.md.
+  int thermal_solver, thermal_sfcc, thermal_face_mode, thermal_nl_solver, thermal_substeps;
+  int geothermal_flux_mode;
+  double geothermal_flux;
+  std::string geothermal_flux_file;
+  // "" if the combination is valid, else the FATAL message
+  static std::string thermal_switches_error(int solver, int sfcc, int face, int nl, int sub,
+                                            int gmode, double gflux, const std::string& gfile);
   // Refs (SEB): bulk transfer, Brutsaert 1982, doi:10.1007/978-94-017-1497-6; simplified stability functions after Louis 1979, doi:10.1007/BF00117978
   //   (stable) and Dyer 1974, doi:10.1007/BF00240838 (unstable); LW: Prata 1996, doi:10.1002/qj.49712253306; Crawford & Duchon 1999,
   //   doi:10.1175/1520-0450(1999)038<0474:AIPFEE>2.0.CO;2; snow emissivity Warren 1982, doi:10.1029/RG020i001p00067; esat WMO-No. 8 (2008);
