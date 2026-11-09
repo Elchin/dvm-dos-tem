@@ -204,6 +204,19 @@ TEST_CASE("enthalpyThermalStep: closes the energy budget, puts cells on the curv
   }
 }
 
+TEST_CASE("enthalpyThermalStep: rock layers below the soil (ParentLayer heat capacity), geothermal flux") {
+  Col c(-1.0, -0.4);
+  for (double dz : {2.0, 4.0, 8.0}) { ParentLayer* r = new ParentLayer(dz); r->tem = -3.0; r->liq = 5.0; r->ice = 1.0; c.col.g.insertBack(r); }
+  c.col.reindex();
+  for (Layer* l = c.col.g.toplayer; l; l = l->nextl) if (l->isRock) CHECK(Soil_Env::enthLayerCs(l) == doctest::Approx(2.7e6 * l->dz));
+  c.se.geothermal_flux_Wm2 = 0.06;
+  for (int d = 0; d < 30; ++d) {
+    EnergyDiag q; c.se.enthalpyThermalStep(-10.0, 0.0, q);
+    REQUIRE(std::isfinite(q.h1)); CHECK(fabs(q.res) / 86400.0 < 1e-6); CHECK(q.gbot == doctest::Approx(0.06 * 86400.0));
+  }
+  for (Layer* l = c.col.g.toplayer; l; l = l->nextl) if (l->isRock) { CHECK(l->liq == 0.0); CHECK(l->ice == 0.0); CHECK(std::isfinite(l->tem)); }
+}
+
 TEST_CASE("enthalpyThermalStep: switch-on projection is at fixed T and booked as init") {
   Col c(-3.0, 0.0);   // frozen T but all water liquid (off the curve)
   EnergyDiag q; c.se.enthalpyThermalStep(-3.0, 0.0, q);

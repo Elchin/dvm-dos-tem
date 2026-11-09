@@ -34,7 +34,8 @@ extern src::severity_logger< severity_level > glg;
 
 double Soil_Env::enthLayerCs(Layer* l) {
   if (l == NULL || l->isSnow) { return 0.0; }
-  if (l->isRock) { return l->vhcsolid * l->dz; }
+  // rock: ParentLayer shadows Layer::vhcsolid (Layer's copy stays MISSING), use the virtual getter
+  if (l->isRock) { return l->getFrzVolHeatCapa() * l->dz; }
   return l->vhcsolid * (1.0 - l->poro) * l->dz;
 }
 

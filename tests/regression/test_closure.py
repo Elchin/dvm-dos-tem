@@ -60,6 +60,8 @@ class Enth(unittest.TestCase):   # Stage C: strict full-day enthalpy balance whe
         r = self.gate(res_bad=5e-6); self.assertFalse(r["closure_pass"]); self.assertTrue(any("solve resid" in x for x in r["closure_fail"]))
     def test_fail_fallback(self):
         r = self.gate(fb=1); self.assertFalse(r["closure_pass"]); self.assertIn("converge", r["closure_fail"][0])
+    def test_fail_nan(self):
+        r = self.gate(resday_bad=float("nan")); self.assertFalse(r["closure_pass"])
     def test_legacy_file_unchanged(self):
         with tempfile.TemporaryDirectory() as d:
             f = Path(d) / "energy_daily.csv"; f.write_text("day,doy,tsurf,snow,nsnow,nfront,h0,h1,gtop,gbot,res\n0,0,0,0,0,0,0,0,0,0,0\n")

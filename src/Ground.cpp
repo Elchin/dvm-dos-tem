@@ -1653,7 +1653,7 @@ double Ground::enthHeatCap(const Layer* l) {
   if (l == NULL) { return 0.0; }
   double cs = 0.0;
   if (l->isSoil) { cs = l->vhcsolid * (1.0 - l->poro) * l->dz; }
-  else if (l->isRock) { cs = l->vhcsolid * l->dz; }
+  else if (l->isRock) { cs = const_cast<Layer*>(l)->getFrzVolHeatCapa() * l->dz; }   // ParentLayer shadows vhcsolid
   return cs + fmax(l->liq, 0.0) * SHCLIQ + fmax(l->ice, 0.0) * SHCICE;
 }
 
