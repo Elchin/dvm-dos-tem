@@ -13,7 +13,7 @@ def main():
     ap = argparse.ArgumentParser(); ap.add_argument("out"); ap.add_argument("cases", nargs="+")
     ap.add_argument("--expect-identical", type=int, default=1); ap.add_argument("--repeat", type=int, default=1); ap.add_argument("--strict", type=int, default=0)
     ap.add_argument("--wtol", type=float, default=1.0); ap.add_argument("--ctol", type=float, default=0.5); ap.add_argument("--ntol", type=float, default=1.0)
-    ap.add_argument("--etol", type=float, default=5.0)
+    ap.add_argument("--etol", type=float, default=3.0)
     a = ap.parse_args(); out = Path(a.out); rows = []; fails = []; warns = []
     soft = fails if a.strict else warns   # relative-closure and safety-net checks
     for c in a.cases:

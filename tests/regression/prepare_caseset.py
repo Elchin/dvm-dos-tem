@@ -31,13 +31,16 @@ import exp5i as X          # noqa: E402  (read-only use: BASE params / model_set
 
 CASESETS = {"calib8": X.CASES["all8"]}
 N_FIXES = {"n_rootless_fix": 2, "n_som_move_fix": 1, "n_nonvasc_extract": 1}   # v5o defaults, explicit
+# phase 2c: the energy-closure diagnostic is on in every harness test copy (output only; the repo
+# config/config.js keeps energy_diag 0). Override with --ms energy_diag=0.
+HARNESS_DEFAULTS = {"energy_diag": 1}
 
 def prepare(out, case, ms_over=None):
     site = case[:3]; base = X.BASE[site]
     d = out / case
     if d.exists(): shutil.rmtree(d)
     d.mkdir(parents=True)
-    params = copy.deepcopy(base["params"]); ms = dict(base["ms"]); ms.update(N_FIXES); ms.update(ms_over or {})
+    params = copy.deepcopy(base["params"]); ms = dict(base["ms"]); ms.update(N_FIXES); ms.update(HARNESS_DEFAULTS); ms.update(ms_over or {})
     pdir = d / "parameters"; shutil.copytree(V.T / case / "spinup/parameters", pdir)
     for f, kv in params.items():
         kv2 = {k.split(":", 1)[-1]: v for k, v in kv.items() if ":" not in k or k.startswith(site + ":")}

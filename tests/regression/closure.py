@@ -2,7 +2,7 @@
 """Mass-closure and run-health checks for one regression run (main stage, 1950-2024).
   energy (phase 2b, only when main/output/energy_daily.csv exists, i.e. energy_diag = 1):
                      daily thermal-step residual (h1-h0) - (gtop+gbot), see energy(); FAIL if
-                     |run mean| >= etol (default 5 W/m2); summarize.py WARNs if B is worse than A.
+                     |run mean| >= etol (default 3 W/m2, phase 2c); summarize.py WARNs if B is worse than A.
 Formulas as /workspace/v5h/seb_explore/scripts/metrics_tvc.py:
   water (1951-2024): P - EET - QRUNOFF - QDRAINAGE - dS, dS = d(sum (LWC+IWC)*dz*1000) + dSWE  [mm]
                      PASS if |residual| < 1 % of P
@@ -129,7 +129,7 @@ def closure(rundir):
     if ef.exists(): r.update(energy(ef))
     return r
 
-def evaluate(rundir, wtol=1.0, ctol=0.5, ntol=1.0, n_defaults=None, etol=5.0):
+def evaluate(rundir, wtol=1.0, ctol=0.5, ntol=1.0, n_defaults=None, etol=3.0):
     meta = json.loads((Path(rundir) / "meta.json").read_text())
     r = dict(run=str(rundir), case=meta["case"], status=meta["status"])
     for s in ("spin", "main"):
@@ -159,7 +159,7 @@ def evaluate(rundir, wtol=1.0, ctol=0.5, ntol=1.0, n_defaults=None, etol=5.0):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(); ap.add_argument("rundir"); ap.add_argument("--wtol", type=float, default=1.0)
     ap.add_argument("--ctol", type=float, default=0.5); ap.add_argument("--ntol", type=float, default=1.0)
-    ap.add_argument("--etol", type=float, default=5.0)
+    ap.add_argument("--etol", type=float, default=3.0)
     ap.add_argument("--n-defaults", choices=sorted(N_FIX_DEFAULTS), default=None,
                     help="defaults of the binary for missing N1-N3 keys (default $REG_N_DEFAULTS or v5o)")
     a = ap.parse_args(); r = evaluate(a.rundir, a.wtol, a.ctol, a.ntol, a.n_defaults, a.etol); print(json.dumps(r))
