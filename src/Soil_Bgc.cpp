@@ -736,7 +736,8 @@ void Soil_Bgc::initMslayerCarbon(double & minec) {
       dbm += currl->dz;
       cumcarbon = ca*(pow(dbm*100,cb))*10000;
 
-      if(cumcarbon-prevcumcarbon>0.01 && dbm<=2.0) {  // somc will not exist more than 2 m intially
+      // deep_carbon 1: down to deepc_minec_maxdepth (5 m, deep_carbon_v2 b8f142f6); legacy 2 m
+      if(cumcarbon-prevcumcarbon>0.01 && dbm<=(deep_carbon == 1 ? deepc_minec_maxdepth : 2.0)) {  // somc will not exist more than 2 m intially
         currl->rawc  = bgcpar.eqrawc * (cumcarbon -prevcumcarbon);
         currl->soma  = bgcpar.eqsoma * (cumcarbon -prevcumcarbon);
         currl->sompr = bgcpar.eqsompr * (cumcarbon -prevcumcarbon);
@@ -1049,6 +1050,10 @@ void Soil_Bgc::deltastate() {
 
   //ground surface wood debris decrement, if any
   del_sois.wdebrisc = d2wdebrisc- del_soi2a.rhwdeb;
+  double del_orgn[MAX_SOI_LAY]= {0.0}; // soil org. N change with SOMC transformation and/or allocation
+  if (deep_carbon == 1) {
+    deepCarbonTransfer(del_orgn);   // deep-C burial scheme (see Soil_Bgc.h)
+  } else {
   //(II) moving/mixing portion of C among layers
   //fibric-C (rawc) will NOT to move between layers
   double s2dfraction = 1.0;
@@ -1064,7 +1069,6 @@ void Soil_Bgc::deltastate() {
   double mlleft    = xtopmlthick;
   double dcaddfrac = 0.0;
   double thickadded= 0.0;
-  double del_orgn[MAX_SOI_LAY]= {0.0}; // soil org. N change with SOMC transformation and/or allocation
   int d2m_donor[MAX_SOI_LAY] = {0};   // v5q-d2m-gate (gate 1/2): donor layers of step 3)
 
   for(int il=0; il<cd->m_soil.numsl; il++) {
@@ -1264,6 +1268,7 @@ void Soil_Bgc::deltastate() {
     }
     d2m_moved_c = mc; d2m_moved_n = mn; d2m_f = f;
   }
+  } // end deep_carbon == 0 (legacy burial path)
 
   /////////////// Nitrogen pools in soil ///////////////////////////////////
   if (this->nfeed == 1) {
@@ -1685,4 +1690,136 @@ void Soil_Bgc::bnfRecordPft(const int ip, const double npp) {
 void Soil_Bgc::bnfRecordMonth(const int m, const double npp, const double et) {
   if (bnfp.scheme <= 0) { return; }
   bnfmem.record(m, npp, et);
+}
+
+
+// deep-C burial scheme (model_settings.deep_carbon 1), see Soil_Bgc.h. Ported from upstream
+// deep_carbon_v2 (7f607479) with the fork's conservation fix (a59ce891, generalised) and the
+// v5q switches (n_som_move_fix, d2m_transfer_gate) applied to it.
+void Soil_Bgc::deepCarbonTransfer(double del_orgn[]) {
+  const int numsl = cd->m_soil.numsl;
+  const double xtopdlthick = cd->m_soil.deepthick;   // whole humic horizon
+  const double xtopmlthick = deepc_xtopmlthick;
+  double* dp[4];                                     // del_sois pools, order rawc soma sompr somcr
+  double* tp[4];
+  const int ord[4] = {2, 3, 1, 0};                   // deep_carbon_v2 order: sompr somcr soma rawc
+  double s2d[4] = {0.0, 0.0, 0.0, 0.0}, s2d_orgn = 0.0;
+  double d2m[4] = {0.0, 0.0, 0.0, 0.0}, d2m_orgn = 0.0;
+  double dnr[MAX_SOI_LAY][4];                        // gate 1: per-layer donor amounts
+  for (int il = 0; il < MAX_SOI_LAY; il++) { for (int k = 0; k < 4; k++) { dnr[il][k] = 0.0; } }
+  // receiving mineral thickness actually present (<= xtopmlthick): normalises receiver weights
+  double mtot = 0.0;
+  {
+    double left = xtopmlthick;
+    for (int il = 0; il < numsl && left > 0.0; il++) {
+      if (cd->m_soil.type[il] == 3) { const double t = fmin(cd->m_soil.dz[il], left); mtot += t; left -= t; }
+    }
+  }
+  const bool d2m_on = (d2m_transfer_gate != 2) && (mtot > 0.0);
+  double dlleft = xtopdlthick, mlleft = xtopmlthick;
+  double moved_c = 0.0, moved_n = 0.0;
+
+  for (int il = 0; il < numsl; il++) {
+    dp[0] = &del_sois.rawc[il]; dp[1] = &del_sois.soma[il]; dp[2] = &del_sois.sompr[il]; dp[3] = &del_sois.somcr[il];
+    tp[0] = &tmp_sois.rawc[il]; tp[1] = &tmp_sois.soma[il]; tp[2] = &tmp_sois.sompr[il]; tp[3] = &tmp_sois.somcr[il];
+    const double totsomc = *tp[0] + *tp[1] + *tp[2] + *tp[3];
+    if (cd->m_soil.type[il] <= 1) {
+      // 1) fibric/moss -> humic
+      const double before = s2d[0] + s2d[1] + s2d[2] + s2d[3];
+      for (int j = 0; j < 4; j++) {
+        const int k = ord[j];
+        if (*dp[k] > 0.) { s2d[k] += *dp[k] * deepc_s2df[k]; *dp[k] *= (1.0 - deepc_s2df[k]); }
+      }
+      if (this->nfeed == 1) {
+        const double tot = s2d[0] + s2d[1] + s2d[2] + s2d[3];
+        if (n_som_move_fix == 1) {   // this layer's own C, at its C:N, subtracted (a59ce891)
+          const double layc = tot - before;
+          const double dn = (totsomc > 0.0 && layc > 0.0) ? fmin(layc / totsomc, 1.0) * fmax(tmp_sois.orgn[il], 0.0) : 0.0;
+          del_orgn[il] -= dn; s2d_orgn += dn;
+        } else {                     // deep_carbon_v2 bookkeeping (cumulative total, '=')
+          del_orgn[il] = (totsomc > tot) ? -tot / totsomc * tmp_sois.orgn[il] : 0.0;
+          s2d_orgn += (-del_orgn[il]);
+        }
+      }
+      // no humic layer below: the buried C stays in the last fibric layer (as legacy)
+      if (il < (numsl - 1) && cd->m_soil.type[il+1] > 2) {
+        for (int j = 0; j < 4; j++) { const int k = ord[j]; *dp[k] += s2d[k]; }
+        if (this->nfeed == 1) { del_orgn[il] += s2d_orgn; }
+      }
+    } else if (cd->m_soil.type[il] == 2 && dlleft > 0) {
+      // 2) receive the fibric C by thickness share of the whole humic horizon
+      const double thickadded = fmin(cd->m_soil.dz[il], dlleft);
+      const double dcaddfrac = thickadded / xtopdlthick;
+      dlleft -= thickadded;
+      for (int j = 0; j < 4; j++) { const int k = ord[j]; *dp[k] += dcaddfrac * s2d[k]; }
+      if (this->nfeed == 1) { del_orgn[il] += dcaddfrac * s2d_orgn; }
+      // 3) humic -> mineral donor part
+      if (!d2m_on) { continue; }
+      double amt[4] = {0.0, 0.0, 0.0, 0.0};
+      for (int k = 0; k < 4; k++) { if (*dp[k] > 0.) { amt[k] = *dp[k] * deepc_d2mf[k]; } }
+      if (d2m_transfer_gate == 1) {
+        for (int k = 0; k < 4; k++) { dnr[il][k] = amt[k]; }
+        continue;
+      }
+      const double before = d2m[0] + d2m[1] + d2m[2] + d2m[3];
+      for (int j = 0; j < 4; j++) {
+        const int k = ord[j];
+        if (*dp[k] > 0.) { d2m[k] += amt[k]; *dp[k] *= (1.0 - deepc_d2mf[k]); }
+      }
+      const double tot = d2m[0] + d2m[1] + d2m[2] + d2m[3];
+      moved_c += tot - before;
+      if (this->nfeed == 1) {
+        if (n_som_move_fix == 1) {
+          const double layc = tot - before;
+          const double dn = (totsomc > 0.0 && layc > 0.0) ? fmin(layc / totsomc, 1.0) * fmax(tmp_sois.orgn[il], 0.0) : 0.0;
+          del_orgn[il] -= dn; d2m_orgn += dn;
+        } else {
+          del_orgn[il] = (totsomc > tot) ? -tot / totsomc * tmp_sois.orgn[il] : 0.0;
+          d2m_orgn += (-del_orgn[il]);
+        }
+      }
+    } else if (cd->m_soil.type[il] == 3 && d2m_on && d2m_transfer_gate == 0) {
+      // 4) mineral receivers: share deposited before the depth check (a59ce891); weights
+      //    normalised by the receiving thickness present
+      const double thickadded = fmin(cd->m_soil.dz[il], mlleft);
+      const double dcaddfrac = thickadded / mtot;
+      mlleft -= thickadded;
+      for (int j = 0; j < 4; j++) { const int k = ord[j]; *dp[k] += dcaddfrac * d2m[k]; }
+      if (this->nfeed == 1) { del_orgn[il] += dcaddfrac * d2m_orgn; }
+      if (mlleft <= 0.0) { break; }
+    }
+  }
+  moved_n = d2m_orgn;
+
+  if (d2m_on && d2m_transfer_gate == 1) {   // v5q thaw gate applied to the deep-C transfer
+    double w[MAX_SOI_LAY];
+    const double zgate = d2mGateDepth(ed->y_soid.ald, cd->d2m_ald_prevyr);
+    const double f = d2mGateReceivers(numsl, cd->m_soil.type, cd->m_soil.z, cd->m_soil.dz, xtopmlthick, zgate, w);
+    double mc[4] = {0.0, 0.0, 0.0, 0.0}, mn = 0.0;
+    if (f > 0.0) {
+      for (int il = 0; il < numsl; il++) {
+        const double dsum = dnr[il][0] + dnr[il][1] + dnr[il][2] + dnr[il][3];
+        if (!(dsum > 0.0)) { continue; }
+        const double totmobile = f * dsum;
+        const double totsomc = tmp_sois.rawc[il] + tmp_sois.soma[il] + tmp_sois.sompr[il] + tmp_sois.somcr[il];
+        if (!(totsomc > totmobile)) { continue; }   // C and N together or nothing
+        dp[0] = &del_sois.rawc[il]; dp[1] = &del_sois.soma[il]; dp[2] = &del_sois.sompr[il]; dp[3] = &del_sois.somcr[il];
+        for (int k = 0; k < 4; k++) { const double c = f * dnr[il][k]; *dp[k] -= c; mc[k] += c; }
+        if (this->nfeed == 1) {
+          const double dn = totmobile / totsomc * fmax(tmp_sois.orgn[il], 0.0);
+          del_orgn[il] -= dn; mn += dn;
+        }
+      }
+      for (int il = 0; il < numsl; il++) {
+        if (!(w[il] > 0.0)) { continue; }
+        del_sois.rawc[il] += w[il] * mc[0]; del_sois.soma[il] += w[il] * mc[1];
+        del_sois.sompr[il] += w[il] * mc[2]; del_sois.somcr[il] += w[il] * mc[3];
+        if (this->nfeed == 1) { del_orgn[il] += w[il] * mn; }
+      }
+    }
+    moved_c = mc[0] + mc[1] + mc[2] + mc[3]; moved_n = mn; d2m_f = f;
+  } else {
+    d2m_f = (d2m_on && mtot > 0.0) ? 1.0 : 0.0;
+  }
+  d2m_moved_c = moved_c; d2m_moved_n = moved_n;
 }

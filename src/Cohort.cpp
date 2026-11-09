@@ -317,6 +317,7 @@ void Cohort::initialize_state_parameters() {
   soilbgc.bnfp = md->bnf;                              // v5q BNF (scheme 0 = off)
   soilbgc.n_leach_fix = md->n_leach_fix;               // v5q-ndrain (0 = legacy)
   soilbgc.d2m_transfer_gate = md->d2m_transfer_gate;   // v5q-d2m-gate (0 = legacy)
+  soilbgc.deep_carbon = md->deep_carbon;               // wetland_deep_C phase 2 (1 = deep C, default)
   soilbgc.thawfrac_decomp = md->thawfrac_decomp;       // v5q-thawfrac-decomp (0 = legacy)
   soilbgc.thawfrac_moist_mode = md->thawfrac_moist_mode; // v5q-thawfrac-lmoist (0 = sws/f)
   soilbgc.rh_frozen_mode = md->rh_frozen_mode;           // v5q-rh-frozen (0 = legacy)

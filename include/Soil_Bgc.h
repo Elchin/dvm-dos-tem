@@ -121,6 +121,44 @@ public:
   //   max(altmax, altmax_lastyear), none where ALT = 0 (CTSM SoilBiogeochemLittVertTransp code).
   //   The f-scaling of the dvmdostem transfer and the restart variable: no published source.
   int d2m_transfer_gate = 0;
+  // deep-C (wetland_deep_C phase 2): model_settings.deep_carbon (FATAL unless integer 0/1;
+  // ModelData default 1, this member defaults to 0 so code that builds a Soil_Bgc by hand,
+  // e.g. the unit tests, keeps the legacy path unless it asks for deep C):
+  //  0 = v5q-gpp-fleaf2 burial code path, unchanged (bit-identical).
+  //  1 = deep soil C burial scheme of upstream deep_carbon_v2 (7f607479, H. Genet; commits
+  //      b8f142f6, a3afec59, d2b679a2, 2c1e2b78, 7f607479): in deltastate() step (II)
+  //      1) fibric/moss -> humic: fraction deepc_s2df[k] of the positive increment of each pool
+  //         k = rawc, soma, sompr, somcr (legacy: sompr and somcr only, fraction 1) moves into the
+  //         whole humic horizon (xtopdlthick = deepthick; legacy min(0.10 m, deepthick)) by
+  //         thickness share;
+  //      2) humic -> mineral: fraction deepc_d2mf[k] of the positive increment of each pool of the
+  //         humic layers (after step 1) moves into the top deepc_xtopmlthick (5.2 m = the whole
+  //         standard mineral column; legacy 0.20 m) by thickness share, pool to pool (legacy: the
+  //         mobile part rh*fsoma*som2co2 of the humic RH, spread over the receiver pool split);
+  //      3) initMslayerCarbon() initialises mineral SOM down to 5 m (legacy 2 m).
+  //      Conservation (fork a59ce891, generalised): N leaves each donor layer with that layer's
+  //      own buried C at its C:N (subtracted, never assigned over N received from above) when
+  //      n_som_move_fix = 1 (n_som_move_fix = 0 reproduces the deep_carbon_v2 cumulative '='
+  //      N bookkeeping); every mineral receiver gets its share before the depth check, and the
+  //      receiver weights are normalised by the receiving thickness actually present
+  //      (min(deepc_xtopmlthick, mineral column)), so no C/N is lost; no mineral layer = no
+  //      humic->mineral transfer. d2m_transfer_gate applies to step 2: 0 = as above, 1 = the
+  //      v5q thaw gate (donor removal scaled by f = eligible receiver thickness above zgate /
+  //      deepc_xtopmlthick, receivers by eligible-thickness weight, C and N together or nothing),
+  //      2 = no humic->mineral transfer.
+  //  The fractions are the deep_carbon_v2 hard-coded values ("sensitivity analysis required");
+  //  regional_wetland_deepc (f96d4cce) moves them to cmt_calparbgc.txt (wetland phase).
+  // Refs: deep_carbon_v2 commit messages (no published source for the fractions); vertical SOM
+  //   redistribution in TEM: Yi et al. 2010, doi:10.1029/2010JG001302; deep permafrost C stocks
+  //   motivating the deeper column: Hugelius et al. 2014, doi:10.5194/bg-11-6573-2014;
+  //   active-layer-only transport (gate 1): Koven et al. 2013, doi:10.5194/bg-10-7109-2013.
+  int deep_carbon = 0;
+  double deepc_s2df[4] = {0.5, 1.0, 1.0, 1.0};   // rawc, soma, sompr, somcr (deep_carbon_v2 s2df_*)
+  double deepc_d2mf[4] = {0.5, 1.0, 1.0, 1.0};   // rawc, soma, sompr, somcr (deep_carbon_v2 d2mf_*)
+  double deepc_xtopmlthick = 5.2;                // m (deep_carbon_v2 xtopmlthick)
+  double deepc_minec_maxdepth = 5.0;             // m, initMslayerCarbon (legacy 2.0)
+  // deep_carbon 1: the burial part of deltastate() step (II); adds the moved organic N to del_orgn.
+  void deepCarbonTransfer(double del_orgn[]);
   double d2m_moved_c = 0.0, d2m_moved_n = 0.0, d2m_f = 0.0;   // gate 1: last deltastate() (diagnostic)
   // pure helpers (unit-tested). Gate depth: max(running max ALD, previous-year ALD), MISSING -> 0.
   static double d2mGateDepth(const double ald_runmax, const double ald_prevyr);

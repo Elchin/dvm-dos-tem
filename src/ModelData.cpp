@@ -249,6 +249,15 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     }
     d2m_transfer_gate = dg.asInt();
   }
+  // wetland_deep_C phase 2: deep_carbon (1 = deep-C burial scheme, default; 0 = legacy). See Soil_Bgc.h.
+  {
+    Json::Value dc = controldata["model_settings"].get("deep_carbon", 1);
+    if (!bnf::valid_int(dc, 0, 1)) {
+      std::cerr << "FATAL: model_settings.deep_carbon must be 0 (legacy v5q burial) or 1 (deep soil C burial scheme, default)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    deep_carbon = dc.asInt();
+  }
   // v5q-layern-fix: layer_n_remap_fix (0 = legacy, default). Refs: see Ground.h.
   {
     Json::Value lf = controldata["model_settings"].get("layer_n_remap_fix", 0);
@@ -459,6 +468,7 @@ ModelData::ModelData():force_cmt(-1) {
   n_leach_fix = 0; // v5q-ndrain (off)
   soil_negpool_fix = 0; // v5q-negpool (off)
   d2m_transfer_gate = 0; // v5q-d2m-gate (legacy)
+  deep_carbon = 1; // wetland_deep_C phase 2 (deep C on by default; 0 = legacy)
   layer_n_remap_fix = 0; // v5q-layern-fix (legacy)
   layer_bookkeep_fix = 0; // v5q-layer-bookkeep (legacy)
   thawfrac_decomp = 0; // v5q-thawfrac-decomp (legacy)
