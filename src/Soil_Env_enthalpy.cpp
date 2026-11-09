@@ -117,7 +117,22 @@ bool enthStep(Soil_Env& se, const std::vector<enthalpy::Cell>& cells, std::vecto
 }
 }
 
+// Abort with a layer dump if the column state is not finite (never expected; guards the budget).
+void Soil_Env::enthCheckFinite(const char* where) const {
+  if (std::isfinite(columnEnthalpyE())) { return; }
+  std::cerr << "FATAL: thermal_solver 1: non-finite column enthalpy (" << where << "); layers:" << std::endl;
+  int k = 0;
+  for (Layer* l = ground->toplayer; l != NULL; l = l->nextl, ++k) {
+    std::cerr << "  " << k << (l->isSnow ? " snow" : (l->isRock ? " rock" : " soil")) << " z=" << l->z << " dz=" << l->dz
+              << " tem=" << l->tem << " liq=" << l->liq << " ice=" << l->ice << " poro=" << l->poro
+              << " vhcsolid=" << l->vhcsolid << " minliq=" << l->minliq << " Cs=" << enthLayerCs(l)
+              << " H=" << enthLayerH(l) << std::endl;
+  }
+  exit(EXIT_FAILURE);
+}
+
 void Soil_Env::enthalpyThermalStep(const double tsurface, const double qmelt_Wm2, EnergyDiag& q) {
+  enthCheckFinite("start of the thermal step");
   // 2. switch-on / restart: fixed-T projection onto the curve (booked as init)
   if (enth_init_pending) {
     const double hb = columnEnthalpyE();
@@ -150,6 +165,7 @@ void Soil_Env::enthalpyThermalStep(const double tsurface, const double qmelt_Wm2
       l->liq = lq; l->ice = ic;
     }
   }
+  enthCheckFinite("after equilibration");
   const double h0 = columnEnthalpyE();
   q.equil = h0 - he0;
   q.h0 = h0;
@@ -206,6 +222,7 @@ void Soil_Env::enthalpyThermalStep(const double tsurface, const double qmelt_Wm2
     m->tem = enthalpy::equilibrate(cm, hm, lq, ic);
     if (!m->isRock) { m->liq = lq; m->ice = ic; }
   }
+  enthCheckFinite("after the solve");
   const double hs = columnEnthalpyE();
   q.gtop = acc.gtop; q.gbot = acc.gbot; q.src = acc.src;
   q.res = (hs - h0) - (q.gtop + q.gbot + q.src);

@@ -145,6 +145,7 @@ public:
   // equilibrate, solve, scatter, melt-excess hand-off, ice cap, fronts and layer states.
   void enthalpyThermalStep(const double tsurface, const double qmelt_Wm2, EnergyDiag& q);
   void updateDailyGroundT_enthalpy(const double tsurface);
+  void enthCheckFinite(const char* where) const;
   // Enthalpy of one layer, J/m2: (solid heat capacity)*T + liq*c_liq*T + ice*(c_ice*T - L_f),
   // solid part = getMixVolHeatCapa()*dz - liq*c_liq - ice*c_ice (0 for snow).
   static double layerEnthalpy(Layer* l);

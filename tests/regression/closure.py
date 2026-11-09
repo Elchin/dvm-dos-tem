@@ -169,6 +169,8 @@ def evaluate(rundir, wtol=1.0, ctol=0.5, ntol=1.0, n_defaults=None, etol=3.0, et
         if abs(r["W_resid_pctP"]) >= wtol: fails.append(f"water |resid| {r['W_resid_pctP']:.3f}% P >= {wtol}%")
         if r["C_resid_max_abs_annual"] >= ctol: fails.append(f"C max |annual resid| {r['C_resid_max_abs_annual']:.3g} >= {ctol}")
         if r.get("Enth_check") == "on":   # Stage C: strict full-day balance replaces the legacy mean check
+            for k in ("Enth_res_max_abs_Wm2", "Enth_resday_max_abs_Wm2"):
+                if not np.isfinite(r[k]): r[k] = float("inf")   # NaN never passes
             if r["Enth_res_max_abs_Wm2"] > etol_enth:
                 fails.append(f"enthalpy max |solve resid| {r['Enth_res_max_abs_Wm2']:.3g} W/m2 > {etol_enth}")
             if r["Enth_resday_max_abs_Wm2"] > etol_enth:
