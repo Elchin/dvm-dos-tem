@@ -28,6 +28,10 @@ class Snow_Env;
 struct EnergyDiag {
   double h0 = 0.0, h1 = 0.0, gtop = 0.0, gbot = 0.0, res = 0.0, tsurf = 0.0;
   int nfront = 0, nsnow = 0, used = 0;
+  // snowmk: enthalpy change of the snow layers inside Stefan::updateFronts (meltingSnowLayer marks
+  // melt as liq += ice; the melt water is removed later by Snow_Env, whose degree-day melt supplies
+  // that energy outside this step). Excluded from res (phase 2d): res = dH - (gtop + gbot) - snowmk.
+  double snowmk = 0.0;
 };
 
 struct SebDiag {
@@ -104,6 +108,7 @@ public:
   // solid part = getMixVolHeatCapa()*dz - liq*c_liq - ice*c_ice (0 for snow).
   static double layerEnthalpy(Layer* l);
   double columnEnthalpy() const;
+  double snowEnthalpy() const;   // snow layers only (energy_diag)
   double solveSEB(const double & tdrv);
 
   void setGround(Ground* grndp);

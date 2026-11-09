@@ -94,4 +94,20 @@ TEST_CASE("energy_diag on/off: identical temperatures (output-only diagnostic)")
   CHECK(a.tu.edg_top == 0.0); CHECK(b.tu.edg_top != 0.0);
 }
 
+
+TEST_CASE("phase 2d: the single-layer block shortcut books its boundary fluxes; temperatures unchanged by edg_on") {
+  // one soil layer between the virtual top and bottom nodes -> TemperatureUpdator::iterate shortcut (no solve)
+  double tt[2], top[2], bot[2];
+  for (int on : {0, 1}) {
+    ut::Column c(std::vector<SoilLayer*>{make_soil_layer(0.0, 0.2, 0.5, 50.0, 0.0, 2.0, -1, 0.0)});
+    TemperatureUpdator tu; tu.setGround(&c.g);
+    tu.edg_on = on; tu.edg_top = 0.0; tu.edg_bot = 0.0;
+    tu.updateTemps(10.0, c.g.toplayer, c.g.botlayer, c.g.fstsoill, NULL, NULL, 86400.0, false);
+    tt[on] = c.L[0]->tem; top[on] = tu.edg_top; bot[on] = tu.edg_bot;
+  }
+  CHECK(tt[0] == tt[1]);
+  CHECK(top[0] == 0.0); CHECK(bot[0] == 0.0);
+  CHECK(top[1] > 0.0);       // warm surface: heat into the column (was 0 before the fix)
+  CHECK(bot[1] <= 0.0);      // and out through the (colder) bottom node
+}
 }

@@ -62,7 +62,9 @@ def n_budget(nst, nin, nl, bnfveg=None):
 
 def energy(csvpath):
     """Phase 2b energy closure of the daily snow/soil thermal step from energy_daily.csv
-    (written when model_settings.energy_diag = 1). Per day: res = (h1 - h0) - (gtop + gbot) [J/m2],
+    (written when model_settings.energy_diag = 1). Per day: res = (h1 - h0) - (gtop + gbot) - snowmk [J/m2]
+    (phase 2d: snowmk = snow-melt marker set inside Stefan, energy supplied by Snow_Env; older files
+    without the column: res as written),
     h = column enthalpy relative to liquid water at 0 C (solid and water sensible heat, ice carries
     -L_f), gtop/gbot = heat through the solver's virtual top/bottom boundary nodes (+ = into the
     column). Reported in W/m2 (/86400). Not included: heat advected with water (infiltration,
@@ -84,6 +86,7 @@ def energy(csvpath):
         r[f"E_resid_mean_{lab}_Wm2"] = float(res[m].mean()) if m.any() else None; r[f"E_days_{lab}"] = int(m.sum())
     r["E_other_mean_Wm2"] = float(((h0[1:] - h1[:-1]) / 86400.).mean()) if len(res) > 1 else 0.0
     r["E_dH_run_Wm2"] = float((h1[-1] - h0[0]) / 86400. / len(res))
+    if "snowmk" in rows[0]: r["E_snowmk_mean_Wm2"] = float((g("snowmk") / 86400.).mean())
     return r
 
 def closure(rundir):

@@ -536,6 +536,12 @@ void TemperatureUpdator::iterate(const int &startind, const int &endind) {
 
     tld[startind+1] = (tid[startind]+tid[endind])/2.0;
     warn_bad_tld(startind+1);
+    if (edg_on) {   // energy_diag (output only): this shortcut runs no solver step, book its boundary fluxes
+      // (cn[i] links node i and i+1; the single layer's temperature is the mean of the two boundaries)
+      const double dt = timestep, tm = tld[startind+1];
+      if (startind == edg_topv) { edg_top += cn[startind] * (tid[startind] - tm) * dt; }
+      if (endind == edg_botv) { edg_bot -= cn[startind+1] * (tm - tid[endind]) * dt; }
+    }
 
     return;
   }

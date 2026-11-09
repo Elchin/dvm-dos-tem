@@ -317,6 +317,8 @@ void Soil_Env::updateDailyGroundT(const double & tdrv, const double & dayl) {
   }
 
   for (int i=0; i<nstep ; i++) {
+    double edg_sn0 = 0.0;
+    if (energy_diag == 1) { edg_sn0 = snowEnthalpy(); }
     // 1) find the thawing/freezing fronts
     int tstate = ground->ststate;
 
@@ -332,6 +334,7 @@ void Soil_Env::updateDailyGroundT(const double & tdrv, const double & dayl) {
 
     // 2) ground (snow/soil) temperature solution
     ground->setFstLstFrontLayers(); // this must be called before the following
+    if (energy_diag == 1) { energydiag.snowmk += snowEnthalpy() - edg_sn0; }
     tempupdator.updateTemps(tsurface, ground->toplayer, ground->botlayer,
                             ground->fstsoill, ground->fstfntl, ground->lstfntl,
                             timestep, meltsnow);
@@ -351,7 +354,7 @@ void Soil_Env::updateDailyGroundT(const double & tdrv, const double & dayl) {
     tempupdator.edg_on = 0;
     energydiag.h1 = columnEnthalpy();
     energydiag.gtop = tempupdator.edg_top; energydiag.gbot = tempupdator.edg_bot;
-    energydiag.res = (energydiag.h1 - energydiag.h0) - (energydiag.gtop + energydiag.gbot);
+    energydiag.res = (energydiag.h1 - energydiag.h0) - (energydiag.gtop + energydiag.gbot) - energydiag.snowmk;
     energydiag.nfront = (int)ground->frontstype.size();
     int ns = 0; for (Layer* l = ground->toplayer; l != NULL; l = l->nextl) { if (l->isSnow) ns++; }
     energydiag.nsnow = ns;
@@ -364,6 +367,12 @@ double Soil_Env::layerEnthalpy(Layer* l) {
   double solid = 0.0;
   if (!l->isSnow) { solid = fmax(l->getMixVolHeatCapa() * l->dz - liq * SHCLIQ - ice * SHCICE, 0.0); }
   return solid * T + liq * SHCLIQ * T + ice * (SHCICE * T - LHFUS);
+}
+
+double Soil_Env::snowEnthalpy() const {
+  double h = 0.0;
+  for (Layer* l = ground->toplayer; l != NULL && l->isSnow; l = l->nextl) { h += layerEnthalpy(l); }
+  return h;
 }
 
 double Soil_Env::columnEnthalpy() const {
