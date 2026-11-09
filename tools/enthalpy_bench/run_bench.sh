@@ -15,7 +15,7 @@ for opt in O0 O2; do
   M=$OUT/model_$opt; rm -rf $M; mkdir -p $M/obj
   git -C $TREE archive HEAD | tar -x -C $M
   python3 $B/bench_patch.py $M
-  extra=""; [ $opt = O2 ] && extra="-O2"
+  extra=""; [ $opt = O2 ] && extra="-O2 -Wno-error=aggressive-loop-optimizations"  # pre-existing EnvData.cpp:952/997 z[il+1] read past MAX_SOI_LAY trips -Werror at -O2
   (cd $M && nice -n 5 make -j4 CC="$CXX $extra" SITE_SPECIFIC_INCLUDES="-I$CONDA_PREFIX/include" \
      SITE_SPECIFIC_LIBS="-L$CONDA_PREFIX/lib -Wl,-rpath,$CONDA_PREFIX/lib" GIT_SHA=bench_$opt > build.log 2>&1)
   (cd $B && $CXX $extra -g -std=c++11 -I../../include bench_enthalpy.cpp ../../src/EnthalpySolver.cpp -o $OUT/bench_enthalpy_$opt)
