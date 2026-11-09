@@ -949,10 +949,18 @@ double EnvData::getTempAtDepthFromArray(double temperaturez){
     double currl_temp = m_sois.ts[il];
     double currl_top = cd->m_soil.z[il];
     double currl_mid = currl_top + cd->m_soil.dz[il] / 2;
-    double currl_bottom = cd->m_soil.z[il+1];
+    // Layer il has a neighbour above only for il > 0 and below only for
+    // il < MAX_SOI_LAY-1. The old code read z[il+1] (and m_sois.ts[il+1]) one
+    // past the end for the last array slot: z[MAX_SOI_LAY] aliased dz[0]
+    // (next member of soistate_dim), so the bottom-half test compared the
+    // depth with the top layer's thickness and was never true in practice.
+    // Skipping the missing neighbour reproduces that behaviour exactly
+    // without the out-of-bounds read (which also broke -O2 -Werror builds).
+    const bool has_prev = (il > 0);
+    const bool has_next = (il + 1 < MAX_SOI_LAY);
 
     // If the temperature point is in the upper half of the layer
-    if((temperaturez > currl_top) && (temperaturez < currl_mid)){
+    if(has_prev && (temperaturez > currl_top) && (temperaturez < currl_mid)){
       // Find midpoint (temperature location) of previous layer
       double prevl_temp = m_sois.ts[il-1];
       double prevl_top = cd->m_soil.z[il-1];
@@ -962,7 +970,8 @@ double EnvData::getTempAtDepthFromArray(double temperaturez){
                                             temperaturez, I_LINEAR);
     }
     // If the temperature point is in the bottom half of the layer
-    else if((temperaturez > currl_mid) && (temperaturez < currl_bottom)){
+    else if(has_next && (temperaturez > currl_mid) &&
+            (temperaturez < cd->m_soil.z[il+1])){
       // Find midpoint (temperature location) of next layer
       double nextl_temp = m_sois.ts[il+1];
       double nextl_top = cd->m_soil.z[il+1];
@@ -994,10 +1003,18 @@ double EnvData::getVWCAtDepthFromArray(double vwcdepth){
     double currl_vwc = m_soid.vwc[il];
     double currl_top = cd->m_soil.z[il];
     double currl_mid = currl_top + cd->m_soil.dz[il] / 2;
-    double currl_bottom = cd->m_soil.z[il+1];
+    // Layer il has a neighbour above only for il > 0 and below only for
+    // il < MAX_SOI_LAY-1. The old code read z[il+1] (and m_soid.vwc[il+1]) one
+    // past the end for the last array slot: z[MAX_SOI_LAY] aliased dz[0]
+    // (next member of soistate_dim), so the bottom-half test compared the
+    // depth with the top layer's thickness and was never true in practice.
+    // Skipping the missing neighbour reproduces that behaviour exactly
+    // without the out-of-bounds read (which also broke -O2 -Werror builds).
+    const bool has_prev = (il > 0);
+    const bool has_next = (il + 1 < MAX_SOI_LAY);
 
     // If the vwc point is in the upper half of the layer
-    if((vwcdepth > currl_top) && (vwcdepth < currl_mid)){
+    if(has_prev && (vwcdepth > currl_top) && (vwcdepth < currl_mid)){
       // Find midpoint (temperature location) of previous layer
       double prevl_vwc = m_soid.vwc[il-1];
       double prevl_top = cd->m_soil.z[il-1];
@@ -1007,7 +1024,8 @@ double EnvData::getVWCAtDepthFromArray(double vwcdepth){
                                            vwcdepth, I_LINEAR);
     }
     // If the vwc point is in the bottom half of the layer
-    else if((vwcdepth > currl_mid) && (vwcdepth < currl_bottom)){
+    else if(has_next && (vwcdepth > currl_mid) &&
+            (vwcdepth < cd->m_soil.z[il+1])){
       // Find midpoint (temperature location) of next layer
       double nextl_vwc = m_soid.vwc[il+1];
       double nextl_top = cd->m_soil.z[il+1];
