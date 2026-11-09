@@ -69,6 +69,7 @@ SOURCES= 	src/TEM.o \
 		src/Stefan.o \
 		src/TemperatureUpdator.o \
 		src/CrankNicholson.o \
+		src/EnthalpySolver.o \
 		src/tbc-debug-util.o \
 		src/Vegetation_Bgc.o \
 		src/Vegetation_Env.o \

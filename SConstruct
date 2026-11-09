@@ -72,6 +72,7 @@ src_files = Split("""src/TEM.cpp
                      src/Stefan.cpp
                      src/TemperatureUpdator.cpp
                      src/CrankNicholson.cpp
+                     src/EnthalpySolver.cpp
                      src/tbc-debug-util.cpp
                      src/Vegetation_Bgc.cpp
                      src/Vegetation_Env.cpp""")
