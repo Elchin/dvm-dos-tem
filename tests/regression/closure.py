@@ -1,5 +1,8 @@
 #!/usr/bin/env python3
 """Mass-closure and run-health checks for one regression run (main stage, 1950-2024).
+  energy (phase 2b, only when main/output/energy_daily.csv exists, i.e. energy_diag = 1):
+                     daily thermal-step residual (h1-h0) - (gtop+gbot), see energy(); FAIL if
+                     |run mean| >= etol (default 5 W/m2); summarize.py WARNs if B is worse than A.
 Formulas as /workspace/v5h/seb_explore/scripts/metrics_tvc.py:
   water (1951-2024): P - EET - QRUNOFF - QDRAINAGE - dS, dS = d(sum (LWC+IWC)*dz*1000) + dSWE  [mm]
                      PASS if |residual| < 1 % of P
@@ -57,6 +60,32 @@ def n_budget(nst, nin, nl, bnfveg=None):
     if bnfveg is not None: nin = nin + bnfveg
     return np.diff(nst) - (nin[1:] - nl[1:])
 
+def energy(csvpath):
+    """Phase 2b energy closure of the daily snow/soil thermal step from energy_daily.csv
+    (written when model_settings.energy_diag = 1). Per day: res = (h1 - h0) - (gtop + gbot) [J/m2],
+    h = column enthalpy relative to liquid water at 0 C (solid and water sensible heat, ice carries
+    -L_f), gtop/gbot = heat through the solver's virtual top/bottom boundary nodes (+ = into the
+    column). Reported in W/m2 (/86400). Not included: heat advected with water (infiltration,
+    drainage, ET), snowfall/snowmelt mass changes and layer restructuring between thermal steps
+    (reported separately as E_other_mean_Wm2, not a closure term)."""
+    import csv
+    rows = list(csv.DictReader(open(csvpath)))
+    if not rows: return dict(E_days=0)
+    g = lambda k: np.array([float(x[k]) for x in rows])
+    res, gt, gb, nf, sn, h0, h1 = g("res") / 86400., g("gtop") / 86400., g("gbot") / 86400., g("nfront"), g("snow"), g("h0"), g("h1")
+    ny = len(res) // 365; r = dict(E_days=len(res))
+    r["E_resid_mean_Wm2"] = float(res.mean())
+    r["E_resid_rms_daily_Wm2"] = float(np.sqrt((res ** 2).mean()))
+    r["E_resid_max_abs_annual_Wm2"] = float(np.abs(res[: ny * 365].reshape(ny, 365).mean(1)).max()) if ny else float("nan")
+    r["E_G_mean_Wm2"] = float((gt + gb).mean()); r["E_G_mean_abs_Wm2"] = float(np.abs(gt).mean())
+    r["E_gbot_mean_Wm2"] = float(gb.mean())
+    r["E_resid_rel"] = float(np.abs(res).sum() / max(np.abs(gt).sum(), 1e-30))
+    for lab, m in (("nofront", nf == 0), ("front", nf > 0), ("snow", sn == 1), ("nosnow", sn == 0)):
+        r[f"E_resid_mean_{lab}_Wm2"] = float(res[m].mean()) if m.any() else None; r[f"E_days_{lab}"] = int(m.sum())
+    r["E_other_mean_Wm2"] = float(((h0[1:] - h1[:-1]) / 86400.).mean()) if len(res) > 1 else 0.0
+    r["E_dH_run_Wm2"] = float((h1[-1] - h0[0]) / 86400. / len(res))
+    return r
+
 def closure(rundir):
     o = Path(rundir) / "main/output"
     g = lambda v, f="monthly": ma(nc.Dataset(o / f"{v}_{f}_sc.nc")[v][:])
@@ -95,9 +124,12 @@ def closure(rundir):
         r["NLOST_mean_gm2yr"] = float(nl[1:].mean()); r["NINPUT_mean_gm2yr"] = float(nin[1:].mean())
     else:
         r["N_resid_mean_gm2yr"] = None
+    ef = o / "energy_daily.csv"
+    r["E_check"] = "on" if ef.exists() else "off"
+    if ef.exists(): r.update(energy(ef))
     return r
 
-def evaluate(rundir, wtol=1.0, ctol=0.5, ntol=1.0, n_defaults=None):
+def evaluate(rundir, wtol=1.0, ctol=0.5, ntol=1.0, n_defaults=None, etol=5.0):
     meta = json.loads((Path(rundir) / "meta.json").read_text())
     r = dict(run=str(rundir), case=meta["case"], status=meta["status"])
     for s in ("spin", "main"):
@@ -112,6 +144,8 @@ def evaluate(rundir, wtol=1.0, ctol=0.5, ntol=1.0, n_defaults=None):
         r.update(closure(rundir))
         if abs(r["W_resid_pctP"]) >= wtol: fails.append(f"water |resid| {r['W_resid_pctP']:.3f}% P >= {wtol}%")
         if r["C_resid_max_abs_annual"] >= ctol: fails.append(f"C max |annual resid| {r['C_resid_max_abs_annual']:.3g} >= {ctol}")
+        if r.get("E_resid_mean_Wm2") is not None and abs(r["E_resid_mean_Wm2"]) >= etol:
+            fails.append(f"energy |mean thermal-step resid| {r['E_resid_mean_Wm2']:.3f} W/m2 >= {etol}")
         if r["N_resid_mean_gm2yr"] is None: fails.append("N closure outputs missing")
         elif n_on:
             if abs(r["N_resid_mean_gm2yr"]) >= ntol: fails.append(f"N |mean resid| {r['N_resid_mean_gm2yr']:.3g} >= {ntol} gN/m2/yr")
@@ -125,7 +159,8 @@ def evaluate(rundir, wtol=1.0, ctol=0.5, ntol=1.0, n_defaults=None):
 if __name__ == "__main__":
     ap = argparse.ArgumentParser(); ap.add_argument("rundir"); ap.add_argument("--wtol", type=float, default=1.0)
     ap.add_argument("--ctol", type=float, default=0.5); ap.add_argument("--ntol", type=float, default=1.0)
+    ap.add_argument("--etol", type=float, default=5.0)
     ap.add_argument("--n-defaults", choices=sorted(N_FIX_DEFAULTS), default=None,
                     help="defaults of the binary for missing N1-N3 keys (default $REG_N_DEFAULTS or v5o)")
-    a = ap.parse_args(); r = evaluate(a.rundir, a.wtol, a.ctol, a.ntol, a.n_defaults); print(json.dumps(r))
+    a = ap.parse_args(); r = evaluate(a.rundir, a.wtol, a.ctol, a.ntol, a.n_defaults, a.etol); print(json.dumps(r))
     sys.exit(0 if r["closure_pass"] else 1)

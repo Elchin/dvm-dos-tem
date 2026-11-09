@@ -345,6 +345,10 @@ public:
          seb_emis_soil, seb_wind, seb_minwind, seb_stab_b, seb_tran_frac,
          seb_pres;
   int seb_lw_source, seb_diag;
+  // Phase 2b: model_settings.energy_diag (0 = off, default; 1 = daily energy-closure diagnostic
+  // of the snow/soil thermal step written to output_dir/energy_daily.csv; output only). See
+  // Soil_Env.h (EnergyDiag) and tests/regression/closure.py (energy check).
+  int energy_diag;
   // Refs (SEB): bulk transfer, Brutsaert 1982, doi:10.1007/978-94-017-1497-6; simplified stability functions after Louis 1979, doi:10.1007/BF00117978
   //   (stable) and Dyer 1974, doi:10.1007/BF00240838 (unstable); LW: Prata 1996, doi:10.1002/qj.49712253306; Crawford & Duchon 1999,
   //   doi:10.1175/1520-0450(1999)038<0474:AIPFEE>2.0.CO;2; snow emissivity Warren 1982, doi:10.1029/RG020i001p00067; esat WMO-No. 8 (2008);

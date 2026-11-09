@@ -16,6 +16,22 @@ def mkrun(root, name, ms):
     (d / "main/config/config.js").write_text("// comment line\n" + json.dumps(cfg, indent=1))
     return d
 
+class E(unittest.TestCase):   # phase 2b: energy() on a synthetic energy_daily.csv
+    def test_energy_metrics(self):
+        with tempfile.TemporaryDirectory() as d:
+            f = Path(d) / "energy_daily.csv"
+            L = ["day,doy,tsurf,snow,nsnow,nfront,h0,h1,gtop,gbot,res"]
+            h = 0.0
+            for i in range(730):
+                nf = 1 if i % 2 else 0; g = 86400.0 * (1.0 if i % 3 else -2.0); res = 86400.0 * (3.0 if nf else -1.0)
+                h1 = h + g + res; L.append(f"{i},{i%365},0,0,0,{nf},{h},{h1},{g},0,{res}"); h = h1
+            f.write_text("\n".join(L) + "\n")
+            r = closure.energy(f)
+            self.assertEqual(r["E_days"], 730); self.assertAlmostEqual(r["E_resid_mean_Wm2"], 1.0)
+            self.assertAlmostEqual(r["E_resid_mean_front_Wm2"], 3.0); self.assertAlmostEqual(r["E_resid_mean_nofront_Wm2"], -1.0)
+            self.assertAlmostEqual(r["E_other_mean_Wm2"], 0.0); self.assertEqual(r["E_days_front"], 365)
+            self.assertAlmostEqual(r["E_resid_rms_daily_Wm2"], (0.5 * 9 + 0.5 * 1) ** 0.5)
+
 class T(unittest.TestCase):
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory(); self.root = self.tmp.name

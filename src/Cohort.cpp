@@ -299,6 +299,7 @@ void Cohort::initialize_state_parameters() {
   SoilLayer::mineral_tcdry_form = md->mineral_tcdry_form;
   soilenv.soil_evap_beta = md->soil_evap_beta;       // DRAFT (daily-structural)
   soilenv.seb_scheme    = md->seb_scheme;           // Option 4 (v5j) SEB
+  soilenv.energy_diag   = md->energy_diag;          // phase 2b energy-closure diagnostic (0 = off)
   soilenv.seb_z0_snow   = md->seb_z0_snow;
   soilenv.seb_z0_soil   = md->seb_z0_soil;
   soilenv.seb_zwind     = md->seb_zwind;
@@ -785,6 +786,18 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
     //snow-soil temperature, including snow-melting and
     //  soil water phase changing
     soilenv.updateDailyGroundT(tdrv, daylength);
+    if (md->energy_diag == 1) { // phase 2b energy-closure diagnostic (output only)
+      static long edg_day = 0;
+      std::ofstream ef((md->output_dir + "energy_daily.csv").c_str(), std::ios::app);
+      if (edg_day == 0) {
+        ef << "day,doy,tsurf,snow,nsnow,nfront,h0,h1,gtop,gbot,res\n";
+      }
+      const EnergyDiag& q = soilenv.energydiag;
+      ef.precision(10);
+      ef << edg_day << "," << doy << "," << q.tsurf << "," << (ground.toplayer->isSnow ? 1 : 0) << "," << q.nsnow << ","
+         << q.nfront << "," << q.h0 << "," << q.h1 << "," << q.gtop << "," << q.gbot << "," << q.res << "\n";
+      edg_day++;
+    }
     if (md->seb_diag > 0) { // Option 4 (v5j) SEB: daily diagnostics (output only)
       static long seb_day = 0;
       std::ofstream sf((md->output_dir + "seb_daily.csv").c_str(), std::ios::app);

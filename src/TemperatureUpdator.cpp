@@ -175,6 +175,7 @@ void TemperatureUpdator::processColumnNofront(Layer* fstvalidl, const double & t
   endind = ind;
 
   // Run the solver for all layers
+  edg_topv = startind; edg_botv = endind;   // energy_diag: no front, both virtual boundaries
   iterate(startind, endind);
 
   // Post-iteration
@@ -271,6 +272,7 @@ void TemperatureUpdator::processAboveFronts(Layer* fstvalidl, Layer*fstfntl,
   endind = ind;
 
   // Run the solver for these layers:
+  edg_topv = startind; edg_botv = -1;       // energy_diag: above fronts (bottom = front layer)
   iterate(startind, endind);
 
   // Post-iteration: check for nans in the solver results array (tld)
@@ -390,6 +392,7 @@ void TemperatureUpdator::processBetweenFronts(Layer*fstfntl, Layer*lstfntl,
   endind = ind;
 
   // Run the solver for these layers:
+  edg_topv = -1; edg_botv = -1;             // energy_diag: between fronts (no virtual boundary)
   iterate(startind, endind);
 
   // Post-iteration: check for nans in the solver results array (tld)
@@ -493,6 +496,7 @@ void TemperatureUpdator::processBelowFronts(Layer*lstfntl,
   endind = ind;
 
   // Run these layers in the solver
+  edg_topv = -1; edg_botv = endind;         // energy_diag: below fronts (top = front layer)
   iterate(startind, endind);
 
   // Post-iteration: check for nans in the solver results array
@@ -613,6 +617,15 @@ int TemperatureUpdator::updateOneTimeStep(const int &startind,
 
   if (is == 0 || tstep<=TSTEPMIN) { // success or min. iterative time-interval
     status = is;
+    if (edg_on) {   // energy_diag (output only): boundary heat fluxes of this accepted sub-step
+      const double dt = tstep * timestep;
+      if (startind == edg_topv) {
+        edg_top += cn[startind] * 0.5 * ((tis[startind] - tis[startind+1]) + (tis[startind] - tit[startind+1])) * dt;
+      }
+      if (endind == edg_botv) {
+        edg_bot += cn[endind-1] * 0.5 * ((tis[endind] - tis[endind-1]) + (tis[endind] - tit[endind-1])) * dt;
+      }
+    }
 
     for (int i = startind; i <= endind; i++) {
       tld[i] = tit[i];

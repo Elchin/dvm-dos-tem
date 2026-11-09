@@ -309,6 +309,13 @@ void Soil_Env::updateDailyGroundT(const double & tdrv, const double & dayl) {
 
   stefan.initpce();
 
+  if (energy_diag == 1) {   // energy-closure diagnostic (output only)
+    energydiag = EnergyDiag();
+    energydiag.used = 1; energydiag.tsurf = tsurface;
+    energydiag.h0 = columnEnthalpy();
+    tempupdator.edg_on = 1; tempupdator.edg_top = 0.0; tempupdator.edg_bot = 0.0;
+  }
+
   for (int i=0; i<nstep ; i++) {
     // 1) find the thawing/freezing fronts
     int tstate = ground->ststate;
@@ -340,7 +347,30 @@ void Soil_Env::updateDailyGroundT(const double & tdrv, const double & dayl) {
                                                   //  before the following
   retrieveDailyFronts(); //update 'ed' with new soil thawing/freezing
                          //  fronts, and daily 'ald', 'cld'
+  if (energy_diag == 1) {
+    tempupdator.edg_on = 0;
+    energydiag.h1 = columnEnthalpy();
+    energydiag.gtop = tempupdator.edg_top; energydiag.gbot = tempupdator.edg_bot;
+    energydiag.res = (energydiag.h1 - energydiag.h0) - (energydiag.gtop + energydiag.gbot);
+    energydiag.nfront = (int)ground->frontstype.size();
+    int ns = 0; for (Layer* l = ground->toplayer; l != NULL; l = l->nextl) { if (l->isSnow) ns++; }
+    energydiag.nsnow = ns;
+  }
 };
+
+double Soil_Env::layerEnthalpy(Layer* l) {
+  if (l == NULL) { return 0.0; }
+  const double T = l->tem, liq = fmax(l->liq, 0.0), ice = fmax(l->ice, 0.0);
+  double solid = 0.0;
+  if (!l->isSnow) { solid = fmax(l->getMixVolHeatCapa() * l->dz - liq * SHCLIQ - ice * SHCICE, 0.0); }
+  return solid * T + liq * SHCLIQ * T + ice * (SHCICE * T - LHFUS);
+}
+
+double Soil_Env::columnEnthalpy() const {
+  double h = 0.0;
+  for (Layer* l = ground->toplayer; l != NULL; l = l->nextl) { h += layerEnthalpy(l); }
+  return h;
+}
 
 /** Option 4 (v5j) SEB. Daily-mean skin energy balance of the top
 * layer (snow or moss/soil), solved for Ts by safeguarded Newton/bisection:

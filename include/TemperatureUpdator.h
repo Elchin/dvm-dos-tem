@@ -29,6 +29,17 @@ public:
 
   int itsumall;
 
+  // Energy-closure diagnostic (model_settings.energy_diag, default 0 = off; output only, never
+  // feeds back): when edg_on, the accepted solver sub-steps add the heat flux through the
+  // virtual TOP boundary node (edg_top, J/m2, + = into the column) and the virtual BOTTOM node
+  // (edg_bot, J/m2, + = into the column from below) using the solver's own conductances, time
+  // centred (Crank-Nicolson): F*dt = cn_b * 0.5*((Tb - T1_old) + (Tb - T1_new)) * dt.
+  // edg_topv / edg_botv: solver index of the virtual top / bottom node of the current solve
+  // (-1 when that solve is bounded by a front layer instead).
+  int edg_on = 0;
+  double edg_top = 0.0, edg_bot = 0.0;
+  int edg_topv = -1, edg_botv = -1;
+
   //update temperatures for valid layers
   void updateTemps(const double & tdrv, Layer *frontl, Layer *backl,
                    Layer *fstsoill, Layer* fstfntl, Layer*lstfntl,

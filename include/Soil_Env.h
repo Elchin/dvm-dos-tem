@@ -20,6 +20,16 @@
 class Snow_Env;
 
 // Option 4 (v5j) SEB: diagnostics of the last daily SEB solve.
+// Energy-closure diagnostic (model_settings.energy_diag 1; output only): enthalpy of the
+// snow + soil + rock column (J/m2, relative to liquid water at 0 C) before (h0) and after (h1)
+// the daily thermal step updateDailyGroundT(), the solver's top/bottom boundary heat
+// (gtop/gbot, J/m2, + = into the column) and the thermal-step residual
+// res = (h1 - h0) - (gtop + gbot). nfront = number of freeze/thaw fronts after the step.
+struct EnergyDiag {
+  double h0 = 0.0, h1 = 0.0, gtop = 0.0, gbot = 0.0, res = 0.0, tsurf = 0.0;
+  int nfront = 0, nsnow = 0, used = 0;
+};
+
 struct SebDiag {
   double ta, ts, swin, alb, lwsky, lwin, lwout, h, le, g, qmelt, wind, fc, lam, t1;
   int snow, iters, used;
@@ -82,6 +92,18 @@ public:
   double seb_fc_last; // last canopy LW-obscured fraction (from SW transmission)
   Snow_Env* snowenvp; // for the snow albedo
   SebDiag sebdiag;
+  // Energy-closure diagnostic, see EnergyDiag. model_settings.energy_diag: 0 = off (default),
+  // 1 = fill energydiag every day (Cohort writes output_dir/energy_daily.csv). Never changes
+  // the model state. Refs: enthalpy form with latent heat of fusion, e.g. Bonan 2019
+  // (Climate Change and Terrestrial Ecosystem Modeling, ch. 5), Jafarov et al. 2012,
+  // doi:10.5194/tc-6-613-2012 (dvmdostem/GIPL soil thermal context); no published source for
+  // the dvmdostem-specific residual.
+  int energy_diag = 0;
+  EnergyDiag energydiag;
+  // Enthalpy of one layer, J/m2: (solid heat capacity)*T + liq*c_liq*T + ice*(c_ice*T - L_f),
+  // solid part = getMixVolHeatCapa()*dz - liq*c_liq - ice*c_ice (0 for snow).
+  static double layerEnthalpy(Layer* l);
+  double columnEnthalpy() const;
   double solveSEB(const double & tdrv);
 
   void setGround(Ground* grndp);

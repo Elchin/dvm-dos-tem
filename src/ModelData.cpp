@@ -382,6 +382,14 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
   seb_pres      = controldata["model_settings"].get("seb_pres", 100000.0).asDouble();
   seb_lw_source = controldata["model_settings"].get("seb_lw_source", 0).asInt();
   seb_diag      = controldata["model_settings"].get("seb_diag", 0).asInt();
+  {
+    Json::Value ev = controldata["model_settings"].get("energy_diag", 0);
+    if (!bnf::valid_int(ev, 0, 1)) {
+      std::cerr << "FATAL: model_settings.energy_diag must be 0 (off, default) or 1 (daily energy-closure diagnostic)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    energy_diag = ev.asInt();
+  }
   seb_snow_tc   = controldata["model_settings"].get("seb_snow_tc", 0).asInt();
   if (climate_timestep.empty()) {
     climate_timestep = "monthly";
@@ -478,6 +486,7 @@ ModelData::ModelData():force_cmt(-1) {
   n_leach_curn_fix = 0; // v5q-leach-curn (legacy)
   humic_max_thick = 0.0; stefan_front_resist_fix = 0; // v5q-humic-stefan (off)
   nv_snow_bury_depth = 0.0;
+  energy_diag = 0; // phase 2b energy-closure diagnostic (off)
   set_envmodule(false);
   set_bgcmodule(false);
   set_dynamic_lai_module(false);
