@@ -678,6 +678,27 @@ Elchin approved turning the Richards step-halving fix on for all new-solver work
   - **(c)** `thermal_solver = 1`, `thermal_substeps = 4`, `richards_dt_fix = 1` vs the `c12218cd` fix-on results (`richards_dtfix/runs/ts1s4_f1`): **8/8 identical**.
 - Closure on the (c) runs (hence also on `c12218cd` s4 fix-on): full-day energy residual ≤ 4.6×10⁻⁸ W m⁻² (well under the 1×10⁻⁶ gate). Water residual as a fraction of precipitation is −0.001…+0.059 % P (largest +0.059 % at HPC_Warming_nfeed); several cases are ~0.001 %. That leftover is the known non-Richards term, not bug R1. With `dt_fix = 0` the new-solver water residual is −0.10…−0.53 % P. The harness `closure_pass` is still false on this case set only because “N closure outputs missing” (the production output spec; same in legacy).
 
+## 15g. Melt-out closure fix: heat of a melted snow cell lost in a zero-mass snow cell (Elchin, 2026-11-10, branch `fix/meltout-closure`)
+
+Symptom: Calibration-expert's r1 case (TVC_Warming_nfeed, CMT51 `snwdennew` 75, `nfactor(w)` 0.3, `snow_scheme` 0, Stage E baseline
+`thermal_solver` 1 / sfcc 1 / 4 sub-steps / `richards_dt_fix` 1) missed the daily gate on 1 Jun 2024: res = resday = -57.36 J m-2
+(6.6e-4 W m-2), 0 fallbacks, no warning. Entering that day the pack was a remnant of a 27 May snowfall: top cell 0.16 mm,
+0.009 kg m-2 at -0.01 C, and a second snow cell with **no water at all** (W = 0, dz = 0, kept by the snow module).
+
+Root cause (instrumented, not guessed): the solve itself closed (sum of the four sub-step closures 1e-7 J m-2) and the scatter was exact.
+The whole -57.36 J m-2 was in step 5, "heat of fully melted snow cells goes to the cell below": the top cell melted out and ended at
++1.52 C (H = 57.36 J m-2); that heat was given to the next cell, the empty snow cell. Its heat capacity is zero (Cs = 0, W = 0), so
+`equilibrate()` -> `invertH()` returns T = 0 and the heat vanished.
+
+Fix (Soil_Env_enthalpy.cpp, step 5; thermal_solver 1 only, the legacy path never runs this code): the receiver is the next cell below that
+can hold heat (Cs > 0 or liq + ice > 0); zero-capacity cells are skipped. When the next cell has heat capacity (every other case) the
+arithmetic is the same as before, so results only change on days where heat was being lost.
+
+Tests: `tests/unit/test_enthalpy_meltout.cpp` (r1 1 Jun 2024 state on a small column, a cascade over two empty cells, an empty cell
+between two snow cells, and the unchanged path); three of the four fail without the fix (res -57.9, -419, -27 J m-2).
+Regression: `tests/regression/check_meltout_r1.sh` re-runs r1 and applies the 1e-6 W m-2 gate (closure.py).
+Open (not changed here): the snow module keeps zero-mass snow layers; removing them belongs in Snow_Env and would also change legacy.
+
 ## 16. Risks and calibration impact
 
 | Risk | Mitigation |
