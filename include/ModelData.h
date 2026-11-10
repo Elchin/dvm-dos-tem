@@ -176,6 +176,11 @@ public:
   // richards_dt_fix, OFF by default (0 = legacy): recompute dt_dz when a Richards trial
   // substep is rejected and halved (bug R1, see Richards.h dt_fix). Applies to both thermal solvers.
   int richards_dt_fix;
+  // snow_empty_cleanup, OFF by default (0 = legacy, bit-identical): remove emptied snow layers
+  // (ice + liq <= SNOW_EMPTY_MASS_EPS and dz <= SNOW_EMPTY_DZ_EPS) at the end of the daily snow
+  // update, so they never enter the next thermal step (root cause of the r1 1 Jun 2024 melt-out
+  // closure miss, fix/meltout-closure). Applies to both thermal solvers. See Ground.h.
+  int snow_empty_cleanup;
   // Refs: at each declaration named above (Climate.h, Soil_Env.h, Stefan.h, Snow_Env.h) and in docs/daily-mode-REFERENCES.md.
   // Fix C1 (v5k), OFF by default (0 = legacy): soil integrator NMIN error
   // tolerance, see Integrator.h (soil_nmin_tol_fix).

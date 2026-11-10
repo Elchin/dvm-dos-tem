@@ -90,6 +90,10 @@ void Snow_Env::updateDailyM(const double & tdrv) {
 
   // after snow layer adding/removal/adjusting, needs updating thickness
   ground->updateSnowLayerPropertiesDaily();   // each layer
+  // snow_empty_cleanup (default 0 = legacy): drop layers emptied today (dz is 0 only after updateThick)
+  if (ground->snow_empty_cleanup == 1 && ground->removeEmptySnowLayers()) {
+    ground->resortGroundLayers();
+  }
   ground->updateSnowHorizon();                // all snow horizon
   ground->checkWaterValidity();
   updateSnowEd(ground->toplayer);
