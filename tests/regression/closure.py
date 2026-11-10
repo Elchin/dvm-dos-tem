@@ -106,6 +106,12 @@ def energy(csvpath):
         r["Enth_solves"] = int(g("solves").sum())
         for k in ("src", "clip", "init", "equil", "bsnow", "bwater", "blayer", "bfire"):
             r[f"Enth_{k}_mean_Wm2"] = float((g(k) / 86400.).mean())
+        if "rsnow" in rows[0]:   # Stage C2 energy-conserving remap
+            for k in ("rsnow", "rwater"):
+                r[f"Enth_{k}_mean_Wm2"] = float((g(k) / 86400.).mean())
+                r[f"Enth_{k}_max_abs_Wm2"] = float(np.abs(g(k) / 86400.).max())
+            r["Enth_wlayer_max_abs_kg"] = float(np.abs(g("wlayer")).max())
+            r["Enth_remap_fallbacks"] = int(g("remapfb").max())
     else:
         r["Enth_check"] = "off"
     return r

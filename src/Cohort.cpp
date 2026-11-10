@@ -495,6 +495,7 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
   BOOST_LOG_SEV(glg, debug) << "Update the current dimension/structure of veg-snow/soil column (domain).";
   // Option C (thermal_solver 1): enthalpy change of layer thickness/redivision and BGC
   const double enth_hl = (md->thermal_solver == 1) ? soilenv.columnEnthalpyE() : 0.0;
+  const double enth_wl = (md->thermal_solver == 1) ? soilenv.columnWaterE() : 0.0;
   updateMonthly_DIMveg(currmind, md->get_dynamic_lai_module());
   updateMonthly_DIMgrd(currmind, md->get_dslmodule());
 
@@ -506,7 +507,10 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
     BOOST_LOG_SEV(glg, debug) << "RIGHT AFTER updateMonthly_Bgc()" << ground.layer_report_string("depth CN");
 
   }
-  if (md->thermal_solver == 1) { soilenv.enth_bk_layer += soilenv.columnEnthalpyE() - enth_hl; }
+  if (md->thermal_solver == 1) {
+    soilenv.enth_bk_layer += soilenv.columnEnthalpyE() - enth_hl;   // solid/water mass at cell T
+    soilenv.enth_wk_layer += soilenv.columnWaterE() - enth_wl;
+  }
 
   if(md->get_dsbmodule()) {
     BOOST_LOG_SEV(glg, debug) << "Run the disturbance model.";
@@ -817,7 +821,7 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
       if (edg_day == 0) {
         ef << "day,doy,tsurf,snow,nsnow,nfront,h0,h1,gtop,gbot,res,snowmk";
         if (md->thermal_solver == 1) { // Option C columns (see Soil_Env.h EnergyDiag)
-          ef << ",src,clip,init,equil,bsnow,bwater,blayer,bfire,unattr,resday,solves,fallbacks";
+          ef << ",src,clip,init,equil,bsnow,bwater,blayer,bfire,unattr,resday,solves,fallbacks,rsnow,rwater,wlayer,remapfb";
         }
         ef << "\n";
       }
@@ -828,7 +832,7 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
       if (md->thermal_solver == 1) {
         ef << "," << q.src << "," << q.clip << "," << q.init << "," << q.equil << "," << q.bsnow << "," << q.bwater
            << "," << q.blayer << "," << q.bfire << "," << q.unattr << "," << q.resday << "," << q.solves << ","
-           << q.fallbacks;
+           << q.fallbacks << "," << q.rsnow << "," << q.rwater << "," << q.wlayer << "," << q.remapfb;
       }
       ef << "\n";
       edg_day++;
@@ -853,9 +857,10 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
     }
     //snow water/thickness changing - must be done after 'T' because of melting
     { // Option C (thermal_solver 1): book the enthalpy change of the snow module
-      const double hb = (md->thermal_solver == 1) ? soilenv.columnEnthalpyE() : 0.0;
+      Soil_Env::EnthSnap es;   // Stage C2: energy-conserving remap of the snow window
+      if (md->thermal_solver == 1) { soilenv.enthSnap(es); }
       snowenv.updateDailyM(tdrv);
-      if (md->thermal_solver == 1) { soilenv.enth_bk_snow += soilenv.columnEnthalpyE() - hb; }
+      if (md->thermal_solver == 1) { soilenv.enthRemapSnow(es, tdrv); }
     }
     //Capture daily snow water equivalent and thickness for NetCDF output
     edall->daily_swesum[id] = edall->d_snws.swesum;
@@ -864,9 +869,10 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
     //get the new bottom drainage layer and its depth
     ground.setDrainL();
     { // Option C (thermal_solver 1): book the enthalpy change of the soil water module
-      const double hb = (md->thermal_solver == 1) ? soilenv.columnEnthalpyE() : 0.0;
+      Soil_Env::EnthSnap es;   // Stage C2: energy-conserving remap of the soil water window
+      if (md->thermal_solver == 1) { soilenv.enthSnap(es); }
       soilenv.updateDailySM(weighted_veg_tran);  //soil moisture
-      if (md->thermal_solver == 1) { soilenv.enth_bk_water += soilenv.columnEnthalpyE() - hb; }
+      if (md->thermal_solver == 1) { soilenv.enthRemapWater(es); }
     }
     if (md->nonvasc_trans_withdraw == 1) {
       // Fix (c) (v5j): transpiration whose uptake updateDailySM did not apply

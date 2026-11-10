@@ -385,6 +385,18 @@ void RestartData::reinitValue() {
 
 /** Set values in this RestartData object from a NetCDF file. */
 void RestartData::update_from_ncfile(const std::string& fname, const int rowidx, const int colidx) {
+  {
+    const int ts = read_thermal_solver_attr(fname);
+    if (ts != thermal_solver_expected) {
+      static bool warned = false;
+      if (!warned) {
+        std::cerr << "WARNING: restart " << fname << " was written with thermal_solver = " << ts
+                  << ", this run uses thermal_solver = " << thermal_solver_expected
+                  << " (state is converted on the first thermal step)" << std::endl;
+        warned = true;
+      }
+    }
+  }
   BOOST_LOG_SEV(glg, debug) << "Opening dataset: " << fname << " to READ value into RestartData for pixel (y, x): (" << rowidx << "," << colidx << ")";
   BOOST_LOG_SEV(glg, debug) << temutil::report_yx_pixel_dims2str(fname);
 
@@ -977,8 +989,18 @@ void RestartData::read_px_prev_pft_vars(const std::string& fname, const int rowi
 
 
 /** Creates (overwrites) an empty restart file. */
+int RestartData::thermal_solver_expected = 0;
+
+int RestartData::read_thermal_solver_attr(const std::string& fname) {
+  int ncid, v = 0;
+  if (nc_open(fname.c_str(), NC_NOWRITE, &ncid) != NC_NOERR) { return 0; }
+  if (nc_get_att_int(ncid, NC_GLOBAL, "thermal_solver", &v) != NC_NOERR) { v = 0; }
+  nc_close(ncid);
+  return v;
+}
+
 void RestartData::create_empty_file(const std::string& fname,
-    const int ysize, const int xsize) {
+    const int ysize, const int xsize, const int thermal_solver) {
 
   BOOST_LOG_SEV(glg, debug) << "Opening new file: "<<fname<<" with 'NC_CLOBBER'";
   int ncid;
@@ -1320,6 +1342,9 @@ void RestartData::create_empty_file(const std::string& fname,
 
   /* Global Attributes */
   temutil::nc( nc_put_att_text(ncid, NC_GLOBAL, "Git_SHA", strlen(GIT_SHA), GIT_SHA ) );
+  if (thermal_solver != 0) {   // Stage C2 provenance (absent = legacy solver)
+    temutil::nc( nc_put_att_int(ncid, NC_GLOBAL, "thermal_solver", NC_INT, 1, &thermal_solver) );
+  }
 
   /* End Define Mode (not strictly necessary for netcdf 4) */
   BOOST_LOG_SEV(glg, debug) << "Trying to leaving 'define mode'...";

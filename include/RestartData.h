@@ -50,7 +50,13 @@ public :
   void write_px_front_vars(const std::string& fname, const int rowidx, const int colidx);
   void write_px_prev_pft_vars(const std::string& fname, const int rowidx, const int colidx);
 
-  static void create_empty_file(const std::string& fname, const int ysize, const int xsize);
+  static void create_empty_file(const std::string& fname, const int ysize, const int xsize,
+                                const int thermal_solver = 0);
+  // Stage C2: global attribute 'thermal_solver' is written only when 1 (files of legacy runs are
+  // unchanged); a file without it is a legacy restart (0). On read, a mismatch with the running
+  // mode is a WARNING only (switch-on projection / legacy front rebuild handle both directions).
+  static int thermal_solver_expected;
+  static int read_thermal_solver_attr(const std::string& fname);
 
   int chtid;
 

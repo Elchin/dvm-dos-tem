@@ -275,3 +275,47 @@ TEST_CASE("Ground::enthalpy_remap: split and merge conserve enthalpy and water (
 }
 
 }
+
+TEST_SUITE("enthalpy_remap_c2") {
+
+TEST_CASE("Stage C2: soil-water remap conserves enthalpy; moved water carries its enthalpy") {
+  Col c(-1.0, 1.0);   // T = -1, 0, 1, 2, 3, 4 C
+  Ground& g = c.col.g;
+  Soil_Env::EnthSnap s; c.se.enthSnap(s);
+  std::vector<Layer*> L; for (Layer* l = g.toplayer; l; l = l->nextl) L.push_back(l);
+  // module result at fixed T: 2 kg from cell 5 (3 C) and 3 kg infiltration (5 C rain) into cell 1,
+  // 1 kg drained from cell 6 (4 C)
+  L[4]->liq -= 2.0; L[0]->liq += 5.0; L[5]->liq -= 1.0;
+  const double hin = SHCLIQ * 5.0;
+  c.se.enthRemapWaterCore(s, 3.0, hin);
+  const double hp = (2.0 * SHCLIQ * 3.0 + 1.0 * SHCLIQ * 4.0 + 3.0 * hin) / 6.0;   // pool P = 6, G = 5
+  CHECK(colH(g) - s.hcol == doctest::Approx(3.0 * hin - 1.0 * hp).epsilon(1e-9));
+  CHECK(c.se.enth_bk_water == doctest::Approx(3.0 * hin - 1.0 * hp).epsilon(1e-9));
+  CHECK(L[1]->tem == s.T[1]);                       // untouched cells keep T
+  CHECK(L[4]->tem == doctest::Approx(s.T[4]));      // donors keep T (water leaves at its own T)
+  CHECK(L[0]->tem > s.T[0]);                        // warm water warms the receiving cell
+  CHECK(fabs(c.se.enth_rm_water) > 0.0);            // fixed-T result was not conservative
+  CHECK(c.se.enth_remap_fallbacks == 0);
+}
+
+TEST_CASE("Stage C2: snowfall that melts on warm ground takes its latent heat from the soil") {
+  Col c(5.0, 0.0);
+  Soil_Env::EnthSnap s; c.se.enthSnap(s);
+  c.se.enthRemapSnowCore(s, -2.0, 0.0, 4.0);   // 4 kg snowfall at -2 C melts on 5 C ground
+  const double hsf = SHCICE * -2.0 - LHFUS;
+  CHECK(colH(c.col.g) - s.hcol == doctest::Approx(4.0 * hsf).epsilon(1e-9));
+  CHECK(c.se.enth_bk_snow == doctest::Approx(4.0 * hsf).epsilon(1e-9));
+  CHECK(c.col.g.toplayer->tem < 5.0);
+}
+
+TEST_CASE("Stage C2: no change in the window books nothing") {
+  Col c(-3.0, 0.5);
+  Soil_Env::EnthSnap s; c.se.enthSnap(s);
+  c.se.enthRemapWaterCore(s, 0.0, 0.0);
+  c.se.enthRemapSnowCore(s, -10.0, 0.0, 0.0);
+  CHECK(c.se.enth_bk_water == 0.0); CHECK(c.se.enth_rm_water == 0.0);
+  CHECK(fabs(c.se.enth_bk_snow) < 1e-9); CHECK(fabs(c.se.enth_rm_snow) < 1e-9);
+  CHECK(colH(c.col.g) == doctest::Approx(s.hcol).epsilon(1e-15));
+}
+
+}

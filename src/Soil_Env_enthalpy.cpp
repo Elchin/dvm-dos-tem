@@ -295,6 +295,8 @@ void Soil_Env::updateDailyGroundT_enthalpy(const double tsurface) {
     q.unattr = (hraw - enth_h_last) - (q.bsnow + q.bwater + q.blayer + q.bfire);
   }
   enth_bk_snow = enth_bk_water = enth_bk_layer = enth_bk_fire = 0.0;
+  q.rsnow = enth_rm_snow; q.rwater = enth_rm_water; q.wlayer = enth_wk_layer; q.remapfb = enth_remap_fallbacks;
+  enth_rm_snow = enth_rm_water = enth_wk_layer = 0.0;
   stefan.initpce();
   const double qmelt = enthMeltSource(tsurface);
   enthalpyThermalStep(tsurface, qmelt, q);
@@ -307,4 +309,117 @@ void Soil_Env::updateDailyGroundT_enthalpy(const double tsurface) {
   updateDailySoilThermal4Growth(ground->fstsoill, tsurface);
   updateLayerStateAfterThermal(ground->fstsoill, ground->lstsoill, ground->botlayer);
   retrieveDailyFronts();
+}
+
+// ---------------------------------------------------------------------------------------------
+// Stage C2: energy-conserving remap of the snow and soil-water windows (design section 10).
+// The modules move mass at fixed T; here every moved kg carries its enthalpy, mass that enters or
+// leaves the column carries a physically defined enthalpy, and the cell temperatures are set from
+// the resulting H at the module's liq/ice (H = C T - ice L is linear in T at fixed liq/ice, so this
+// is exact; the next thermal step equilibrates onto the curve conserving H).
+void Soil_Env::enthSnap(EnthSnap& s) const {
+  s = EnthSnap();
+  for (Layer* l = ground->toplayer; l != NULL; l = l->nextl) {
+    s.L.push_back(l); s.snow.push_back(l->isSnow ? 1 : 0); s.T.push_back(l->tem);
+    s.liq.push_back(fmax(l->liq, 0.0)); s.ice.push_back(fmax(l->ice, 0.0)); s.H.push_back(enthLayerH(l));
+  }
+  s.hcol = columnEnthalpyE();
+  s.topsnow = (ground->toplayer != NULL && ground->toplayer->isSnow);
+  s.ttop = (ground->toplayer != NULL) ? ground->toplayer->tem : 0.0;
+}
+
+void Soil_Env::enthSetT(Layer* l, double h) {
+  const double liq = fmax(l->liq, 0.0), ice = fmax(l->ice, 0.0);
+  const double C = enthLayerCs(l) + liq * SHCLIQ + ice * SHCICE;
+  if (C > 0.0) { l->tem = (h + ice * LHFUS) / C; }
+}
+
+double Soil_Env::columnWaterE() const {
+  double w = 0.0;
+  for (Layer* l = ground->toplayer; l != NULL; l = l->nextl) {
+    if (!l->isRock) { w += fmax(l->liq, 0.0) + fmax(l->ice, 0.0); }
+  }
+  return w;
+}
+
+void Soil_Env::enthRemapWaterCore(const EnthSnap& s, double infil_kg, double h_in) {
+  const double hfix = columnEnthalpyE();
+  std::vector<Layer*> now;
+  for (Layer* l = ground->toplayer; l != NULL; l = l->nextl) { now.push_back(l); }
+  if (now != s.L) {   // layer structure changed inside the window: keep the fixed-T result, book it
+    enth_remap_fallbacks++; enth_bk_water += hfix - s.hcol; return;
+  }
+  const int n = (int)now.size();
+  std::vector<double> lossE(n, 0.0), gain(n, 0.0);
+  double I = fmax(infil_kg, 0.0), P = I, E = I * h_in, G = 0.0;
+  for (int i = 0; i < n; ++i) {
+    Layer* l = now[i];
+    if (l->isRock) { continue; }
+    const double dl = fmax(l->liq, 0.0) - s.liq[i], di = fmax(l->ice, 0.0) - s.ice[i];
+    if (dl < 0.0) { lossE[i] += -dl * SHCLIQ * s.T[i]; P += -dl; }
+    if (di < 0.0) { lossE[i] += -di * (SHCICE * s.T[i] - LHFUS); P += -di; }
+    gain[i] = fmax(dl, 0.0) + fmax(di, 0.0);
+    G += gain[i]; E += lossE[i];
+  }
+  if (G > P) { const double x = G - P; P += x; E += x * h_in; I += x; }  // unreported inflow
+  const double hp = (P > 0.0) ? E / P : h_in;     // mixed specific enthalpy of the moved water
+  const double out = P - G;                        // drainage + runoff + ET leaving the column
+  for (int i = 0; i < n; ++i) {
+    if (lossE[i] == 0.0 && gain[i] == 0.0) { continue; }
+    enthSetT(now[i], s.H[i] - lossE[i] + gain[i] * hp);
+  }
+  const double phys = I * h_in - out * hp;
+  const double hnew = columnEnthalpyE();
+  enth_bk_water += hnew - s.hcol;            // = phys up to round-off
+  enth_rm_water += hnew - hfix;
+  (void)phys;
+}
+
+void Soil_Env::enthRemapWater(const EnthSnap& s) {
+  const double rnth = fmax((ed->d_v2g.rthfl + ed->d_v2g.rdrip) + (1.0 - cd->m_vegd.fpcsum) * ed->d_a2l.rnfl, 0.0);
+  const double melt = fmax(ed->d_snw2soi.melt, 0.0);
+  const double frain = (rnth + melt > 0.0) ? rnth / (rnth + melt) : 0.0;
+  // rain at max(Tair, 0 C); snow melt and ponded water at 0 C (liquid reference: h = 0)
+  const double h_in = SHCLIQ * fmax(ed->d_atms.ta, 0.0) * frain;
+  enthRemapWaterCore(s, ed->d_soi2l.qinfl, h_in);
+}
+
+void Soil_Env::enthRemapSnowCore(const EnthSnap& s, double tsurface, double sublim_kg, double melt_kg) {
+  const double hfix = columnEnthalpyE();
+  double Mb = 0.0, Ma = 0.0;
+  for (size_t i = 0; i < s.L.size(); ++i) { if (s.snow[i]) { Mb += s.liq[i] + s.ice[i]; } }
+  for (Layer* l = ground->toplayer; l != NULL; l = l->nextl) {
+    if (l->isSnow) { Ma += fmax(l->liq, 0.0) + fmax(l->ice, 0.0); }
+  }
+  const double h_sf = SHCICE * fmin(tsurface, 0.0) - LHFUS;   // new snow: ice at min(Ts, 0 C)
+  const bool direct = (!s.topsnow && s.ttop > 0.01);          // Snow_Env: snowfall melts on warm ground
+  const double subl = fmax(sublim_kg, 0.0), melt = fmax(melt_kg, 0.0);
+  double phys;
+  if (direct) {
+    phys = melt * h_sf;   // ice in, melt water out at 0 C: the latent heat comes from the ground
+  } else {
+    const double msf = (Ma - Mb) + subl + melt;                // snow that entered the cells
+    const double h_sub = SHCICE * fmin(s.topsnow ? s.ttop : tsurface, 0.0) - LHFUS;
+    phys = msf * h_sf - subl * h_sub;                          // melt water leaves at 0 C (h = 0)
+  }
+  const double delta = (s.hcol + phys) - hfix;
+  double C = 0.0;
+  for (Layer* l = ground->toplayer; l != NULL; l = l->nextl) {
+    if (l->isSnow) { C += fmax(l->liq, 0.0) * SHCLIQ + fmax(l->ice, 0.0) * SHCICE; }
+  }
+  if (C > 0.0) {
+    const double dT = delta / C;
+    for (Layer* l = ground->toplayer; l != NULL; l = l->nextl) { if (l->isSnow) { l->tem += dT; } }
+  } else {
+    Layer* t = (ground->fstsoill != NULL) ? ground->fstsoill : ground->toplayer;
+    if (t != NULL) { enthSetT(t, enthLayerH(t) + delta); }
+  }
+  const double hnew = columnEnthalpyE();
+  enth_bk_snow += hnew - s.hcol;             // = phys up to round-off
+  enth_rm_snow += hnew - hfix;
+}
+
+void Soil_Env::enthRemapSnow(const EnthSnap& s, const double tdrv) {
+  const double tsurface = ground->seb_on ? ground->seb_ts : tdrv * ed->d_soid.nfactor;   // as Snow_Env
+  enthRemapSnowCore(s, tsurface, ed->d_snw2a.sublim, ed->d_snw2soi.melt);
 }

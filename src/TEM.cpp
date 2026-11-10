@@ -166,6 +166,7 @@ int main(int argc, char* argv[]){
 
   BOOST_LOG_SEV(glg, info) << "Creating a ModelData object based on settings in the control file";
   ModelData modeldata(controldata);
+  RestartData::thermal_solver_expected = modeldata.thermal_solver; // Stage C2
 
   BOOST_LOG_SEV(glg, info) << "Update model settings based on command line flags/options...";
   modeldata.update(args);
@@ -321,23 +322,23 @@ int ntasks = 1;
   BOOST_LOG_SEV(glg, info) << "Creating restart files for stages to be run";
   if(args->get_pr_yrs() > 0){
     BOOST_LOG_SEV(glg, info) << "Creating empty PR restart file";
-    RestartData::create_empty_file(pr_restart_fname, num_rows, num_cols);
+    RestartData::create_empty_file(pr_restart_fname, num_rows, num_cols, modeldata.thermal_solver);
   }
   if(args->get_eq_yrs() > 0){
     BOOST_LOG_SEV(glg, info) << "Creating empty EQ restart file";
-    RestartData::create_empty_file(eq_restart_fname, num_rows, num_cols);
+    RestartData::create_empty_file(eq_restart_fname, num_rows, num_cols, modeldata.thermal_solver);
   }
   if(args->get_sp_yrs() > 0){
     BOOST_LOG_SEV(glg, info) << "Creating empty SP restart file";
-    RestartData::create_empty_file(sp_restart_fname, num_rows, num_cols);
+    RestartData::create_empty_file(sp_restart_fname, num_rows, num_cols, modeldata.thermal_solver);
   }
   if(args->get_tr_yrs() > 0){
     BOOST_LOG_SEV(glg, info) << "Creating empty TR restart file";
-    RestartData::create_empty_file(tr_restart_fname, num_rows, num_cols);
+    RestartData::create_empty_file(tr_restart_fname, num_rows, num_cols, modeldata.thermal_solver);
   }
   if(args->get_sc_yrs() > 0){
     BOOST_LOG_SEV(glg, info) << "Creating empty SC restart file";
-    RestartData::create_empty_file(sc_restart_fname, num_rows, num_cols);
+    RestartData::create_empty_file(sc_restart_fname, num_rows, num_cols, modeldata.thermal_solver);
   }
 
   // Create empty run status file

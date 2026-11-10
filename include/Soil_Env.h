@@ -45,6 +45,15 @@ struct EnergyDiag {
   //  resday full-day residual = res + equil + unattr (pass/fail <= 1e-6 W/m2 in the harness)
   double src = 0.0, clip = 0.0, init = 0.0, equil = 0.0, bsnow = 0.0, bwater = 0.0, blayer = 0.0,
          bfire = 0.0, unattr = 0.0, resday = 0.0;
+  // Stage C2 (energy-conserving remap): bsnow and bwater are the PHYSICAL boundary enthalpy of the
+  //  snow and soil-water windows (snowfall in as ice at min(Ts,0), sublimation out at the top snow T,
+  //  melt water out at 0 C; infiltration in at max(Tair,0) for rain / 0 C for melt, drainage, runoff
+  //  and ET out at the mixed enthalpy of the moved water). rsnow, rwater: correction the remap
+  //  applied relative to the fixed-T module result (= the energy the legacy fixed-T moves would
+  //  have created, + = the module result was too cold). wlayer: water mass change (kg m-2) of the
+  //  monthly layer/BGC window (should be 0). remapfb: water windows that fell back to booking.
+  double rsnow = 0.0, rwater = 0.0, wlayer = 0.0;
+  long remapfb = 0;
   int solves = 0, fallbacks = 0, enth = 0;
 };
 
@@ -131,6 +140,23 @@ public:
   long enth_fallbacks = 0;           // steps that needed dt halving (non-convergence)
   long enth_failures = 0;            // steps still not converged after halving
   double enth_init_maxdliq = 0.0;    // max |liq change| of the switch-on projection (kg m-2)
+  // Stage C2: energy-conserving remap of the non-thermal windows (thermal_solver 1 only)
+  struct EnthSnap {
+    std::vector<Layer*> L; std::vector<int> snow; std::vector<double> T, liq, ice, H;
+    double hcol = 0.0, ttop = 0.0; bool topsnow = false;
+  };
+  void enthSnap(EnthSnap& s) const;
+  // soil water window: mass moved between cells carries its enthalpy (pool mixing), infiltration
+  // enters at h_in (J/kg), the excess leaves at the pool enthalpy; T set from H at fixed liq/ice
+  void enthRemapWaterCore(const EnthSnap& s, double infil_kg, double h_in);
+  void enthRemapWater(const EnthSnap& s);                  // reads ed (qinfl, rain/melt, Tair)
+  // snow window: physical boundary terms, correction spread over the snow cells by heat capacity
+  void enthRemapSnowCore(const EnthSnap& s, double tsurface, double sublim_kg, double melt_kg);
+  void enthRemapSnow(const EnthSnap& s, const double tdrv); // reads ed (sublim, melt, n-factor)
+  static void enthSetT(Layer* l, double h);                // T from H at fixed liq/ice (exact)
+  double columnWaterE() const;                             // liq + ice of all non-rock cells (kg m-2)
+  double enth_rm_snow = 0.0, enth_rm_water = 0.0, enth_wk_layer = 0.0;
+  long enth_remap_fallbacks = 0;
   enthalpy::ColumnSolver enth_solver;
   // enthalpy of one layer as used by the enthalpy solver (J m-2): Cs*T + liq*c_w*T + ice*(c_i*T - L_f),
   // Cs = vhcsolid*(1-poro)*dz (soil), vhcsolid*dz (rock), 0 (snow)
