@@ -14,7 +14,7 @@
 | Freezing curve | Per layer, selected by `thermal_sfcc`. **Production: 1 = Schaefer & Jafarov (2016) power law** (decision D1), taken from `Soil_Bgc::sjLayerPhi` (texture and organic-fraction dependent, b = −0.3/−0.5/−0.9/−1.0), with a linear ramp over [−ε, 0] (ε = 0.01 °C, legacy `zerodegc`) to make it continuous at 0 °C, and a floor at `minliq`. **0 = free water** with the same ramp, kept as an option and for verification (Katzenelson cross-check, legacy-like comparisons). Snow and rock always use free water (rock has no water). |
 | Conductivity | Cell λ is a geometric blend of the existing frozen and unfrozen layer conductivities, weighted by ice fraction. Faces use the **harmonic (series) mean** (D2); Tubini's max rule is an optional, documented fallback, default off. λ is lagged at the start of the step, with optional Picard updates. |
 | BCs | Top: the same Robin conductance the legacy solver and the SEB already use, Λ_top = 1/(1/100 + ½dz₁/λ₁) to T_s (n-factor or SEB skin temperature). Bottom: zero flux at the base of the rock column (≈ 50 m of rock below the soil), with a geothermal flux option: zero (default), one value, or a spatial map (D4). |
-| Time step | One daily backward-Euler step by default (`thermal_substeps` = 1). There is no adaptive step cutting, because NCZ converges for any Δt. Tolerance is \|r_i\| < 1e-3 J m⁻² per cell, so column closure is ≤ 4e-7 W m⁻². |
+| Time step | Four backward-Euler steps per day by default when `thermal_solver` = 1 (`thermal_substeps` = 4; Elchin, 2026-11-10). There is no adaptive step cutting, because NCZ converges for any Δt. Tolerance is a per-day budget (see §15d). |
 | Fronts and ALD | **Diagnostic only.** They are reconstructed from the enthalpy/ice profile into the existing `frontsz`/`frontstype`, `frozen`, `frozenfrac` and `ald`/`alc` fields, so downstream code reads the same variables. |
 | Remap | Layer split, merge, burn, carbon-driven thickness change and snow construction all go through one `EnthalpyRemap` helper. It **conserves H** for rearrangements and books ΔH explicitly for mass that enters or leaves. |
 | Switch | `model_settings.thermal_solver`: 0 = legacy (default), 1 = enthalpy. With 0 the legacy code path is untouched, verified bit-identical by md5 in the harness. |
@@ -132,7 +132,7 @@ For T < −ε this is **identical to the BGC curve**, so thermal liquid water an
 **Top.** T_s is the value `updateDailyGroundT` already computes: `tdrv·nfactor`, or the SEB skin temperature when `seb_scheme > 0` (Soil_Env.cpp:267–289). Two legacy special cases change:
 
 - `meltsnow → T_top = 0` (TemperatureUpdator.cpp:141) is **dropped** under the enthalpy solver (D3; legacy unchanged). Melting is resolved by the snow cells' own enthalpy.
-- The `nstep = 24` rule for an abrupt surface-state change (Soil_Env.cpp:293–300) is replaced by `thermal_substeps` (default 1). The legacy rule existed only to keep the front logic stable.
+- The `nstep = 24` rule for an abrupt surface-state change (Soil_Env.cpp:293–300) is replaced by `thermal_substeps` (default 4 when `thermal_solver` = 1; Elchin, 2026-11-10). The legacy rule existed only to keep the front logic stable.
 
 **Bottom.** Prescribed flux at the rock base: `ROCKTHICK` totals 50 m, so about 55 m in all. Per D4, `model_settings.geothermal_flux_mode`: 0 = zero flux (default, the legacy behaviour, `gflx = 0.0`, TemperatureUpdator.cpp:171); 1 = one value `geothermal_flux` [W m⁻²]; 2 = spatial map, read per cell from a NetCDF input `IO.geothermal_flux_file` (variable `geothermal_flux`, W m⁻², same grid as the run mask; FATAL if missing or not finite). The solver takes it as `BC::q_bot`.
 
@@ -150,7 +150,7 @@ For T < −ε this is **identical to the BGC curve**, so thermal liquid water an
 
 ## 7. Time step and convergence
 
-- Δt = 86400 s / `thermal_substeps` (1, 2, 4, 8 or 24; default 1). The nonlinear system is solved once per substep.
+- Δt = 86400 s / `thermal_substeps` (1, 2, 4, 8, 12, 24 or 48; default 4 when `thermal_solver` = 1; Elchin, 2026-11-10). The nonlinear system is solved once per substep.
 - **NCZ loop** (Tubini Eqs. 21–26, App. B), per substep:
   1. Assemble A and b from λ(T^n) and the BCs.
   2. Initial guess T^0 = min(T^n, T\*) per cell. Tubini §3.2 prescribes an initial guess on the convex side of T\*, which is 0⁻ here.
@@ -229,7 +229,7 @@ One helper owns every change to cell content outside the thermal solve. Each cal
 "model_settings": {
   "thermal_solver": 0,       // 0 legacy Stefan + CN (default) | 1 enthalpy NCZ
   "thermal_sfcc": 1,         // 1 only: 1 SJ2016 power law (+ramp, production) | 0 free water+ramp
-  "thermal_substeps": 1,     // 1 only: 1,2,4,8,24
+  "thermal_substeps": 4,     // 1 only: 1,2,4,8,12,24,48 (default 4 when thermal_solver=1; Elchin, 2026-11-10)
   "thermal_k_picard": 0,     // 1 only: extra conductivity passes
   "thermal_nl_solver": 0,    // 1 only: 0 NCZ | 1 Katzenelson (sfcc 0 only; verification)
   "thermal_face_mode": 0,    // 1 only: 0 harmonic (default) | 1 Tubini max rule (fallback)
@@ -571,7 +571,7 @@ Tool `staged/subtab.py`. Monthly soil T statistics over main years 1–40 (befor
 - The one systematic signal is TVC with 1 step: 0.4–0.75 °C warmer at 0.2–1 m than the reference. 4 steps is within 0.07 °C of the reference at TVC (HPC: all step counts within 0.3 °C).
 - Late in the TVC Warming run (years 50–75) ALD deepens to 0.9–1.3 m in the 2-, 8- and 24-step runs and less (0.5–0.9 m) in the 1- and 4-step runs. This is a threshold response of the warming case to small perturbations, not a convergence trend.
 - Cost: +6 % (2), +17 % (4), +28–39 % (8), +106–111 % (24) wall time per case; with 4 sub-steps the -O2 model is still faster than legacy (21 vs 23 s).
-- Recommendation: `thermal_substeps = 4` for calibration and production runs with `thermal_solver = 1` (needs Elchin's OK; the key default stays 1, so outputs do not change until a config sets it).
+- Recommendation: `thermal_substeps = 4` for calibration and production runs with `thermal_solver = 1`. Elchin approved this as the code default on 2026-11-10 (his words: “Yes, make 4 sub-steps the default”). An explicit config value still overrides it. See §15e.
 
 ### D3. Root cause of the integrator safety-net increase
 Diagnostics with `soil_giveup_diag = 1` (v5n, default off) on HPC_Warming_nfeed (calib8 dc0, calib8 dc1, prod dc1), plus `soil_giveup_retry = 1` (v5n G2, default off). Tools `staged/gd.py`, `staged/gd2.py`.
@@ -654,6 +654,15 @@ How to read the table:
   - (A) the legacy rule is unchanged with thermal_solver 0;
   - (B) the tolerance is restored after the step, and the residual is ≤ cells × tol at 1/4/12/24/48 sub-steps.
 - `thermal_substeps` now also accepts 12 and 48 (validation only).
+
+## 15e. Default `thermal_substeps` is 4 (Elchin, 2026-11-10)
+
+Elchin approved making 4 sub-steps the default (his words, 2026-11-10: “Yes, make 4 sub-steps the default”), following the Stage D / post-fix recommendation in §15c D2 and the rerun on this branch.
+
+- When `thermal_solver = 1` and `thermal_substeps` is absent, the code now uses 4 (was 1). An explicit value in the config still overrides it (1, 2, 4, 8, 12, 24 or 48).
+- When `thermal_solver = 0`, the key must stay absent or 1 (same FATAL rule as before). The constructor / unconfigured `ModelData` default remains 1, because that object is the legacy solver.
+- The shipped `config/config.js` template documents the default in a comment. The active template leaves `thermal_solver` unset (legacy 0), so an active `"thermal_substeps": 4` would be FATAL.
+- Checks (this change, local only, nothing pushed): `thermal_solver = 0` output on `dc0_calib8` is md5 / bit-identical to `7c5e4759`; `thermal_solver = 1` with the key absent is bit-identical to an explicit `thermal_substeps = 4` run on that old binary; an explicit 1 still matches the old 1-step result. Unit tests include a default-is-4 case; the known xfail assertions are unchanged.
 
 ## 16. Risks and calibration impact
 

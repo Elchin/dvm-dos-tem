@@ -396,8 +396,12 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     Json::Value ms = controldata["model_settings"];
     Json::Value v_solver = ms.get("thermal_solver", 0), v_sfcc = ms.get("thermal_sfcc", 1),
                 v_face = ms.get("thermal_face_mode", 0), v_nl = ms.get("thermal_nl_solver", 0),
-                v_sub = ms.get("thermal_substeps", 1), v_gm = ms.get("geothermal_flux_mode", 0),
+                v_gm = ms.get("geothermal_flux_mode", 0),
                 v_gf = ms.get("geothermal_flux", 0.0);
+    // Default is 4 only with thermal_solver = 1 (Elchin, 2026-11-10). With solver 0 the
+    // default stays 1, because a non-default solver-1 key with solver 0 is FATAL.
+    const int sub_dflt = (v_solver.isConvertibleTo(Json::intValue) && v_solver.asInt() == 1) ? 4 : 1;
+    Json::Value v_sub = ms.get("thermal_substeps", sub_dflt);
     if (!bnf::valid_int(v_solver, 0, 1) || !bnf::valid_int(v_sfcc, 0, 1) || !bnf::valid_int(v_face, 0, 1)
         || !bnf::valid_int(v_nl, 0, 1) || !bnf::valid_int(v_sub, 1, 48) || !bnf::valid_int(v_gm, 0, 2)
         || !bnf::valid_num(v_gf)) {
@@ -521,7 +525,8 @@ ModelData::ModelData():force_cmt(-1) {
   nv_snow_bury_depth = 0.0;
   energy_diag = 0; // phase 2b energy-closure diagnostic (off)
   thermal_solver = 0; thermal_sfcc = 1; thermal_face_mode = 0; thermal_nl_solver = 0; // Option C (legacy)
-  thermal_substeps = 1; geothermal_flux_mode = 0; geothermal_flux = 0.0; geothermal_flux_file = "";
+  thermal_substeps = 1; // constructor is solver 0; config default is 4 when thermal_solver = 1
+  geothermal_flux_mode = 0; geothermal_flux = 0.0; geothermal_flux_file = "";
   set_envmodule(false);
   set_bgcmodule(false);
   set_dynamic_lai_module(false);

@@ -131,7 +131,12 @@
     "n_nonvasc_extract": 1,             // N3 fix (v5o default 1; 0 = legacy: moss N uptake not extracted from soil)
     "daily_c_split": 0,                 // v5p: statistical daily split of the monthly C fluxes, output only (0 off, 1 on; the *_DS outputs need 1)
     "baseline_start": 1901,  //start year for baseline EQ climate
-    "baseline_end": 1931     //end year for baseline EQ climate
+    "baseline_end": 1931,    //end year for baseline EQ climate
+    // thermal_solver defaults to 0 (legacy Stefan/CN). With thermal_solver = 1,
+    // thermal_substeps defaults to 4 (Elchin, 2026-11-10); allowed 1, 2, 4, 8, 12, 24 or 48.
+    // Do not set thermal_substeps with thermal_solver = 0 (FATAL unless it is 1).
+    // "thermal_solver": 0,
+    // "thermal_substeps": 4
 //    //"dynamic_climate": 0,
 //    //"varied_co2": 0,
 //    //"fire_severity_as_input": 0,    // fire sev. as input or ??

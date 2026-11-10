@@ -47,14 +47,23 @@ TEST_CASE("thermal_solver switches: defaults are legacy; members default off") {
   ModelData md; CHECK(md.thermal_solver == 0); CHECK(md.thermal_sfcc == 1); CHECK(md.thermal_face_mode == 0);
   CHECK(md.thermal_nl_solver == 0); CHECK(md.thermal_substeps == 1); CHECK(md.geothermal_flux_mode == 0);
   CHECK(md.geothermal_flux == 0.0);
-  ModelData mj(ms({})); CHECK(mj.thermal_solver == 0); CHECK(mj.geothermal_flux_mode == 0);
+  ModelData mj(ms({})); CHECK(mj.thermal_solver == 0); CHECK(mj.thermal_substeps == 1); CHECK(mj.geothermal_flux_mode == 0);
   Soil_Env se; CHECK(se.thermal_solver == 0); CHECK(se.geothermal_flux_Wm2 == 0.0);
   Snow_Env sn; CHECK(sn.thermal_solver == 0);
   Ground g; CHECK(g.enthalpy_remap == 0);
 }
 
+TEST_CASE("thermal_substeps default is 4 when thermal_solver is 1 and the key is absent") {
+  CHECK(ModelData(ms({{"thermal_solver", 1}})).thermal_substeps == 4);
+  CHECK(ModelData(ms({{"thermal_solver", 1}, {"thermal_substeps", 1}})).thermal_substeps == 1);
+  CHECK(ModelData(ms({{"thermal_solver", 1}, {"thermal_substeps", 8}})).thermal_substeps == 8);
+  CHECK(ModelData(ms({})).thermal_substeps == 1);
+  CHECK(ModelData(ms({{"thermal_solver", 0}})).thermal_substeps == 1);
+}
+
 TEST_CASE("thermal_solver switches: valid combinations parse, invalid ones are FATAL") {
   CHECK(ModelData(ms({{"thermal_solver", 1}})).thermal_solver == 1);
+  CHECK(ModelData(ms({{"thermal_solver", 1}})).thermal_substeps == 4);
   ModelData a(ms({{"thermal_solver", 1}, {"thermal_sfcc", 0}, {"thermal_face_mode", 1}, {"thermal_substeps", 4},
                   {"geothermal_flux_mode", 1}, {"geothermal_flux", 0.06}}));
   CHECK(a.thermal_sfcc == 0); CHECK(a.thermal_face_mode == 1); CHECK(a.thermal_substeps == 4);
