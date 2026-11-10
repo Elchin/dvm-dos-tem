@@ -332,6 +332,17 @@ void Cohort::initialize_state_parameters() {
   soilenv.seb_tran_frac = md->seb_tran_frac;
   soilenv.seb_pres      = md->seb_pres;
   SnowLayer::snow_tc_form = md->seb_snow_tc;
+  ground.snow_scheme = md->snow_scheme;               // snow classes (default 0 = legacy)
+  if (md->snow_scheme == 1) {
+    std::string f = md->snow_class_file.empty() ? md->parameter_dir + "snow_classes.json" : md->snow_class_file;
+    std::string err;
+    if (!snowclass::load(f, chtlu.cmtcode, md->snow_class_override, ground.snowcls, err)) {
+      std::cerr << "FATAL: snow_scheme = 1: " << err << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    std::cerr << "snow_scheme=1 " << chtlu.cmtcode << " class=" << ground.snowcls.name
+              << " k_dh=" << ground.snowcls.k_dh << " wind_term=" << ground.snowcls.wind << " file=" << f << std::endl;
+  }
   soilenv.richards_infil_fix = md->richards_infil_fix; // Fix B2 (v5k)
   soilenv.richards.dt_fix = md->richards_dt_fix;       // bug R1 (default 0 = legacy)
   soilbgc.n_rootless_fix = md->n_rootless_fix;         // Fix N1 (v5k)
@@ -860,8 +871,48 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
     { // Option C (thermal_solver 1): book the enthalpy change of the snow module
       Soil_Env::EnthSnap es;   // Stage C2: energy-conserving remap of the snow window
       if (md->thermal_solver == 1) { soilenv.enthSnap(es); }
+      if (md->snow_scheme == 1) {   // snow classes: today's air T and wind for the new-snow density
+        ground.snowcls_tair = edall->d_atms.ta;
+        if (md->snow_class_wind >= 0.0) {
+          ground.snowcls_wind = md->snow_class_wind;
+        } else if (climate.seb_wind_from_file && edall->seb_wind >= 0.0) {
+          ground.snowcls_wind = edall->seb_wind;
+        } else {
+          ground.snowcls_wind = 0.0;
+          if (!snowcls_wind_warned) {
+            std::cerr << "WARNING: snow_scheme = 1 but no daily wind in the forcing: wind term of the "
+                      << "new-snow density off (u = 0); set model_settings.snow_class_wind to override" << std::endl;
+            snowcls_wind_warned = true;
+          }
+        }
+      }
       snowenv.updateDailyM(tdrv);
       if (md->thermal_solver == 1) { soilenv.enthRemapSnow(es, tdrv); }
+    }
+    if (md->snow_diag > 0) { // snow_diag: daily snowpack diagnostics (output only; any snow_scheme)
+      static long snw_day = 0;
+      std::ofstream nf((md->output_dir + "snow_daily.csv").c_str(), std::ios::app);
+      if (snw_day == 0) {
+        nf << "day,doy,ta,wind,nlay,depth,swe,rho_bulk,k_bulk,rho_top,rho_bot,fdh_bot,k_top,k_bot,t_top,t_bot\n";
+      }
+      int n = 0; double D = 0., W = 0., R = 0.;
+      Layer* top = NULL; Layer* bot = NULL;
+      for (Layer* l = ground.toplayer; l != NULL && l->isSnow; l = l->nextl) {
+        const double k = l->getFrzThermCond();
+        n++; D += l->dz; W += l->ice; if (k > 0.) { R += l->dz / k; }
+        if (top == NULL) { top = l; }
+        bot = l;
+      }
+      nf << snw_day << "," << doy << "," << edall->d_atms.ta << "," << (md->snow_scheme == 1 ? ground.snowcls_wind : edall->seb_wind)
+         << "," << n << "," << D << "," << W << "," << (D > 0. ? W / D : 0.) << "," << (R > 0. ? D / R : 0.);
+      if (n > 0) {
+        nf << "," << top->rho << "," << bot->rho << "," << dynamic_cast<SnowLayer*>(bot)->fdh << ","
+           << top->getFrzThermCond() << "," << bot->getFrzThermCond() << "," << top->tem << "," << bot->tem;
+      } else {
+        nf << ",,,,,,,";
+      }
+      nf << "\n";
+      snw_day++;
     }
     //Capture daily snow water equivalent and thickness for NetCDF output
     edall->daily_swesum[id] = edall->d_snws.swesum;
@@ -1676,6 +1727,7 @@ void Cohort::set_state_from_restartdata() {
   veg.set_state_from_restartdata(this->restartdata);
   ground.set_state_from_restartdata(&cd.d_snow, &cd.m_soil, this->restartdata);
   snowenv.set_state_from_restartdata(this->restartdata);
+  if (md->snow_scheme == 1) { ground.stratifySnowLayers(false); } // depth-hoar k for the first day
   soilenv.set_state_from_restartdata(this->restartdata);
   solprntenv.set_state_from_restartdata(this->restartdata);
   soilbgc.set_state_from_restartdata(this->restartdata);

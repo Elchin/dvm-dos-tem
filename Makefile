@@ -81,6 +81,7 @@ SOURCES= 	src/TEM.o \
 		src/OrganicLayer.o \
 		src/ParentLayer.o \
 		src/SnowLayer.o \
+		src/SnowClass.o \
 		src/SoilLayer.o
 
 OBJECTS =	ArgHandler.o \
@@ -128,6 +129,7 @@ OBJECTS =	ArgHandler.o \
 		OrganicLayer.o \
 		ParentLayer.o \
 		SnowLayer.o \
+		SnowClass.o \
 		SoilLayer.o \
 		TemperatureUpdator.o
 

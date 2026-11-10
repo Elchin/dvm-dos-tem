@@ -941,13 +941,14 @@ bool Ground::constructSnowLayers(const double & dsmass, const double & tdrv) {
                             //      this function
 
   if(snow.extramass>0) { // accumulate
-    double density = snowdimpar.newden;
+    const double newden = newSnowDensity(); // == snowdimpar.newden with snow_scheme 0
+    double density = newden;
     double thick = snow.extramass/density;
 
     if(toplayer->isSnow) {
       SnowLayer * snwl = new SnowLayer();
       snwl->age = 0.;
-      snwl->rho = snowdimpar.newden;
+      snwl->rho = newden;
       snwl->dz = thick;
       snwl->ice = snow.extramass;
       snow.extramass = 0.;
@@ -960,7 +961,7 @@ bool Ground::constructSnowLayers(const double & dsmass, const double & tdrv) {
 
       if(tsno<=0) {
         SnowLayer * snwl = new SnowLayer();
-        snwl->rho    = snowdimpar.newden;
+        snwl->rho    = newden;
         snwl->dz  = thick;
         snwl->ice = snow.extramass;
         snow.extramass = 0.;
@@ -1149,6 +1150,8 @@ STARTCOMBINE:
 void Ground::updateSnowLayerPropertiesDaily() {
   Layer* currl=toplayer;
 
+  if (snow_scheme == 1) { compactSnowLayersClass(); return; } // Schaefer 2009 / Anderson 1976
+
   while(currl!= NULL) {
     if(currl->isSnow) {
       currl->advanceOneDay();
@@ -1161,6 +1164,61 @@ void Ground::updateSnowLayerPropertiesDaily() {
     currl=currl->nextl;
   }
 };
+
+// ---- model_settings.snow_scheme = 1 (see Ground.h, SnowClass.h) ----
+double Ground::newSnowDensity() const {
+  if (snow_scheme != 1) { return snowdimpar.newden; }
+  return snowclass::rhoNew(snowcls, snowcls_tair, snowcls_wind);
+}
+
+// Anderson (1976) thermal aging + overburden compaction, CLM4 form (Oleson et al. 2010, eqs 7.42-7.46),
+// one day (hourly sub-steps). Mass is unchanged; thickness shrinks; rho = ice/dz. Melt keeps the legacy
+// behaviour of removing ice at constant density (dz = ice/rho, i.e. CLM's CR3 melt term: thickness falls
+// in proportion to the ice lost), and wet layers (frozen != 1 after melt) age twice as fast (CLM c2 = 2),
+// so the bulk density rises during melt (Schaefer et al. 2009 Sec 2.3 [14]).
+void Ground::compactSnowLayersClass() {
+  double burden = 0.;
+  for (Layer* currl = toplayer; currl != NULL && currl->isSnow; currl = currl->nextl) {
+    currl->advanceOneDay();
+    SnowLayer* sl = dynamic_cast<SnowLayer*>(currl);
+    if (sl->ice > 0. && sl->dz > 0.) {
+      sl->dz = snowclass::compactDz(sl->dz, sl->ice, sl->tem, burden, sl->frozen != 1, SEC_IN_DAY);
+      sl->rho = sl->ice / sl->dz;
+    }
+    sl->maxice = snowdimpar.denmax * sl->dz;   // as SnowLayer::updateDensity
+    sl->maxliq = sl->maxice;
+    burden += fmax(sl->ice, 0.) + fmax(sl->liq, 0.);
+  }
+}
+
+// Two-layer density stratification (Schaefer et al. 2009 eqs 1-3) superposed on the existing snow
+// layers: layer thicknesses (and so D) are kept; ice is redistributed so that the layers follow the
+// class profile (rho_top over (1-fbot) D, rho_bot over fbot D) with the same total SWE (exact) and the
+// same sum(ice*T) (conservative remap in mass coordinate). fdh/kdh mark the depth-hoar part for k.
+void Ground::stratifySnowLayers(bool redistribute) {
+  std::vector<SnowLayer*> L; std::vector<double> dz, m, t;
+  double M = 0.;
+  for (Layer* currl = toplayer; currl != NULL && currl->isSnow; currl = currl->nextl) {
+    SnowLayer* sl = dynamic_cast<SnowLayer*>(currl);
+    L.push_back(sl); dz.push_back(fmax(sl->dz, 0.)); m.push_back(fmax(sl->ice, 0.)); t.push_back(sl->tem);
+    M += fmax(sl->ice, 0.);
+  }
+  if (L.empty()) { return; }
+  std::vector<double> mn, fdh;
+  snowclass::targetMasses(snowcls, dz, M, mn, fdh);
+  if (redistribute && M > 0.) {
+    std::vector<double> tn = snowclass::remapT(m, t, mn);
+    for (size_t i = 0; i < L.size(); ++i) {
+      L[i]->ice = mn[i];
+      L[i]->tem = tn[i];
+      if (L[i]->dz > 0.) { L[i]->rho = L[i]->ice / L[i]->dz; }
+    }
+  }
+  for (size_t i = 0; i < L.size(); ++i) {
+    L[i]->kdh = snowcls.k_dh;
+    L[i]->fdh = (snowcls.k_dh > 0.) ? fdh[i] : 0.;
+  }
+}
 
 // save double-linked snow structure to 'cd' snow states
 void Ground::retrieveSnowDimension(snwstate_dim * snowdim) {

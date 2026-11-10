@@ -25,6 +25,12 @@ public:
   // 1982 k = 2.9e-6 rho^2 (legacy, default); 1 = Sturm et al. 1997 (k(rho),
   // 156-600 kg/m3; 0.023+0.234 rho below).
   static int snow_tc_form;
+  // model_settings.snow_scheme = 1 (Schaefer et al. 2009 snow classes, see SnowClass.h): fraction of
+  // this layer's thickness inside the bottom depth-hoar layer (0 = none; always 0 with snow_scheme = 0)
+  // and the fixed depth-hoar conductivity (W/m/K; tundra 0.18, taiga 0.072, Sturm et al. 1997).
+  // k = series mix 1/(fdh/kdh + (1-fdh)/k(rho)); fdh = 0 returns the legacy k unchanged.
+  double fdh = 0.;
+  double kdh = -1.;
   // Refs: Sturm et al. 1997, doi:10.3189/S0022143000002781; legacy Goodrich 1982, doi:10.1139/t82-047.
   virtual double getFrzThermCond();//get frozen layer thermal conductivity
   virtual double getUnfThermCond();//get unfrozen layer thermal conductivity

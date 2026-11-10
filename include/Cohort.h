@@ -67,6 +67,7 @@ public :
   
   // new domain
   Climate climate;
+  bool snowcls_wind_warned = false; // snow_scheme = 1: warned once that the forcing has no wind
 
   // processes
   Vegetation_Env vegenv[NUM_PFT];

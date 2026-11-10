@@ -176,6 +176,16 @@ public:
   // richards_dt_fix, OFF by default (0 = legacy): recompute dt_dz when a Richards trial
   // substep is rejected and halved (bug R1, see Richards.h dt_fix). Applies to both thermal solvers.
   int richards_dt_fix;
+  // snow_scheme, default 0 = legacy dvmdostem snow (bit-identical). 1 = Sturm et al. (1995) snow classes
+  // as in SiBCASA (Schaefer et al. 2009, doi:10.1029/2008JF001125), see SnowClass.h / Ground.h.
+  //   snow_class_file: JSON with the class table and the CMT -> class map (default
+  //     <parameter_dir>/snow_classes.json); snow_class_override: force one class for all cohorts
+  //     ("" = use the map); snow_class_wind: < 0 (default) = daily forcing wind when the file has it,
+  //     otherwise 0 m/s with one warning; >= 0 = constant wind (m/s) for the new-snow density.
+  int snow_scheme;
+  std::string snow_class_file, snow_class_override;
+  double snow_class_wind;
+  int snow_diag;   // 1 = write output/snow_daily.csv (diagnostics only, default 0)
   // Refs: at each declaration named above (Climate.h, Soil_Env.h, Stefan.h, Snow_Env.h) and in docs/daily-mode-REFERENCES.md.
   // Fix C1 (v5k), OFF by default (0 = legacy): soil integrator NMIN error
   // tolerance, see Integrator.h (soil_nmin_tol_fix).

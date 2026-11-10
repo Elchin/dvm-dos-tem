@@ -90,6 +90,7 @@ void Snow_Env::updateDailyM(const double & tdrv) {
 
   // after snow layer adding/removal/adjusting, needs updating thickness
   ground->updateSnowLayerPropertiesDaily();   // each layer
+  if (ground->snow_scheme == 1) { ground->stratifySnowLayers(true); } // Schaefer 2009 two-layer profile
   ground->updateSnowHorizon();                // all snow horizon
   ground->checkWaterValidity();
   updateSnowEd(ground->toplayer);

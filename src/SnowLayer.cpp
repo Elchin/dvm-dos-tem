@@ -2,6 +2,7 @@
  *
  */
 #include "../include/SnowLayer.h"
+#include "../include/SnowClass.h"
 
 #include "../include/TEMLogger.h"
 extern src::severity_logger< severity_level > glg;
@@ -31,6 +32,8 @@ void SnowLayer::clone(SnowLayer* sl) {
   dz  = sl->dz;
   age = sl->age;
   rho = sl->rho;
+  fdh = sl->fdh; // snow_scheme = 1 (0 otherwise)
+  kdh = sl->kdh;
 }
 
 void SnowLayer::updateDensity(snwpar_dim *snwpar) {
@@ -55,6 +58,7 @@ void SnowLayer::updateThick() {
 // get frozen layer thermal conductivity, according to Jordan 1991
 double SnowLayer::getFrzThermCond() {
   //if (ctype==0){// tundra
+  if (fdh > 0.) { return snowclass::seriesK(fdh, kdh, getThermCond()); } // snow_scheme = 1 depth hoar
   return getThermCond();
   //}else{
   //return getThermCond5Sturm();
@@ -64,6 +68,7 @@ double SnowLayer::getFrzThermCond() {
 // get unfrozen layer thermal conductivity
 double SnowLayer::getUnfThermCond() {
   //if(ctype==0){
+  if (fdh > 0.) { return snowclass::seriesK(fdh, kdh, getThermCond()); } // snow_scheme = 1 depth hoar
   return getThermCond();
   //}else{
   //return getThermCond5Sturm();

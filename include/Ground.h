@@ -5,6 +5,7 @@
 #include <sstream>
 #include <cmath>
 #include <iostream>
+#include "SnowClass.h"
 #include <deque>
 #include <vector>
 using namespace std;
@@ -61,6 +62,18 @@ public :
 
   // dimension parameters
   snwpar_dim snowdimpar;
+  // model_settings.snow_scheme (default 0 = legacy dvmdostem snow, bit-identical). 1 = Sturm et al.
+  // (1995) snow classes as in SiBCASA (Schaefer et al. 2009, doi:10.1029/2008JF001125): new-snow
+  // density from T and wind (eqs 4-7), Anderson (1976)/CLM4 compaction instead of the 4-day relaxation
+  // to snwdenmax, two-layer density stratification (eqs 1-3) superposed on the snow layers (SWE and
+  // sum(ice*T) conserved), fixed depth-hoar k in the bottom layer. See SnowClass.h.
+  int snow_scheme = 0;
+  SnowClassPar snowcls;
+  double snowcls_tair = 0.;   // today's air temperature (C), set by Cohort before Snow_Env::updateDailyM
+  double snowcls_wind = 0.;   // today's wind speed (m/s), idem
+  double newSnowDensity() const;          // snowdimpar.newden (scheme 0) or rho_new (scheme 1)
+  void compactSnowLayersClass();          // scheme 1: Anderson/CLM compaction of each snow layer (1 day)
+  void stratifySnowLayers(bool redistribute); // scheme 1: two-layer profile; false = only set fdh/kdh
   soipar_dim soildimpar;
 
   // layer boundary for each type of horizon
