@@ -697,7 +697,8 @@ arithmetic is the same as before, so results only change on days where heat was 
 Tests: `tests/unit/test_enthalpy_meltout.cpp` (r1 1 Jun 2024 state on a small column, a cascade over two empty cells, an empty cell
 between two snow cells, and the unchanged path); three of the four fail without the fix (res -57.9, -419, -27 J m-2).
 Regression: `tests/regression/check_meltout_r1.sh` re-runs r1 and applies the 1e-6 W m-2 gate (closure.py).
-Open (not changed here): the snow module keeps zero-mass snow layers; removing them belongs in Snow_Env and would also change legacy.
+Open (not changed here): the snow module keeps zero-mass snow layers; removing them belongs in Snow_Env and would also change legacy (done behind a switch in §15h).
+
 
 ## 16. Risks and calibration impact
 
