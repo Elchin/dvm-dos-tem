@@ -216,13 +216,21 @@ void Soil_Env::enthalpyThermalStep(const double tsurface, const double qmelt_Wm2
     const double lq = enthalpy::liq(cells[i], T[i]);
     l->liq = lq; l->ice = fmax(0.0, cells[i].W - lq);
   }
-  // heat of fully melted snow cells (no ice left, T > 0) goes to the cell below (conservative)
+  // heat of fully melted snow cells (no ice left, T > 0) goes to the cell below (conservative).
+  // fix/meltout-closure: the receiver is the next cell that can hold heat. A zero-mass snow cell
+  // (no water, no solid: an emptied snow layer the snow module has not removed yet) has zero heat
+  // capacity, equilibrate() returns T = 0 for it and the heat handed to it was lost (r1 case,
+  // 1 Jun 2024: -57.36 J m-2). Such cells are skipped; with a receiver that has heat capacity
+  // (every other case) the arithmetic is unchanged. Design doc section 15g.
   for (int i = 0; i + 1 < n; ++i) {
     Layer* l = L[i];
     if (!l->isSnow || l->ice > 0.0 || !(l->tem > 0.0)) { continue; }
+    int j = i + 1;
+    while (j < n && !(cells[j].Cs > 0.0 || fmax(L[j]->liq, 0.0) + fmax(L[j]->ice, 0.0) > 0.0)) { ++j; }
+    if (j >= n) { continue; }          // nothing below can hold the heat (not expected): keep it in place
     const double hx = enthLayerH(l);   // = liq c_w T > 0
     l->tem = 0.0;
-    Layer* m = L[i + 1];
+    Layer* m = L[j];
     enthalpy::Cell cm; enthalpyCell(m, cm);
     const double hm = enthalpy::Hstate(cm, m->tem, fmax(m->liq, 0.0), fmax(m->ice, 0.0)) + hx;
     double lq = 0.0, ic = 0.0;
