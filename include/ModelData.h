@@ -173,6 +173,9 @@ public:
   // (svp_ice_fix), Soil_Env.h (richards_infil_fix), Stefan.h (stefan_fronts_fix)
   // and Snow_Env.h (snow_albedo_fix).
   int svp_ice_fix, richards_infil_fix, stefan_fronts_fix, snow_albedo_fix;
+  // richards_dt_fix, OFF by default (0 = legacy): recompute dt_dz when a Richards trial
+  // substep is rejected and halved (bug R1, see Richards.h dt_fix). Applies to both thermal solvers.
+  int richards_dt_fix;
   // Refs: at each declaration named above (Climate.h, Soil_Env.h, Stefan.h, Snow_Env.h) and in docs/daily-mode-REFERENCES.md.
   // Fix C1 (v5k), OFF by default (0 = legacy): soil integrator NMIN error
   // tolerance, see Integrator.h (soil_nmin_tol_fix).

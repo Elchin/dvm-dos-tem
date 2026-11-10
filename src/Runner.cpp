@@ -58,6 +58,8 @@ void Runner::run_years(int start_year, int end_year, const std::string& stage) {
   // Integrator safety-net counters at the start of this stage
   const int sn_start = this->cohort.get_solintegrator().safetynet_count;
   const int vbh_start = this->cohort.get_veg_blackhole_count();
+  const long rr_c0 = this->cohort.soilenv.richards.n_calls, rr_r0 = this->cohort.soilenv.richards.n_rejections,
+             rr_d0 = this->cohort.soilenv.richards.n_reject_calls;
 
   /** YEAR TIMESTEP LOOP */
   BOOST_LOG_NAMED_SCOPE("Y") {
@@ -140,6 +142,11 @@ void Runner::run_years(int start_year, int end_year, const std::string& stage) {
             << " cell(y,x)=(" << this->y << "," << this->x << ")"
             << " soil_safetynet_events=" << sn_n
             << " veg_integrator_giveups=" << vbh_n << std::endl;
+  std::cerr << "Richards substep summary: stage=" << stage
+            << " richards_calls=" << this->cohort.soilenv.richards.n_calls - rr_c0
+            << " richards_rejections=" << this->cohort.soilenv.richards.n_rejections - rr_r0
+            << " richards_reject_days=" << this->cohort.soilenv.richards.n_reject_calls - rr_d0
+            << " richards_dt_fix=" << this->cohort.soilenv.richards.dt_fix << std::endl;
   if (Integrator::soil_giveup_retry == 1 || Integrator::soil_giveup_diag == 1) {  // v5n
     const Integrator& si = this->cohort.get_solintegrator();
     std::cerr << "Soil integrator v5n summary (cumulative over the run): stage=" << stage

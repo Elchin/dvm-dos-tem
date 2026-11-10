@@ -157,6 +157,14 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
   // Fixes B1-B4 (v5k), default 0 = off (legacy)
   svp_ice_fix        = controldata["model_settings"].get("svp_ice_fix", 0).asInt();
   richards_infil_fix = controldata["model_settings"].get("richards_infil_fix", 0).asInt();
+  {
+    Json::Value v = controldata["model_settings"].get("richards_dt_fix", 0);
+    if (!bnf::valid_int(v, 0, 1)) {
+      std::cerr << "FATAL: model_settings.richards_dt_fix must be 0 (legacy, default) or 1 (recompute dt_dz on Richards substep rejection)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    richards_dt_fix = v.asInt();
+  }
   stefan_fronts_fix  = controldata["model_settings"].get("stefan_fronts_fix", 0).asInt();
   snow_albedo_fix    = controldata["model_settings"].get("snow_albedo_fix", 0).asInt();
   // Fix C1 (v5k), default 0 = off (legacy)
@@ -505,6 +513,7 @@ void ModelData::update(ArgHandler const * arghandler) {
 
 
 ModelData::ModelData():force_cmt(-1) {
+  richards_dt_fix = 0; // bug R1 fix (off)
   et_fpc_once_fix = 0; nv_snow_bury_fix = 0; rain_int_lai_fix = 0; nv_rain_surface = 0; // v5l (off)
   n_safetynet_conserve = 0; // v5m L1 (off)
   n_extract_limiter = 0; soil_giveup_retry = 0; soil_giveup_diag = 0; n_extract_tau = 0.2; n_netnmin_rescale_guard = 0; // v5n (off)

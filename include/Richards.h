@@ -33,6 +33,22 @@ public :
   double qevap; // mm/day
   double e_ice; //ice impedance factor (CLM5)
 
+  // model_settings.richards_dt_fix, OFF by default (0 = legacy, bit-identical).
+  // Bug R1: when a trial substep is rejected (max_tridiag_error > toler_upper) and dtsub is
+  // halved, legacy re-solves with the dt_dz = dtsub/dz of the rejected (longer) substep, but
+  // only advances dtdone by the halved dtsub. The accepted deltathetaliq therefore carries the
+  // fluxes of a longer interval, so the day's net flux is applied for more than SEC_IN_DAY
+  // (water is created or destroyed; 3.3 mm/d at 20 mm/d infiltration in the unit test).
+  // 1 = recompute dt_dz from the halved dtsub before every retry, so the tridiagonal system
+  // (computeLHS/computeRHS), the error estimate (fluxNet0) and dtdone use the same dtsub.
+  // Refs: CLM5 tech note (Lawrence et al. 2018) sect. 7.3.3 / CTSM SoilWaterMovementMod
+  // (adaptive time stepping recomputes dt-dependent coefficients each trial).
+  int dt_fix = 0;
+  // Diagnostics only (never affect results): cumulative counts over the object's life.
+  long n_calls = 0;        // update() calls that entered the substep loop
+  long n_rejections = 0;   // rejected trial substeps (dtsub halvings)
+  long n_reject_calls = 0; // update() calls with >= 1 rejection
+
   //Array to hold lateral drainage values for output to file.
   double layer_drain[MAX_RICH_IND];
   double percolation[MAX_RICH_IND];

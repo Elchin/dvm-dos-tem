@@ -120,6 +120,8 @@ void Richards::update(Layer *fstsoill, Layer* bdrainl,
   double dtdone = 0.0; //time completed
   bool continue_iterate = true;
   bool lapack_solver = true; //whether to use the newer LAPACK solver or the old Thomas algorithm
+  n_calls += 1;
+  bool any_reject = false;
 
   while(continue_iterate == true){
     n_substep += 1;
@@ -190,6 +192,15 @@ void Richards::update(Layer *fstsoill, Layer* bdrainl,
       }
       if(max_tridiag_error > toler_upper && dtsub > dtmin){
         dtsub = fmax(dtsub/2, dtmin);//solution no good, halve timestep and start again
+        n_rejections += 1; any_reject = true;
+        if (dt_fix == 1) {
+          // richards_dt_fix = 1: dt_dz is the only dtsub-dependent input of computeLHS/RHS and
+          // fluxNet0; hydraulic properties and fluxes (and their derivatives) are evaluated at the
+          // start-of-substep state and do not depend on dtsub, so they are not recomputed.
+          for(int ind = topind; ind <=drainind+1; ind++){
+            dt_dz[ind] = dtsub / dzmm[ind];
+          }
+        }
       }
       else{try_dtsub = false;}
     } //end of trial timestep
@@ -223,6 +234,7 @@ void Richards::update(Layer *fstsoill, Layer* bdrainl,
     }
     dtsub = fmin(dtsub, delta_t - dtdone); //don't go over delta_t
   } //End of substep loop
+  if (any_reject) n_reject_calls += 1;
   //End of iteration domain
   //Check overall column liq results
   double final_liq = 0.0;

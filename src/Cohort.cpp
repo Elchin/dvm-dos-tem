@@ -333,6 +333,7 @@ void Cohort::initialize_state_parameters() {
   soilenv.seb_pres      = md->seb_pres;
   SnowLayer::snow_tc_form = md->seb_snow_tc;
   soilenv.richards_infil_fix = md->richards_infil_fix; // Fix B2 (v5k)
+  soilenv.richards.dt_fix = md->richards_dt_fix;       // bug R1 (default 0 = legacy)
   soilbgc.n_rootless_fix = md->n_rootless_fix;         // Fix N1 (v5k)
   soilbgc.n_som_move_fix = md->n_som_move_fix;         // Fix N2 (v5k)
   soilbgc.bnfp = md->bnf;                              // v5q BNF (scheme 0 = off)
