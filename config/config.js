@@ -143,6 +143,8 @@
     // "thermal_sfcc": 1,
     // "thermal_substeps": 4,
     // "richards_dt_fix": 1
+    // snow_empty_cleanup defaults to 0 (legacy, bit-identical): 1 removes emptied snow layers
+    // (no ice/liquid, zero thickness) at the end of each day's snow update, both solvers.
 //    //"dynamic_climate": 0,
 //    //"varied_co2": 0,
 //    //"fire_severity_as_input": 0,    // fire sev. as input or ??

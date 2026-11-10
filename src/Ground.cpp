@@ -1147,6 +1147,31 @@ STARTCOMBINE:
   return layerchanged;
 };
 
+bool Ground::removeEmptySnowLayers() {
+  bool changed = false;
+  Layer* l = toplayer;
+  while (l != NULL && l->isSnow) {
+    Layer* nx = l->nextl;
+    if (fabs(l->ice) < SNOW_EMPTY_MASS_EPS && fabs(l->liq) < SNOW_EMPTY_MASS_EPS && fabs(l->dz) <= SNOW_EMPTY_DZ_EPS
+        && nx != NULL) {   // a snow layer always has soil below; never remove the last layer
+      Layer* tgt = (l->prevl != NULL && l->prevl->isSnow) ? l->prevl
+                 : ((nx->isSnow) ? nx : NULL);
+      if (tgt != NULL) {
+        tgt->ice += l->ice; tgt->liq += l->liq; tgt->dz += fmax(l->dz, 0.0);
+      } else {
+        snow.extramass += l->ice + l->liq;
+      }
+      snow_empty_mass += fabs(l->ice) + fabs(l->liq);
+      snow_empty_removed++;
+      removeLayer(l);   // relinks prevl/nextl and moves toplayer if needed
+      changed = true;
+    }
+    l = nx;
+  }
+  if (changed) { snow_empty_days++; updateLayerIndex(); }
+  return changed;
+}
+
 void Ground::updateSnowLayerPropertiesDaily() {
   Layer* currl=toplayer;
 

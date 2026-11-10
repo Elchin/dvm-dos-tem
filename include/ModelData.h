@@ -186,6 +186,11 @@ public:
   std::string snow_class_file, snow_class_override;
   double snow_class_wind;
   int snow_diag;   // 1 = write output/snow_daily.csv (diagnostics only, default 0)
+  // snow_empty_cleanup, OFF by default (0 = legacy, bit-identical): remove emptied snow layers
+  // (ice + liq <= SNOW_EMPTY_MASS_EPS and dz <= SNOW_EMPTY_DZ_EPS) at the end of the daily snow
+  // update, so they never enter the next thermal step (root cause of the r1 1 Jun 2024 melt-out
+  // closure miss, fix/meltout-closure). Applies to both thermal solvers. See Ground.h.
+  int snow_empty_cleanup;
   // Refs: at each declaration named above (Climate.h, Soil_Env.h, Stefan.h, Snow_Env.h) and in docs/daily-mode-REFERENCES.md.
   // Fix C1 (v5k), OFF by default (0 = legacy): soil integrator NMIN error
   // tolerance, see Integrator.h (soil_nmin_tol_fix).

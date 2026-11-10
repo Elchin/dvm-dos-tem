@@ -136,6 +136,23 @@ public :
   bool constructSnowLayers(const double & dsmass, const double & tdrv);
   bool divideSnowLayers();
   bool combineSnowLayers();
+  // snow_empty_cleanup (model_settings, default 0 = legacy): remove snow layers that hold no water
+  // (|ice| < SNOW_EMPTY_MASS_EPS and |liq| < SNOW_EMPTY_MASS_EPS kg m-2, the threshold below which
+  // checkWaterValidity() zeroes ice/liq anyway) and have no thickness (|dz| <= SNOW_EMPTY_DZ_EPS m).
+  // Such layers are left when the thermal step melts a lower snow layer completely while the
+  // layer above keeps ice: constructSnowLayers() only drops empty layers from the top, and
+  // combineSnowLayers() tests the pre-compaction dz (dz -> 0 only in updateThick()), so the layer
+  // reaches the next day's thermal step with zero heat capacity. Any residual mass (<= eps) goes
+  // to the snow layer above (else the one below, else extramass): mass is conserved exactly; it
+  // carries no heat capacity worth booking (< 2e-9 kg m-2). Returns true if a layer was removed
+  // (caller must resortGroundLayers()). Counters are cumulative over the run (diagnostics only).
+  static constexpr double SNOW_EMPTY_MASS_EPS = 1.0e-9;   // kg m-2 (as checkWaterValidity)
+  static constexpr double SNOW_EMPTY_DZ_EPS   = 1.0e-9;   // m
+  bool removeEmptySnowLayers();
+  int snow_empty_cleanup = 0;
+  long snow_empty_removed = 0;      // layers removed
+  long snow_empty_days = 0;         // days with >= 1 removal
+  double snow_empty_mass = 0.0;     // kg m-2 moved to a neighbour / extramass
 
   void updateSnowLayerPropertiesDaily();
   void updateSnowHorizon();

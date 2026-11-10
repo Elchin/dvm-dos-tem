@@ -308,6 +308,7 @@ void Cohort::initialize_state_parameters() {
   soilenv.thermal_substeps  = md->thermal_substeps;
   snowenv.thermal_solver    = md->thermal_solver;
   ground.enthalpy_remap     = (md->thermal_solver == 1) ? 1 : 0;
+  ground.snow_empty_cleanup = md->snow_empty_cleanup;
   soilenv.geothermal_flux_Wm2 = 0.0;
   if (md->geothermal_flux_mode == 1) {
     soilenv.geothermal_flux_Wm2 = md->geothermal_flux;
@@ -886,8 +887,22 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
           }
         }
       }
+      const long sel_n0 = ground.snow_empty_removed;
+      const double sel_m0 = ground.snow_empty_mass;
       snowenv.updateDailyM(tdrv);
       if (md->thermal_solver == 1) { soilenv.enthRemapSnow(es, tdrv); }
+      // snow_empty_cleanup diagnostic (output only, needs energy_diag = 1): days with removals
+      static long sel_day = -1;
+      sel_day++;
+      if (md->snow_empty_cleanup == 1 && md->energy_diag == 1) {
+        std::ofstream sf((md->output_dir + "snow_empty_daily.csv").c_str(), std::ios::app);
+        if (sel_day == 0) { sf << "day,doy,removed,mass,nsnow_after,swe_after\n"; }
+        if (ground.snow_empty_removed > sel_n0) {
+          sf.precision(10);
+          sf << sel_day << "," << doy << "," << (ground.snow_empty_removed - sel_n0) << ","
+             << (ground.snow_empty_mass - sel_m0) << "," << ground.snow.numl << "," << edall->d_snws.swesum << "\n";
+        }
+      }
     }
     if (md->snow_diag > 0) { // snow_diag: daily snowpack diagnostics (output only; any snow_scheme)
       static long snw_day = 0;
