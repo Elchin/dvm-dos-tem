@@ -6,18 +6,18 @@ W=$HOME/tem-dev/esc-work; H=$HOME/tem-dev/esc/tests/regression; CS=$HOME/tem-dev
 while pgrep -f "^bash esc_vm.sh" > /dev/null; do sleep 10; done
 echo "$(date) extra start"; uptime
 mkdir -p $V
-S1='{"thermal_solver":1}'
+S1='{"thermal_solver":1,"richards_dt_fix":1}'
 mkv(){ s=$1; n=$2; shift 2; [ -d $V/$n ] || python3 $T/mk_variant.py $s $V/$n "$@"; }
-mkv $CS/ed_dc0_calib8 ts1s0_dc0 ALL '{"thermal_solver":1,"thermal_sfcc":0}' '{"thermal_solver":1,"thermal_sfcc":0}'
+mkv $CS/ed_dc0_calib8 ts1s0_dc0 ALL '{"thermal_solver":1,"thermal_sfcc":0,"richards_dt_fix":1}' '{"thermal_solver":1,"thermal_sfcc":0,"richards_dt_fix":1}'
 mkv $CS/ed_dc1_prod   ts1_dc1_prod ALL "$S1" "$S1"
 mkv $CS/ed_dc0_calib8 rt_l2e TVC_Warming_nfeed,HPC_Warming_nfeed '{}' "$S1"
 mkv $CS/ed_dc0_calib8 rt_e2l TVC_Warming_nfeed,HPC_Warming_nfeed "$S1" '{"thermal_solver":0}'
-mkv $CS/ed_dc0_calib8 geo1 HPC_Warming_nfeed '{"thermal_solver":1,"geothermal_flux_mode":1,"geothermal_flux":0.06}' '{"thermal_solver":1,"geothermal_flux_mode":1,"geothermal_flux":0.06}'
-mkv $CS/ed_dc0_calib8 geo2 HPC_Warming_nfeed '{"thermal_solver":1,"geothermal_flux_mode":2}' '{"thermal_solver":1,"geothermal_flux_mode":2}' --geomap 0.06
-mkv $CS/ed_dc0_calib8 face1 HPC_Warming_nfeed '{"thermal_solver":1,"thermal_face_mode":1}' '{"thermal_solver":1,"thermal_face_mode":1}'
-mkv $CS/ed_dc0_calib8 sub4 HPC_Warming_nfeed '{"thermal_solver":1,"thermal_substeps":4}' '{"thermal_solver":1,"thermal_substeps":4}'
-mkv $CS/ed_dc0_calib8 katz HPC_Warming_nfeed '{"thermal_solver":1,"thermal_sfcc":0,"thermal_nl_solver":1}' '{"thermal_solver":1,"thermal_sfcc":0,"thermal_nl_solver":1}'
-mkv $CS/ed_dc0_calib8 ts1rf HPC_Warming_nfeed '{"thermal_solver":1,"stefan_front_resist_fix":1}' '{"thermal_solver":1,"stefan_front_resist_fix":1}'
+mkv $CS/ed_dc0_calib8 geo1 HPC_Warming_nfeed '{"thermal_solver":1,"geothermal_flux_mode":1,"geothermal_flux":0.06,"richards_dt_fix":1}' '{"thermal_solver":1,"geothermal_flux_mode":1,"geothermal_flux":0.06,"richards_dt_fix":1}'
+mkv $CS/ed_dc0_calib8 geo2 HPC_Warming_nfeed '{"thermal_solver":1,"geothermal_flux_mode":2,"richards_dt_fix":1}' '{"thermal_solver":1,"geothermal_flux_mode":2,"richards_dt_fix":1}' --geomap 0.06
+mkv $CS/ed_dc0_calib8 face1 HPC_Warming_nfeed '{"thermal_solver":1,"thermal_face_mode":1,"richards_dt_fix":1}' '{"thermal_solver":1,"thermal_face_mode":1,"richards_dt_fix":1}'
+mkv $CS/ed_dc0_calib8 sub4 HPC_Warming_nfeed '{"thermal_solver":1,"thermal_substeps":4,"richards_dt_fix":1}' '{"thermal_solver":1,"thermal_substeps":4,"richards_dt_fix":1}'
+mkv $CS/ed_dc0_calib8 katz HPC_Warming_nfeed '{"thermal_solver":1,"thermal_sfcc":0,"thermal_nl_solver":1,"richards_dt_fix":1}' '{"thermal_solver":1,"thermal_sfcc":0,"thermal_nl_solver":1,"richards_dt_fix":1}'
+mkv $CS/ed_dc0_calib8 ts1rf HPC_Warming_nfeed '{"thermal_solver":1,"stefan_front_resist_fix":1,"richards_dt_fix":1}' '{"thermal_solver":1,"stefan_front_resist_fix":1,"richards_dt_fix":1}'
 jobs_wait(){ while [ $(jobs -r | wc -l) -ge 4 ]; do sleep 2; done; }
 for s in ts1s0_dc0 ts1_dc1_prod rt_l2e rt_e2l geo1 geo2 face1 sub4 katz ts1rf; do
   for c in $(python3 -c "import json;print(' '.join(json.load(open('$V/$s/caseset.json'))['cases']))"); do

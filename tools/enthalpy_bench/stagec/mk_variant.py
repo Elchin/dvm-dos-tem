@@ -1,6 +1,10 @@
 #!/usr/bin/env python3
 """Stage C variant case sets: mk_variant.py SRC DST CASES(comma|ALL) SPIN_MS_JSON MAIN_MS_JSON [--geomap VALUE]
 Copies SRC (prepared case set) to DST, rewrites absolute paths, updates model_settings per stage.
+If an overlay has thermal_solver=1 and does not set richards_dt_fix, richards_dt_fix=1 is written
+(Stage E / new-solver / obs_regression baseline; Elchin, 2026-11-10). Set richards_dt_fix=0
+explicitly to keep the legacy Richards step-halving behaviour. thermal_solver=0 overlays are
+left unchanged (code default 0).
 --geomap writes main/input/geothermal_flux.nc (from run-mask.nc grid, constant VALUE W/m2) into both stages
 and sets IO.geothermal_flux_file. SRC is not modified."""
 import sys, json, shutil, argparse
@@ -12,7 +16,14 @@ a = ap.parse_args(); src = Path(a.src).resolve(); dst = Path(a.dst).resolve(); a
 cs = json.load(open(src / "caseset.json"))
 cases = cs["cases"] if a.cases == "ALL" else a.cases.split(",")
 dst.mkdir(parents=True)
-ms = {"spinup": json.loads(a.spin), "main": json.loads(a.main)}
+def new_solver_ms(ms):
+    """Write richards_dt_fix=1 into a new-solver overlay unless the caller set the key."""
+    ms = dict(ms)
+    if ms.get("thermal_solver") == 1 and "richards_dt_fix" not in ms:
+        ms["richards_dt_fix"] = 1
+    return ms
+
+ms = {"spinup": new_solver_ms(json.loads(a.spin)), "main": new_solver_ms(json.loads(a.main))}
 for c in cases:
     shutil.copytree(src / c, dst / c)
     cd = dst / c

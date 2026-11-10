@@ -15,19 +15,19 @@ closeall(){ for out in "$@"; do for c in $(ls -d $out/*/); do n=$(basename $c)
     python3 $H/closure.py $c > $out/$n.closure.json 2>/dev/null; echo "$(basename $out) $n closure_rc=$?"; done; done; }
 WC=TVC_Warming_nfeed,HPC_Warming_nfeed
 if has mk; then
-  mkv $CS/ed_dc1_calib8 ts1s0_dc1 ALL '{"thermal_solver":1,"thermal_sfcc":0}' '{"thermal_solver":1,"thermal_sfcc":0}'
-  for k in 1 2 4 8 24; do mkv $CS/ed_dc0_calib8 dsub$k $WC "{\"thermal_solver\":1,\"thermal_substeps\":$k}" "{\"thermal_solver\":1,\"thermal_substeps\":$k}"; done
+  mkv $CS/ed_dc1_calib8 ts1s0_dc1 ALL '{"thermal_solver":1,"thermal_sfcc":0,"richards_dt_fix":1}' '{"thermal_solver":1,"thermal_sfcc":0,"richards_dt_fix":1}'
+  for k in 1 2 4 8 24; do mkv $CS/ed_dc0_calib8 dsub$k $WC "{\"thermal_solver\":1,\"thermal_substeps\":$k,\"richards_dt_fix\":1}" "{\"thermal_solver\":1,\"thermal_substeps\":$k,\"richards_dt_fix\":1}"; done
   mkv $CS/ed_dc0_calib8 dleg_o2 $WC '{}' '{}'
   mkv $CS/ed_dc0_calib8 gd_leg_c8 HPC_Warming_nfeed '{"soil_giveup_diag":1}' '{"soil_giveup_diag":1}'
-  mkv $CS/ed_dc0_calib8 gd_ts1_c8 HPC_Warming_nfeed '{"thermal_solver":1,"soil_giveup_diag":1}' '{"thermal_solver":1,"soil_giveup_diag":1}'
+  mkv $CS/ed_dc0_calib8 gd_ts1_c8 HPC_Warming_nfeed '{"thermal_solver":1,"soil_giveup_diag":1,"richards_dt_fix":1}' '{"thermal_solver":1,"soil_giveup_diag":1,"richards_dt_fix":1}'
   mkv $CS/ed_dc1_prod gd_leg_prod HPC_Warming_nfeed '{"soil_giveup_diag":1}' '{"soil_giveup_diag":1}'
-  mkv $CS/ed_dc1_prod gd_ts1_prod HPC_Warming_nfeed '{"thermal_solver":1,"soil_giveup_diag":1}' '{"thermal_solver":1,"soil_giveup_diag":1}'
-  mkv $CS/ed_dc0_calib8 gr_ts1_c8 HPC_Warming_nfeed '{"thermal_solver":1,"soil_giveup_retry":1}' '{"thermal_solver":1,"soil_giveup_retry":1}'
-  mkv $CS/ed_dc1_prod gr_ts1_prod HPC_Warming_nfeed '{"thermal_solver":1,"soil_giveup_retry":1}' '{"thermal_solver":1,"soil_giveup_retry":1}'
-  mkv $CS/ed_dc0_calib8 gd_ts1s0_c8 HPC_Warming_nfeed '{"thermal_solver":1,"thermal_sfcc":0,"soil_giveup_diag":1}' '{"thermal_solver":1,"thermal_sfcc":0,"soil_giveup_diag":1}'
+  mkv $CS/ed_dc1_prod gd_ts1_prod HPC_Warming_nfeed '{"thermal_solver":1,"soil_giveup_diag":1,"richards_dt_fix":1}' '{"thermal_solver":1,"soil_giveup_diag":1,"richards_dt_fix":1}'
+  mkv $CS/ed_dc0_calib8 gr_ts1_c8 HPC_Warming_nfeed '{"thermal_solver":1,"soil_giveup_retry":1,"richards_dt_fix":1}' '{"thermal_solver":1,"soil_giveup_retry":1,"richards_dt_fix":1}'
+  mkv $CS/ed_dc1_prod gr_ts1_prod HPC_Warming_nfeed '{"thermal_solver":1,"soil_giveup_retry":1,"richards_dt_fix":1}' '{"thermal_solver":1,"soil_giveup_retry":1,"richards_dt_fix":1}'
+  mkv $CS/ed_dc0_calib8 gd_ts1s0_c8 HPC_Warming_nfeed '{"thermal_solver":1,"thermal_sfcc":0,"soil_giveup_diag":1,"richards_dt_fix":1}' '{"thermal_solver":1,"thermal_sfcc":0,"soil_giveup_diag":1,"richards_dt_fix":1}'
   mkv $CS/ed_dc1_calib8 gd_leg_c8d1 HPC_Warming_nfeed '{"soil_giveup_diag":1}' '{"soil_giveup_diag":1}'
-  mkv $CS/ed_dc1_calib8 gd_ts1_c8d1 HPC_Warming_nfeed '{"thermal_solver":1,"soil_giveup_diag":1}' '{"thermal_solver":1,"soil_giveup_diag":1}'
-  mkv $CS/ed_dc1_calib8 gr_ts1_c8d1 HPC_Warming_nfeed '{"thermal_solver":1,"soil_giveup_retry":1,"soil_giveup_diag":1}' '{"thermal_solver":1,"soil_giveup_retry":1,"soil_giveup_diag":1}'
+  mkv $CS/ed_dc1_calib8 gd_ts1_c8d1 HPC_Warming_nfeed '{"thermal_solver":1,"soil_giveup_diag":1,"richards_dt_fix":1}' '{"thermal_solver":1,"soil_giveup_diag":1,"richards_dt_fix":1}'
+  mkv $CS/ed_dc1_calib8 gr_ts1_c8d1 HPC_Warming_nfeed '{"thermal_solver":1,"soil_giveup_retry":1,"soil_giveup_diag":1,"richards_dt_fix":1}' '{"thermal_solver":1,"soil_giveup_retry":1,"soil_giveup_diag":1,"richards_dt_fix":1}'
 fi
 if has eval; then runset $W/c2_O0/dvmdostem $V/ts1s0_dc1 $D/ts1s0_dc1; fi
 if has gd; then for s in gd_leg_c8 gd_ts1_c8 gd_leg_prod gd_ts1_prod gr_ts1_c8 gr_ts1_prod gd_ts1s0_c8 gd_leg_c8d1 gd_ts1_c8d1 gr_ts1_c8d1; do runset $W/c2_O0/dvmdostem $V/$s $D/$s; done; fi
