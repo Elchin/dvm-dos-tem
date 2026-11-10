@@ -1,6 +1,6 @@
 # dvmdostem: fully implicit, globally convergent enthalpy solver for soil/snow heat (Option C)
 
-*Stage A design document, updated with Elchin's decisions (§0a) and Stage B results (§15a). TEM-dev, 2026-11-09 (EST). No model code was written. The code review was read-only against `wetland_deep_C` at `1dca209e` (box worktree `/workspace/tem-dev/wdc`). Line references are to that commit. The runtime profile in §15 comes from a separate `-pg` build of the same commit, made and run on the box (`/workspace/tem-dev/prof`, not the repo).*
+*Stage A design document, updated with Elchin's decisions (§0a), Stage B results (§15a) and Stage C integration results (§15b). TEM-dev, 2026-11-09 (EST). Stage A wrote no model code; Stages B and C are on local branches only. The Stage A code review was read-only against `wetland_deep_C` at `1dca209e` (box worktree `/workspace/tem-dev/wdc`). Line references are to that commit. The runtime profile in §15 comes from a separate `-pg` build of the same commit, made and run on the box (`/workspace/tem-dev/prof`, not the repo).*
 
 ---
 
@@ -20,7 +20,7 @@
 | Switch | `model_settings.thermal_solver`: 0 = legacy (default), 1 = enthalpy. With 0 the legacy code path is untouched, verified bit-identical by md5 in the harness. |
 | Restart | No new restart variables. Both modes read and write the same T, LIQ, ICE, FROZEN, FROZENFRAC and front fields. |
 | Cost | Measured (§15, §15a): the legacy thermal step is **79 % of CPU** (demo profile) and does about **200 tridiagonal solves per cell-day**. Stage B measurements on calib8 TVC/HPC columns are in §15a; the core-hour budget for the 4×4 km domain is deferred until Elchin asks (D6). |
-| Stages | B: standalone library + tests + Katzenelson cross-check (D7), 9–11 d (done 2026-11-09, §15a). C: integration behind the switch, 12–16 d. D: TVC/HPC site evaluation, 6–8 d. E: calibration plan, 2 d, with the recalibration itself (15–25 d) shared with deep C. |
+| Stages | B: standalone library + tests + Katzenelson cross-check (D7), 9–11 d (done 2026-11-09, §15a). C: integration behind the switch, 12–16 d (done 2026-11-09, §15b). D: TVC/HPC site evaluation, 6–8 d. E: calibration plan, 2 d, with the recalibration itself (15–25 d) shared with deep C. |
 
 ## 0a. Decisions 2026-11-09 (Elchin)
 
@@ -427,6 +427,74 @@ Here r = new µs/day ÷ legacy µs/day, from A2, same build, same days. The whol
 4. NCZ: because h₂ is linear in the Jordan split, the outer right-hand side stays b, and the outer loop only updates the linearisation point. Initial guess is T₀ = min(Tⁿ, 0). The convergence test is |residual| ≤ 1e-3 J m⁻² plus a round-off floor of 8 ε_mach·max(|b|, |AT| + |diag·T|). The floor is needed for Δt ≥ 1e6 s.
 5. Replay states are taken at the legacy (T, liq, ice), which can be off the curve. The benchmark puts them on the curve via H(T) at the legacy T. Stage C must define the on-curve start state at switch-on and at restart (§11).
 
+## 15b. Stage C: integration behind `thermal_solver` (done 2026-11-09, branch `enthalpy/stageC`, tag `stageC-integration`; local only, nothing pushed)
+
+Commits on calib-elchin `~/tem-dev/esc`: `accddbfc` (integration), `5d783561` merged via `9bfb8941`/`6826f0f3` (EnvData one-past-end fix, bit-identical, -O2 -Werror builds), `d5b68b3b` (FATAL layer dump on non-finite column H; closure gate fails on NaN), `e44c5433` (rock heat capacity from `ParentLayer`: `Layer::vhcsolid` is shadowed and stays MISSING for rock), plus the docs/tools checkpoint. Builds in `~/tem-dev/esc-work`: `ref` = `wetland_deep_C` 5d783561 (legacy reference), `O0`/`O2` = Stage C. All runs 2026-11-09 6:20–6:57 PM EST, ≤ 4 concurrent jobs.
+
+### What is implemented
+| Item | Where | Notes |
+|---|---|---|
+| Keys `thermal_solver` (0 default), `thermal_sfcc` (1 SJ2016 default, 0 free water), `thermal_face_mode` (0 harmonic, 1 max), `thermal_nl_solver` (0 NCZ, 1 Katzenelson, sfcc 0 only), `thermal_substeps`, `geothermal_flux_mode` (0 zero, 1 `geothermal_flux`, 2 map `IO.geothermal_flux_file`, NetCDF var `geothermal_flux`, W m⁻²) | ModelData.cpp | FATAL on out-of-range or on non-default dependent keys with `thermal_solver = 0` |
+| One SJ2016 curve | `SJCurve.h/.cpp` | `Soil_Bgc::sjLayerPhi`/`sjOrgFraction` are wrappers; legacy bit-identical |
+| Daily enthalpy step | `Soil_Env_enthalpy.cpp`, dispatched from `Soil_Env::updateDailyGroundT` | Robin top (cn 100), no fixed-0 °C-while-melting rule, SEB/radiation melt as a heat source in the top snow cell (Snow_Env mass removal skipped), geothermal bottom flux, dt halving fallback (counted), heat of fully melted snow cells passed down, pore-volume ice cap as legacy |
+| Fronts, `frozen`, `frozenfrac`, ALD/ALC | reconstructed daily from the profile (`enthalpy::reconstructFronts`) | downstream readers unchanged |
+| Switch-on / restart | fixed-T projection onto the curve on the first step after init or restart, booked as `init` | no new restart variables |
+| Remap / non-thermal changes | `Ground::enthalpy_remap` (split/merge conserve H); Cohort booking windows for snow, soil water, layer/BGC thickness, fire (`bsnow`, `bwater`, `blayer`, `bfire`) | see deviation 2 |
+| `stefan_front_resist_fix` | ignored with a WARNING when `thermal_solver = 1` | verified: outputs md5-identical with 0 or 1 |
+| Harness | `closure.py --etol-enth` (default 1e-6 W m⁻²): max daily solve residual and full-day residual, zero non-converged steps, non-finite = FAIL | |
+| Unit tests | `tests/unit/test_enthalpy_integration.cpp` | 300/300 test cases; 6 failed assertions are the known `[KNOWN BUG: xfail]` cases |
+
+### Results
+**C1. `thermal_solver = 0` bit-identity** (run_regression.sh, A = ref, B = Stage C -O0, 8 cases each, md5 of spin-up and main outputs): dc0_calib8, dc1_calib8, dc0_prod, dc1_prod all **A==B True, determinism True, PASS**.
+
+**C2. `thermal_solver = 1` closure** (O0, 20-yr spin-up + 75-yr main, energy_diag 1). All PASS.
+
+| set | cases | max daily solve residual | max full-day residual | non-converged | water % P | C max annual | N mean |
+|---|---|---|---|---|---|---|---|
+| calib8 dc0, SFCC 1 | 8/8 | 4.1e-8 W m⁻² | 4.1e-8 | 0 | −0.27…+0.20 | ≤ 0.0037 | ≤ 0.035 |
+| calib8 dc1, SFCC 1 | 8/8 | 3.6e-8 | 3.6e-8 | 0 | −0.37…−0.10 | ≤ 0.0049 | ≤ 0.25 |
+| prod dc1, SFCC 1 | 8/8 | 4.6e-8 | 4.6e-8 | 0 | −0.64…−0.06 | ≤ 0.0066 | ≤ 4e-5 |
+| calib8 dc0, SFCC 0 | 8/8 | 6.4e-11 | 6.4e-11 | 0 | −0.21…+0.26 | ≤ 0.0037 | ≤ 0.023 |
+| single-case options (HPC_Warming_nfeed): geothermal mode 1 (0.06), mode 2 (map 0.06), face max, substeps 4, Katzenelson | 5/5 | ≤ 4.0e-8 | ≤ 4.0e-8 | 0 | | | |
+| restart legacy → enthalpy (TVC, HPC Warming_nfeed) | 2/2 | ≤ 4.2e-8 | ≤ 4.2e-8 | 0 | | | init booked 0.016–0.021 W m⁻² |
+| restart enthalpy → legacy | 2/2 | legacy gate (3 W m⁻²) | | | | | |
+
+Booked between-step terms, run means (calib8 SFCC 1): `bsnow` −0.89…−1.13 W m⁻² (snowfall enters as ice, −L per kg), `bwater` +0.03…+0.06, `blayer` ≤ 0.014, `clip` ≤ 0.004, `bfire` 0. Mode 2 with a constant map is md5-identical to mode 1. Mean NCZ solves per day 2.4–3.0 (SFCC 1).
+
+**C3. First look, enthalpy (SFCC 1) − legacy, last 30 years of the 75-yr main stage.** ALD in m; soil T at 0.2/0.5/1/2 m in °C.
+
+| set | ΔALD (m) | ΔT annual, range over depths and cases (°C) | ΔGPP | ΔNEE (gC m⁻² yr⁻¹) |
+|---|---|---|---|---|
+| calib8 dc0 TVC | −0.05…−0.14 | −1.0…−1.9 | −1.7…+1.2 % | −4…−26 (less source) |
+| calib8 dc0 HPC | −0.26…−0.37 | 0…−1.9 | −2.5…+1.9 % | −3.3…+0.9 |
+| calib8 dc1 TVC | −0.05…−0.14 | −1.1…−1.8 | −2.4…+1.1 % | −4…−27 |
+| calib8 dc1 HPC | −0.38…−0.49 | −0.4…−1.8 | −1.6…−14.5 % (nfeed largest) | −4.3…+9.3 |
+| prod dc1 TVC | −0.14…−0.20 | −2.6…−3.6 | −0.5…−2.8 % | −7.5…−34 |
+| prod dc1 HPC | −0.16…−0.34 | −1.6…−2.3 | −0.8…−24 % (nfeed largest) | −2.1…+1.4 |
+
+Attribution:
+- **The cooling is not the freezing curve.** SFCC 0 (free water) gives nearly the same ALD and T as SFCC 1 (ΔALD within 0.04 m, ΔT within 0.25 °C).
+- **It matches the legacy energy leak.** In the legacy runs the column loses −0.005…−1.49 W m⁻² through the top on average, balanced by a spurious +0.16…+1.65 W m⁻² residual. The enthalpy runs sit near zero mean top flux (−0.11…+0.05). The cooling is largest where the legacy residual is largest (TVC > HPC; prod, with about 2 W m⁻², > calib8). So the legacy parameterisation was tuned with an extra 0.2–2.5 W m⁻² of heat.
+- **Option sensitivities** (HPC_Warming_nfeed, ALD vs the SFCC 1 base): geothermal 0.06 W m⁻² +0.05 m; face max rule +0.12 m; `thermal_substeps = 4` +0.04 m (soil T −0.1 °C), a daily-step time error larger than the Tubini estimate; Katzenelson vs NCZ (SFCC 0) +0.003 m, ≤ 0.14 °C after 75 yr of BGC feedback.
+
+**C4. Whole-model runtime** (sequential, one process, load ≈ 1, calib8 dc0, 8 cases, 34,675 cell-days per case; wall time includes harness start-up, input and NetCDF output).
+
+| build | legacy s/case | enthalpy SFCC 1 s/case | µs per cell-day legacy / enthalpy | factor | core-h per century per 10,000 cells legacy / enthalpy |
+|---|---|---|---|---|---|
+| -O0 | 31.6 | 18.7 | 912 / 541 | **0.59** | 92.5 / 54.9 |
+| -O2 | 22.1 | 16.3 | 639 / 469 | **0.73** | 64.8 / 47.6 |
+
+This matches the Stage B projection at the calib8 wall share (0.55 / 0.70). At -O2 the non-thermal part (BGC, I/O) now dominates.
+
+### Stage C deviations from this design
+1. `geothermal_flux_mode` 1/2 require `thermal_solver = 1`. The legacy solver keeps its zero-flux bottom and FATALs on a non-zero mode, so the legacy path stays untouched.
+2. Remap: split/merge conserve H (`Ground::enthalpy_remap`). Carbon-driven thickness change, snow construction and the Richards/infiltration water moves are not rewritten per §10. Their enthalpy change is **measured and booked** per module window (`blayer`, `bsnow`, `bwater`, `bfire`) and the cells are re-equilibrated conservatively before the next solve. The full-day gate therefore proves that nothing changes H outside the solve or a booked window (`unattr` = 0); it does not independently check the physics of each booked term, e.g. the rain temperature. The booked magnitudes are physically plausible (`bsnow` ≈ −L × snowfall).
+3. No `thermal_solver` provenance attribute in restart files yet (§11). Restarts round-trip correctly in both directions without it.
+4. The SFCC 1 `pow` caching (§15a note i) was not needed: the measured whole-model factor is below 1.
+5. The integrator safety net fires more in two cases, against the §14 "≤ legacy + 10 %" criterion: calib8 dc0 HPC_Warming_nfeed 0 → 4 (main), prod dc1 HPC_Warming_nfeed 113 → 127 (+12 %) and HPC_NoWarming_nfeed 105 → 114 (+9 %). These are N/C soil integrator events in colder soils. C/N closure still passes. Reported, not gated.
+
+---
+
 ## 16. Risks and calibration impact
 
 | Risk | Mitigation |
@@ -449,7 +517,7 @@ Here r = new µs/day ÷ legacy µs/day, from A2, same build, same days. The whol
 | Stage | Content | Exit criteria | Effort |
 |---|---|---|---|
 | **B: standalone library + tests** | `EnthalpySolver` (curve, NCZ, Thomas, Katzenelson), analytic tests, benchmark replay of calib8 TVC/HPC columns against the legacy thermal step (-O0 and -O2). No model wiring. `EnthalpyRemap` moved to C. | All unit tests pass. Conservation ≤ 1e-6 W m⁻². Zero fallbacks at Δt up to 10 d. Measured cost in §15a. | **9–11 days**: done 2026-11-09 (branch `enthalpy/stageB`, tag `stageB-solver`) |
-| **C: integration behind switch** | ModelData keys (incl. `geothermal_flux_mode` zero/value/map, D4), dispatch in `updateDailyGroundT`, gather/scatter, snow hand-off, SEB melt source, remap hooks in Ground/Snow_Env/updateDailySM/fire, front/ALD reconstruction, restart attribute, extended energy_diag, harness `--etol-enth`. | `thermal_solver = 0` md5-identical. `= 1` passes all gates on calib8 and prod (SFCC 1 production, SFCC 0 verification), **including full-day balance ≤ 1e-6 W m⁻² as pass/fail (D5)**. Restart round-trip in both directions. | **12–16 days** |
+| **C: integration behind switch** | ModelData keys (incl. `geothermal_flux_mode` zero/value/map, D4), dispatch in `updateDailyGroundT`, gather/scatter, snow hand-off, SEB melt source, remap hooks in Ground/Snow_Env/updateDailySM/fire, front/ALD reconstruction, restart attribute, extended energy_diag, harness `--etol-enth`. | `thermal_solver = 0` md5-identical. `= 1` passes all gates on calib8 and prod (SFCC 1 production, SFCC 0 verification), **including full-day balance ≤ 1e-6 W m⁻² as pass/fail (D5)**. Restart round-trip in both directions. | **12–16 days**: integration done 2026-11-09 (branch `enthalpy/stageC`, tag `stageC-integration`, §15b); restart provenance attribute open |
 | **D: site evaluation (TVC, HPC)** | 1950–2024 runs, legacy vs enthalpy (SFCC 0/1, substeps 1/4, k_picard 0/1). Compare with observed ALD, soil T profiles and snow-off dates. Multi-front-year analysis. Timing on a ≤ 75-cell 4×4 km tile with MPI on the HPC. | Closure ≤ 1e-6 W m⁻². ALD/soil T bias vs obs at least as good as legacy, or explained. Measured core-hours per century per 10,000 cells (full-domain budget only when Elchin asks, D6). | **6–8 days** (+ compute) |
 | **E: calibration plan** | Which parameters move (n-factors, organic tc, `tcsolid`, snow density, possibly SJ exponents); targets; combine with the deep C recalibration; config for production 4×4 km. | Plan approved by Elchin. Recalibration itself shared with deep C (15–25 person-days in the merge plan). | **2 days** (plan) |
 
