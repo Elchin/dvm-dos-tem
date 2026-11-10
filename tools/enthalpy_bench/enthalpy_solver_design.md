@@ -664,6 +664,20 @@ Elchin approved making 4 sub-steps the default (his words, 2026-11-10: “Yes, m
 - The shipped `config/config.js` template documents the default in a comment. The active template leaves `thermal_solver` unset (legacy 0), so an active `"thermal_substeps": 4` would be FATAL.
 - Checks (this change, local only, nothing pushed): `thermal_solver = 0` output on `dc0_calib8` is md5 / bit-identical to `7c5e4759`; `thermal_solver = 1` with the key absent is bit-identical to an explicit `thermal_substeps = 4` run on that old binary; an explicit 1 still matches the old 1-step result. Unit tests include a default-is-4 case; the known xfail assertions are unchanged.
 
+## 15f. Combine default-4 sub-steps with `richards_dt_fix` (Elchin, 2026-11-10)
+
+Elchin approved turning the Richards step-halving fix on for all new-solver work and Calibration-expert's Stage E baseline, and keeping production legacy off until recalibration (his words, 2026-11-10: “Yes: richards_dt_fix on for new-solver work and Stage E baseline, production stays off until recalibration”).
+
+- Local branch `enthalpy/ssf-rdt` (worktree `~/tem-dev/srd` on calib-elchin) combines `enthalpy/substep-fix` @ `f8617974` (default 4 sub-steps, §15e) with `fix/richards-dt` @ `c12218cd` (switch, fix, counters, tests). The fix commits were cherry-picked onto `f8617974`: `bd652441` → `582cfc3b` (tests) and `c12218cd` → `8ffc55ed` (switch/fix). `include/ModelData.h` and `src/ModelData.cpp` auto-merged with no conflicts (the default-4 and `richards_dt_fix` edits are in different regions). Follow-up `05ef374c` writes `richards_dt_fix=1` in new-solver case-set tooling (`mk_variant.py`, `extra.sh`, `stageD_vm.sh`, commented example in `config/config.js`). Nothing pushed. The **code default of `richards_dt_fix` stays 0**.
+- **Stage E baseline:** branch `enthalpy/ssf-rdt`, `thermal_solver = 1`, `thermal_substeps` default 4 (key absent), `thermal_sfcc = 1`, `richards_dt_fix = 1` set explicitly in the case-set config (not the code default).
+- **Production legacy** (`thermal_solver = 0`) keeps `richards_dt_fix = 0` until the merged branch is recalibrated. The shipped `config/config.js` template leaves the key unset and only documents a commented new-solver example.
+- Unit tests on `8ffc55ed` (−g, 4 cores): **322/322 test cases passed**. 8 expected failed assertions, marked xfail / `may_fail`: the same 6 pre-existing (climate 2, SEB albedo 2, Stefan `combineExtraFronts`, Richards early-return) plus the 2 documented cases in `test_richards_water_energy.cpp` (bug R1 at `dt_fix = 0`, and the frozen-lens case). `test_richards_dtfix` passed. The R1 `may_fail` case still documents the default-off behaviour.
+- Bit-identity on `prod_t125_s23` (all 8 cases, 20-yr spin-up + 75-yr main, n = 75). Data-level comparison of every spin-up and main output (`.nc` variables and csv); `Git_SHA` and `run_status.nc:total_runtime` ignored. 32 runs, all OK.
+  - **(a)** `thermal_solver = 0`, `richards_dt_fix` absent (= 0) vs the production legacy baseline (`richards_dtfix/runs/leg_f0`, already identical to `7c5e4759`): **8/8 identical**.
+  - **(b)** `thermal_solver = 1`, `thermal_substeps` unset (default 4), `richards_dt_fix` absent (= 0) vs `f8617974` default-4 on the same configs: **8/8 identical**. The same outputs are also identical to explicit `thermal_substeps = 4`, `richards_dt_fix = 0` (`richards_dtfix/runs/ts1s4_f0`).
+  - **(c)** `thermal_solver = 1`, `thermal_substeps = 4`, `richards_dt_fix = 1` vs the `c12218cd` fix-on results (`richards_dtfix/runs/ts1s4_f1`): **8/8 identical**.
+- Closure on the (c) runs (hence also on `c12218cd` s4 fix-on): full-day energy residual ≤ 4.6×10⁻⁸ W m⁻² (well under the 1×10⁻⁶ gate). Water residual as a fraction of precipitation is −0.001…+0.059 % P (largest +0.059 % at HPC_Warming_nfeed); several cases are ~0.001 %. That leftover is the known non-Richards term, not bug R1. With `dt_fix = 0` the new-solver water residual is −0.10…−0.53 % P. The harness `closure_pass` is still false on this case set only because “N closure outputs missing” (the production output spec; same in legacy).
+
 ## 16. Risks and calibration impact
 
 | Risk | Mitigation |
