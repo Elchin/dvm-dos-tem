@@ -593,6 +593,68 @@ Root cause: every event, legacy and enthalpy, is the same N-cycle failure, not a
 
 ---
 
+## 15d. Sub-step anomaly (HPC_Warming_nfeed, 24 sub-steps): root cause and fix (2026-11-09, branch `enthalpy/substep-fix` off `stageD-eval`, local only)
+
+**Finding (Stage 0, Calibration-expert).** With thermal_solver 1 on S23 C1 inputs, HPC_Warming_nfeed at 24 sub-steps/day jumped to ALD ~1.0 m from 1983 and up to 1.91 m (2010–24 mean 1.34 m), while 1 and 4 sub-steps stayed at 0.45–0.82 m. The worst full-day energy residual also grew with sub-steps (6e-8 → 1.7e-7 → 7.6e-7 W m⁻²).
+
+**Verdict: a numerical/code artefact, not a physical tipping point.** There are two separate causes.
+
+### A. ALD regime jump: unfrozen water of frozen cells deleted by the hydrology (bug, all sub-step counts)
+- `Soil_Env::checkSoilLiquidWaterValidity` gives every `frozen == 1` layer effmaxliq = 0. With the new solver a fully frozen cell still holds SJ2016 unfrozen water (≈2 kg m⁻² per 0.1 m of mineral soil at −4 °C), and the routine dumps it to puddle/runoff.
+- When no soil layer has `frozen == 0` (whole column frozen, `ststate = 1`, `drainl = NULL`), `last_active_layer` falls back to `lstsoill`, so the **whole column's** unfrozen water goes. That is about 118 kg m⁻² per day here (diag dump: liq → 0 in all 20 soil layers, P−G = 118 kg m⁻²). The routine is reached through the frozen-top branch's transpiration step, so this happens on whole-frozen days while vegetation transpires: spring cold snaps that fully refreeze a thin thawed top layer, and early autumn.
+- The next thermal step puts each cell back on its curve at fixed H. It re-makes the liquid from ice, and the latent heat comes out of sensible heat. In 1981, DOY 150–153 and 262–265, the same thing happened on 8 days in a row. The mineral layers went from −5 to −24 °C **in June**, and the column lost its unfrozen water and part of its ice every day.
+- Both budgets stay closed, so no gate caught it. Water leaves as runoff, and its enthalpy is booked in `bwater` (+3…+11 MJ m⁻² per day).
+- Mineral VWC in layers 5–11 (March) fell from 0.24 (1975–80) to **0.05** (1985–2024). The dry, low-latent-heat column then thaws deep: ALD went 0.27 (1982) → 0.66 (1983) → 1.10 (1988).
+- **Why 24 sub-steps:** whole-frozen transpiration days with a dump happen on 13 days at 24 sub-steps, against 1–3 at 1/4/8/12. Finer steps let a cold day refreeze the thin thawed top completely, which a daily backward-Euler step smears out. After the first dump the colder column makes the next day fully frozen too, a positive feedback. 48 sub-steps also diverge (8 dump days, ALD up to 1.02 m). So it is a threshold in a buggy path, not convergence.
+- **The bug also affects 1 and 4 sub-steps:** s4 lost mineral water in 1975 (VWC 0.30 → 0.23). The same rule also dumps the liquid of `frozen == 1` layers above the first partly frozen layer (freeze-up from the top).
+- **Fix (A):** with `thermal_solver == 1`, a `frozen == 1` layer is inert in that routine (effmin = effmax = its liq): no excess and no deficit. The legacy branch is untouched.
+
+### B. Closure growing with sub-steps: the per-solve tolerance accumulates (numerics, not a bug)
+- `opt.tol` = 1e-3 J m⁻² per cell is applied to every backward-Euler step, so the full-day residual bound grows about ×nsub.
+- After fix A the worst day reached 1.6e-6 W m⁻² at 24 and 4.5e-6 at 48, **over the 1e-6 gate**.
+- **Fix (B):** tol is a per-day budget, tol/nsub per step (restored after the loop; nsub = 1 is unchanged). Cost: +10 % solves at 24 sub-steps (52 vs 47 per day).
+
+### Before/after: HPC_Warming_nfeed, S23 C1 inputs, calib-elchin -O0, 20-yr spin + 75-yr main (main 1950–2024)
+| run | ALD 1980–89 | ALD 1990–2009 | ALD 2010–24 | max ALD | worst full-day residual (W m⁻²) | dump days | solves/day |
+|---|---|---|---|---|---|---|---|
+| stageD-eval s1 | 0.40 | 0.57 | 0.72 | 0.82 | 4.0e-08 | 1 | 3 |
+| stageD-eval s4 | 0.38 | 0.55 | 0.70 | 0.82 | 1.1e-07 | 2 | 9 |
+| stageD-eval s8 | 0.39 | 0.54 | 0.70 | 0.82 | 1.6e-07 | 3 | 18 |
+| stageD-eval s12 | 0.40 | 0.56 | 0.70 | 0.82 | 4.2e-07 | 3 | 25 |
+| **stageD-eval s24** | **0.65** | **1.16** | **1.34** | **1.91** | 5.7e-07 | **13** | 43 |
+| stageD-eval s48 | 0.40 | 0.66 | 0.79 | 1.02 | **1.8e-06** | 8 | 79 |
+| fix A only s24 | 0.38 | 0.51 | 0.62 | 0.80 | **1.6e-06** | 1 | 47 |
+| fix A only s48 | 0.38 | 0.50 | 0.63 | 0.77 | **4.5e-06** | 1 | 87 |
+| **fix A+B s1** | 0.44 | 0.52 | 0.66 | 0.82 | 4.7e-08 | 0 | 3 |
+| **fix A+B s4** | 0.38 | 0.51 | 0.64 | 0.79 | 4.1e-08 | 1 | 10 |
+| **fix A+B s8** | 0.39 | 0.52 | 0.63 | 0.80 | 3.1e-08 | 1 | 18 |
+| **fix A+B s12** | 0.37 | 0.51 | 0.63 | 0.77 | 2.9e-08 | 1 | 27 |
+| **fix A+B s24** | 0.38 | 0.51 | 0.61 | 0.76 | 2.0e-08 | 1 | 52 |
+| **fix A+B s48** | 0.38 | 0.50 | 0.65 | 0.81 | 1.3e-08 | 1 | 103 |
+
+How to read the table:
+- "Dump days" are main-stage days with no front and `bwater` > 1e5 J m⁻². The one remaining fixed-run day (1978 DOY 145, 0.1 MJ m⁻²) is ordinary infiltration.
+- The stageD-eval binary on the VM reproduces the box Stage 0 numbers (s4 / s24 means identical).
+- The 12/48-allowing build (`base12`) is value-identical to stageD-eval at s24 (278 variables).
+- Mineral VWC (layers 5–11, March 1985–2024): s4 0.233 and s24 0.047 before the fix, 0.274 after at both s4 and s24.
+- 1981 TMINEB on DOY 165/270: s24 −21.2/−25.1 °C before, −3.9/−1.9 °C after.
+- After the fix ALD converges across 1–48 sub-steps (2010–24: 0.61–0.66 m; s4 vs s24 within 0.03 m), and the residual falls with sub-steps instead of rising.
+
+### Effect at 1 sub-step and on the legacy path
+- `thermal_solver = 0`: run_regression.sh (ref = stageD-eval -O0, `--no-repeat`) gave A==B bit-identical for all 8 cases in each of dc0_calib8, dc1_prod and prod_t125_s23 (24/24).
+  - dc0_calib8 and dc1_prod PASS.
+  - prod_t125_s23 reports FAIL only for "N closure outputs missing" (the production output spec, the same in A and B, as in Stage 0).
+- `thermal_solver = 1`, 1 sub-step: **not unchanged.** Fix B is a no-op at nsub = 1 (fixA s1 ≡ fixAB s1, 278 variables), but fix A changes every case from the spin-up on, because frozen-layer water is no longer lost.
+  - ts1_dc0_calib8, last-30-yr ALD, REF → NEW: HPC NoW nfeed 0.43 → 0.31, NoW nonfeed 0.44 → 0.31, W nfeed 0.50 → 0.45, W nonfeed 0.51 → 0.45; TVC −0.01…−0.07 m.
+  - S23 HPC_W_nfeed s1 2010–24: 0.72 → 0.66.
+  - All 8 calib8 cases close: full-day energy ≤ 3.8e-8 W m⁻², water −0.26…+0.04 % P, C max annual ≤ 0.0034 g m⁻², 0 non-converged steps.
+  - The wetter, more latent column gives shallower ALD, so the Stage 0 / Stage D thermal_solver 1 numbers (all sub-step counts) should be re-run on this branch before calibration.
+- Unit tests: 307/307 test cases. The 6 failed assertions are the known xfails. There are 3 new cases in `tests/unit/test_enthalpy_substep_fix.cpp`:
+  - (A) whole-column freeze keeps the curve water, and the next step needs no re-equilibration;
+  - (A) the legacy rule is unchanged with thermal_solver 0;
+  - (B) the tolerance is restored after the step, and the residual is ≤ cells × tol at 1/4/12/24/48 sub-steps.
+- `thermal_substeps` now also accepts 12 and 48 (validation only).
+
 ## 16. Risks and calibration impact
 
 | Risk | Mitigation |

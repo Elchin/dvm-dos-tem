@@ -1341,7 +1341,17 @@ void Soil_Env::checkSoilLiquidWaterValidity(Layer *topsoill, int topind){
   currl = topsoill;
   while(currl != NULL && currl->isSoil && currl->solind <= last_active_layer->solind){
     int ind = currl->solind;
-    if(currl->frozen == 1){
+    if(currl->frozen == 1 && thermal_solver == 1){
+      // Option C (thermal_solver 1): a fully frozen cell still holds its freezing-curve (SJ2016)
+      // unfrozen water, which belongs to the thermal state, not to the mobile water. Keep it inert:
+      // no excess (effmax = liq) and no deficit (effmin = liq). With effmax = 0 here, a whole-column
+      // freeze (no frozen == 0 layer, so last_active_layer = lstsoill) dumped all of it to
+      // puddle/qover; the next thermal step re-made it from ice at fixed H (strong cooling, ice loss).
+      effminliq[ind] = fmax(currl->liq, 0.0);
+      effmaxliq[ind] = fmax(currl->liq, 0.0);
+      currl = currl->nextl;
+    }
+    else if(currl->frozen == 1){
       effminliq[ind] = 0.0;
       effmaxliq[ind] = 0.0;
       if (currl->liq != currl->liq){ // check for NaNs

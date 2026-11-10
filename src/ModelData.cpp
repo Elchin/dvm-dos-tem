@@ -399,10 +399,10 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
                 v_sub = ms.get("thermal_substeps", 1), v_gm = ms.get("geothermal_flux_mode", 0),
                 v_gf = ms.get("geothermal_flux", 0.0);
     if (!bnf::valid_int(v_solver, 0, 1) || !bnf::valid_int(v_sfcc, 0, 1) || !bnf::valid_int(v_face, 0, 1)
-        || !bnf::valid_int(v_nl, 0, 1) || !bnf::valid_int(v_sub, 1, 24) || !bnf::valid_int(v_gm, 0, 2)
+        || !bnf::valid_int(v_nl, 0, 1) || !bnf::valid_int(v_sub, 1, 48) || !bnf::valid_int(v_gm, 0, 2)
         || !bnf::valid_num(v_gf)) {
       std::cerr << "FATAL: model_settings thermal_solver, thermal_sfcc, thermal_face_mode, thermal_nl_solver"
-                << " must be integers 0/1, thermal_substeps 1/2/4/8/24, geothermal_flux_mode 0/1/2,"
+                << " must be integers 0/1, thermal_substeps 1/2/4/8/12/24/48, geothermal_flux_mode 0/1/2,"
                 << " geothermal_flux a number (W m-2)" << std::endl;
       exit(EXIT_FAILURE);
     }
@@ -1169,7 +1169,7 @@ std::string ModelData::thermal_switches_error(int solver, int sfcc, int face, in
   if (sfcc != 0 && sfcc != 1) { return "model_settings.thermal_sfcc must be 0 (free water) or 1 (SJ2016)"; }
   if (face != 0 && face != 1) { return "model_settings.thermal_face_mode must be 0 (harmonic) or 1 (max rule)"; }
   if (nl != 0 && nl != 1) { return "model_settings.thermal_nl_solver must be 0 (nested Newton) or 1 (Katzenelson)"; }
-  if (!(sub == 1 || sub == 2 || sub == 4 || sub == 8 || sub == 24)) { return "model_settings.thermal_substeps must be 1, 2, 4, 8 or 24"; }
+  if (!(sub == 1 || sub == 2 || sub == 4 || sub == 8 || sub == 12 || sub == 24 || sub == 48)) { return "model_settings.thermal_substeps must be 1, 2, 4, 8, 12, 24 or 48"; }
   if (gmode < 0 || gmode > 2) { return "model_settings.geothermal_flux_mode must be 0 (zero), 1 (single value) or 2 (map file)"; }
   if (!(gflux == gflux) || fabs(gflux) > 10.0) { return "model_settings.geothermal_flux must be a finite number in [-10, 10] W m-2"; }
   if (solver == 0 && (sfcc != 1 || face != 0 || nl != 0 || sub != 1)) {

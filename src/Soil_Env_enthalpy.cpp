@@ -188,10 +188,16 @@ void Soil_Env::enthalpyThermalStep(const double tsurface, const double qmelt_Wm2
   enthalpy::Stats acc; acc.converged = true;
   int halvings = 0;
   bool ok = true;
+  // The residual tolerance (opt.tol, J m-2 per cell) is a per-day budget: each of the nsub
+  // backward-Euler steps gets tol/nsub, so the accumulated full-day residual bound does not grow
+  // with thermal_substeps (nsub = 1: unchanged).
+  const double tol_day = enth_solver.opt.tol;
+  enth_solver.opt.tol = tol_day / nsub;
   for (int k = 0; k < nsub; ++k) {
     // cells re-assembled each substep (lagged conductivity from the current T)
     ok = enthStep(*this, cells, T, dt, bc, S, 0, acc, halvings) && ok;
   }
+  enth_solver.opt.tol = tol_day;
   if (halvings > 0) { enth_fallbacks++; }
   if (!ok) {
     enth_failures++;

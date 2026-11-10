@@ -356,7 +356,7 @@ public:
   //  thermal_sfcc         (solver 1) 1 = Schaefer & Jafarov 2016 curve (default), 0 = free water.
   //  thermal_face_mode    (solver 1) 0 = harmonic face conductivity (default), 1 = Tubini max rule.
   //  thermal_nl_solver    (solver 1) 0 = nested Newton (default), 1 = Katzenelson (sfcc 0 only).
-  //  thermal_substeps     (solver 1) backward-Euler steps per day: 1 (default), 2, 4, 8 or 24.
+  //  thermal_substeps     (solver 1) backward-Euler steps per day: 1 (default), 2, 4, 8, 12, 24 or 48.
   //  geothermal_flux_mode 0 = zero bottom flux (default, legacy), 1 = geothermal_flux [W m-2],
   //                       2 = per-cell map IO.geothermal_flux_file (variable geothermal_flux,
   //                       W m-2, Y/X grid of the run mask). Modes 1/2 need thermal_solver 1.
