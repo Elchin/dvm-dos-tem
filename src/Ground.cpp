@@ -1185,7 +1185,9 @@ void Ground::compactSnowLayersClass() {
       sl->dz = snowclass::compactDz(sl->dz, sl->ice, sl->tem, burden, sl->frozen != 1, SEC_IN_DAY);
       sl->rho = sl->ice / sl->dz;
     }
-    sl->maxice = snowdimpar.denmax * sl->dz;   // as SnowLayer::updateDensity
+    // capacity bound: snwdenmax*dz (legacy) would clip the denser snow-class layers in
+    // Stefan::cleanSnowSoilLayers / checkWaterValidity and delete SWE; use the RHO_CAP bound.
+    sl->maxice = snowclass::RHO_CAP * sl->dz;
     sl->maxliq = sl->maxice;
     burden += fmax(sl->ice, 0.) + fmax(sl->liq, 0.);
   }
@@ -1215,6 +1217,8 @@ void Ground::stratifySnowLayers(bool redistribute) {
     }
   }
   for (size_t i = 0; i < L.size(); ++i) {
+    L[i]->maxice = snowclass::RHO_CAP * L[i]->dz;   // see compactSnowLayersClass (no SWE clipping)
+    L[i]->maxliq = L[i]->maxice;
     L[i]->kdh = snowcls.k_dh;
     L[i]->fdh = (snowcls.k_dh > 0.) ? fdh[i] : 0.;
   }

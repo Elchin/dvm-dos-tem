@@ -103,6 +103,24 @@ TEST_CASE("fbot (eqs 1-2) and drho (eq 3) reproduce the tundra curves of Figs 4-
   CHECK(snowclass::drho(ma, 0.1, ma.rho_bulkobs) < 0.01 * 100);
 }
 
+TEST_CASE("eqs 1-3 with the values drawn in Figs 4-5 reproduce the figure curves") {
+  // The paper's Figs 4-5 ("tundra") are drawn with fbotmax 0.8, Dmin 0.2 m, Dmax 0.4 m (Fig 4) and a
+  // peak of ~300 kg/m3 at ~215 +- 50 kg/m3 (Fig 5), not with Table 2 tundra (0.3, 0, 0.1; 250 at 261 +- 68).
+  // The model uses Table 2. Points read off the figures (+-0.02 / +-10 kg/m3):
+  SnowClassPar f; f.fbotmax = 0.8; f.Dmin = 0.2; f.Dmax = 0.4;
+  f.rho_topref = 300; f.rho_botref = 0; f.rho_bulkobs = 215; f.sigma_bulkobs = 50;
+  CHECK(snowclass::fbot(f, 0.10) < 0.02);
+  CHECK(snowclass::fbot(f, 0.20) < 0.02);
+  CHECK(snowclass::fbot(f, 0.30) == doctest::Approx(0.40).epsilon(0.05));
+  CHECK(snowclass::fbot(f, 0.40) == doctest::Approx(0.79).epsilon(0.03));
+  CHECK(snowclass::fbot(f, 0.50) == doctest::Approx(0.80).epsilon(0.03));
+  CHECK(snowclass::drho(f, 5.0, 215) == doctest::Approx(300).epsilon(0.04));
+  CHECK(snowclass::drho(f, 5.0, 165) == doctest::Approx(110).epsilon(0.1));    // sigma marker (1/e)
+  CHECK(snowclass::drho(f, 5.0, 265) == doctest::Approx(110).epsilon(0.1));
+  CHECK(snowclass::drho(f, 5.0, 100) < 10);
+  CHECK(snowclass::drho(f, 5.0, 350) < 10);
+}
+
 TEST_CASE("twoLayer conserves bulk density and stays within [50, 600]") {
   for (const char* n : {"tundra", "taiga", "maritime", "ephemeral", "prairie", "alpine"}) {
     SnowClassPar p = cls(n);
@@ -179,7 +197,8 @@ TEST_CASE("Ground: stratify conserves SWE, depth and heat; no-snow and one-layer
     CHECK(L.back()->getFrzThermCond() == doctest::Approx(fl >= 1.0 ? 0.18 : 1.0 / (fl / 0.18 + (1 - fl) / kr))); }
   double hsum = 0; for (auto l : L) hsum += l->fdh * l->dz;
   CHECK(hsum == doctest::Approx(hb).epsilon(1e-12));
-  for (auto l : L) { CHECK(l->rho >= 50 - 1e-9); CHECK(l->rho <= 600 + 1e-9); CHECK(l->rho == doctest::Approx(l->ice / l->dz)); }
+  for (auto l : L) { CHECK(l->rho >= 50 - 1e-9); CHECK(l->rho <= 600 + 1e-9); CHECK(l->rho == doctest::Approx(l->ice / l->dz));
+                    CHECK(l->ice <= l->maxice); }   // no clipping by snwdenmax*dz (would delete SWE)
   // maritime: no fixed depth-hoar k
   sc.c.g.snowcls = cls("maritime"); sc.c.g.stratifySnowLayers(false);
   for (auto l : sc.snow()) CHECK(l->fdh == 0.0);
@@ -245,6 +264,7 @@ static void column(const char* name, bool windy, double swe_tot, double tmin, do
     sc.c.g.updateSnowLayerPropertiesDaily();
     sc.c.g.stratifySnowLayers(true);
     CHECK(sc.swe() == doctest::Approx(w0).epsilon(1e-13));
+    for (auto l : sc.snow()) CHECK(l->ice <= l->maxice + 1e-12);
     if (sc.c.g.combineSnowLayers()) sc.c.g.resortGroundLayers();
     if (sc.c.g.divideSnowLayers()) sc.c.g.resortGroundLayers();
     L = sc.snow();
