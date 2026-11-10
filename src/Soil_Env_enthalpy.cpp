@@ -317,6 +317,8 @@ void Soil_Env::updateDailyGroundT_enthalpy(const double tsurface) {
 // leaves the column carries a physically defined enthalpy, and the cell temperatures are set from
 // the resulting H at the module's liq/ice (H = C T - ice L is linear in T at fixed liq/ice, so this
 // is exact; the next thermal step equilibrates onto the curve conserving H).
+static const double ENTH_DIRECT_DEPTH = 0.10;   // m, soil depth that supplies the latent heat of direct snow melt
+
 void Soil_Env::enthSnap(EnthSnap& s) const {
   s = EnthSnap();
   for (Layer* l = ground->toplayer; l != NULL; l = l->nextl) {
@@ -411,8 +413,22 @@ void Soil_Env::enthRemapSnowCore(const EnthSnap& s, double tsurface, double subl
     const double dT = delta / C;
     for (Layer* l = ground->toplayer; l != NULL; l = l->nextl) { if (l->isSnow) { l->tem += dT; } }
   } else {
-    Layer* t = (ground->fstsoill != NULL) ? ground->fstsoill : ground->toplayer;
-    if (t != NULL) { enthSetT(t, enthLayerH(t) + delta); }
+    // no snow cells (e.g. snowfall that melted on warm ground): the correction (mostly the latent heat
+    // of the melted snowfall) is taken from the top ENTH_DIRECT_DEPTH of the soil, shared by heat
+    // capacity (equal dT), not from the first cell alone: a thin dry moss cell has almost no heat
+    // capacity and would get an unphysical temperature (seen: -2850 C) before the next thermal step.
+    std::vector<Layer*> cells; std::vector<double> cap; double ctot = 0.0, ztop = 0.0;
+    for (Layer* l = ground->fstsoill; l != NULL && !l->isSnow; l = l->nextl) {
+      if (!cells.empty() && ztop >= ENTH_DIRECT_DEPTH) { break; }
+      const double c = enthLayerCs(l) + fmax(l->liq, 0.0) * SHCLIQ + fmax(l->ice, 0.0) * SHCICE;
+      cells.push_back(l); cap.push_back(c); ctot += c; ztop += fmax(l->dz, 0.0);
+    }
+    if (ctot > 0.0) {
+      for (size_t k = 0; k < cells.size(); ++k) { enthSetT(cells[k], enthLayerH(cells[k]) + delta * cap[k] / ctot); }
+    } else {
+      Layer* t = (ground->fstsoill != NULL) ? ground->fstsoill : ground->toplayer;
+      if (t != NULL) { enthSetT(t, enthLayerH(t) + delta); }
+    }
   }
   const double hnew = columnEnthalpyE();
   enth_bk_snow += hnew - s.hcol;             // = phys up to round-off

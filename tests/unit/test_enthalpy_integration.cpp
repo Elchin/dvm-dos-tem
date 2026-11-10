@@ -308,6 +308,20 @@ TEST_CASE("Stage C2: snowfall that melts on warm ground takes its latent heat fr
   CHECK(c.col.g.toplayer->tem < 5.0);
 }
 
+TEST_CASE("Stage C2: direct-melt latent heat is shared by the top 0.10 m of soil (thin dry top cell)") {
+  Col c(2.0, 0.0);
+  std::vector<Layer*> L; for (Layer* l = c.col.g.toplayer; l; l = l->nextl) L.push_back(l);
+  L[0]->dz = 0.02; L[0]->liq = 0.0; L[0]->ice = 0.0;   // thin dry moss-like top cell
+  Soil_Env::EnthSnap s; c.se.enthSnap(s);
+  c.se.enthRemapSnowCore(s, -1.0, 0.0, 4.0);           // 4 kg snowfall melts on 2 C ground
+  const double hsf = SHCICE * -1.0 - LHFUS;
+  CHECK(colH(c.col.g) - s.hcol == doctest::Approx(4.0 * hsf).epsilon(1e-9));
+  const double d0 = L[0]->tem - s.T[0], d1 = L[1]->tem - s.T[1];
+  CHECK(d0 < 0.0); CHECK(d0 == doctest::Approx(d1).epsilon(1e-9));   // cells starting above 0.10 m share dT
+  CHECK(L[2]->tem == s.T[2]);                                         // deeper cells untouched
+  CHECK(d0 > -20.0);                                                  // bounded (not -1e3 C in the thin cell)
+}
+
 TEST_CASE("Stage C2: no change in the window books nothing") {
   Col c(-3.0, 0.5);
   Soil_Env::EnthSnap s; c.se.enthSnap(s);
