@@ -951,15 +951,41 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
 
   int il; // manual layer index tracker
 
-  for (int j = 1; j <= HR_IN_DAY; j++) { // Time-stepping loop
-    // for (int j = 1; j <= HR_IN_DAY; j++) { // Time-stepping loop
+  // Choose a substep so CN alpha stays <= 0.5. nsub is reset every call;
+  // 24 * nsub steps always cover one day. Rates below are per hour, so they
+  // are multiplied by dt (hours) when accumulating and when applied to pools.
+  int nsub = 1;
+  {
+    Layer *scanl = ground->lstsoill;
+    while (scanl && !scanl->isMoss) {
+      double satf = ((scanl->z + scanl->dz) - ed->d_sois.watertab) / scanl->dz;
+      satf = fmax(0.0, fmin(1.0, satf));
+      double t_sat = 0.66 * scanl->getVolWater() * pow(scanl->getVolWater() / (scanl->poro), 3.0);
+      double t_unsat = 0.66 * scanl->getVolAir() * pow(scanl->getVolAir() / scanl->poro, 3.0);
+      double tort = pow(t_sat, satf) * pow(t_unsat, 1 - satf);
+      double D0 = pow(CH4DIFFW, satf) * pow(CH4DIFFA, 1 - satf);
+      double D = D0 * tort * pow((scanl->tem + 273.15) / 293.15, 1.75);
+      double denom = 2.0 * scanl->dz * scanl->dz;
+      if (denom > 0.0 && D > 0.0) {
+        double a1 = D / denom; // alpha at dt = 1 hour
+        if (a1 > 0.5) {
+          int need = (int)(a1 / 0.5 + 0.999999);
+          if (need > nsub) { nsub = need; }
+        }
+      }
+      scanl = scanl->prevl;
+    }
+    if (nsub > 200) { nsub = 200; }
+  }
+  dt = 1.0 / nsub;
+  const int nsteps = HR_IN_DAY * nsub;
+  for (int j = 1; j <= nsteps; j++) {
 
-    dt = 1.0; // always a one-hour step (do not persist a reduced dt)
-    // PRE-CALCULATE DIFFUSION (legacy stability diagnostic only; dt is not reduced)
+    // PRE-CALCULATE DIFFUSION (diagnostic only; dt is already 1/nsub)
     double dt_stable = dt;
     
     currl = ground->lstsoill;
-    il = numsoill;  // 0 = atmosphere Dirichlet node; soil is 1..numsoill;
+    il = numsoill - 1;  // numsl includes moss; non-moss soil is 1..numsoill-1, node 0 is the atmospheric BC;
     
     while (!currl->isMoss){
       // Calculate diffusion coefficient (same as later in code)
@@ -994,7 +1020,7 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
     double krawc_ch4, ksoma_ch4, ksompr_ch4, ksomcr_ch4 = 0.0;
 
     currl = ground->lstsoill; // reset currl to bottom of the soil stack
-    il = numsoill;  // 0 = atmosphere Dirichlet node; soil is 1..numsoill;        // reset manual layer index tracker. From 1 to allow future moss layer inclusion
+    il = numsoill - 1;  // numsl includes moss; non-moss soil is 1..numsoill-1, node 0 is the atmospheric BC;        // reset manual layer index tracker. From 1 to allow future moss layer inclusion
 
     // For the mass balance we include boundary conditions
     // final layer concentration to enforce zero flux or
@@ -1127,7 +1153,7 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
         // adjusted and may need to be a parameter.
         double frac_ebul = exp(-(currl->z / currl->poro));
         ebul_efflux = frac_ebul * ebul;
-        currl->ch4 -= ebul;
+        currl->ch4 -= ebul * dt;
         wtlayer->ch4 += ebul - ebul_efflux;
       } // else ebul is only redistributing CH4 between unfrozen layers
 
@@ -1209,28 +1235,28 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
         // Saturated fraction required carbon pool extraction d_soi2soi.ch4
         if (tmp_sois.rawc[il] > 0.0){
           prod_rawc_ch4[il] = saturated_fraction * (krawc_ch4 * tmp_sois.rawc[il] * TResp_sat);
-          bd->d_soi2soi.ch4_rawc[il] += fmin(prod_rawc_ch4[il], tmp_sois.rawc[il]);
+          bd->d_soi2soi.ch4_rawc[il] += fmin(prod_rawc_ch4[il] * dt, tmp_sois.rawc[il]);
         } else {
           prod_rawc_ch4[il] = 0.0;
         }
 
         if (tmp_sois.soma[il] > 0.0){
           prod_soma_ch4[il] = saturated_fraction * (ksoma_ch4 * tmp_sois.soma[il] * TResp_sat);
-          bd->d_soi2soi.ch4_soma[il] += fmin(prod_soma_ch4[il], tmp_sois.soma[il]);
+          bd->d_soi2soi.ch4_soma[il] += fmin(prod_soma_ch4[il] * dt, tmp_sois.soma[il]);
         } else {
           prod_soma_ch4[il] = 0.0;
         }
 
         if (tmp_sois.sompr[il] > 0.0){
           prod_sompr_ch4[il] = saturated_fraction * (ksompr_ch4 * tmp_sois.sompr[il] * TResp_sat);
-          bd->d_soi2soi.ch4_sompr[il] += fmin(prod_sompr_ch4[il], tmp_sois.sompr[il]);
+          bd->d_soi2soi.ch4_sompr[il] += fmin(prod_sompr_ch4[il] * dt, tmp_sois.sompr[il]);
         } else {
           prod_sompr_ch4[il] = 0.0;
         }
 
         if (tmp_sois.somcr[il] > 0.0){
           prod_somcr_ch4[il] = saturated_fraction * (ksomcr_ch4 * tmp_sois.somcr[il] * TResp_sat);
-          bd->d_soi2soi.ch4_somcr[il] += fmin(prod_somcr_ch4[il], tmp_sois.somcr[il]);
+          bd->d_soi2soi.ch4_somcr[il] += fmin(prod_somcr_ch4[il] * dt, tmp_sois.somcr[il]);
         } else {
           prod_somcr_ch4[il] = 0.0;
         }
@@ -1241,16 +1267,16 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
         prod = (convert_gm2_to_umolL)*prod_gm2hr;
 
         // Accumulating to daily fluxes
-        plant_gm2day += plant_gm2hr; // cumulated over 1 day, 24 time steps, Y.MI - in units of g m^-2 day^-1
+        plant_gm2day += plant_gm2hr * dt;
 
-        oxid_gm2day += oxid_gm2hr; // cumulated over 1 day, 24 time steps, Y.MI
+        oxid_gm2day += oxid_gm2hr * dt;
 
-        ebul_gm2day += ebul_gm2hr;               // cumulated over 1 time step, 1 hour - in units of g m^-2 day^-1
-        ebul_efflux_gm2day += ebul_efflux_gm2hr; // cumulated over 1 time step, 1 hour - in units of g m^-2 day^-1
+        ebul_gm2day += ebul_gm2hr * dt;
+        ebul_efflux_gm2day += ebul_efflux_gm2hr * dt;
 
         // Accumulating ebullitions per layer across timesteps for output
-        ch4_ebul_layer[il] += ebul_gm2hr;
-        ch4_oxid_layer[il] += oxid_gm2hr;
+        ch4_ebul_layer[il] += ebul_gm2hr * dt;
+        ch4_oxid_layer[il] += oxid_gm2hr * dt;
 
         // modifying the reaction term to include inward and outward fluxes
         // only consider ebullition if it removes ch4 from the soil pool
@@ -1284,8 +1310,11 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
     lower_diagonal[0] = 0.0;  // Set to zero but not used in solver
     solver_rhs[0] = upper_bound;        // Fixed concentration at the upper boundary
 
-    // Lower boundary: last soil is index numsoill (== numlay-1). Zero-flux is
-    // already applied in the layer loop (mirror neighbor). Do not overwrite that row.
+    // Lower boundary condition (no-flux ghost at index numlay-1, below last soil)
+    main_diagonal[numlay - 1] = 1.0;
+    upper_diagonal[numlay - 1] = 0.0;
+    lower_diagonal[numlay - 1] = -1.0;
+    solver_rhs[numlay - 1] = 0.0;
 
     double upper_flux = 0.0;
 
@@ -1343,7 +1372,7 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
     TriSolver(numlay, lower_diagonal, main_diagonal, upper_diagonal, solver_rhs, solution);
 
     currl = ground->fstshlwl; //reset currl to top of the soil stack
-    il = 1; // soil layers occupy 1..numsoill; node 0 is the atmospheric boundary
+    il = 1; // fstshlwl is node 1; node 0 is the atmospheric Dirichlet boundary
 
     // Conservation check and conservative diffusion efflux.
     // prev_pool_R is concentration after the reaction term, before diffusion.
