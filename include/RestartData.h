@@ -60,6 +60,11 @@ public :
   // bundle with CH4 is enabled (set in TEM.cpp); on read it is optional (missing => layers keep
   // their initial CH4 concentration), so pre-merge restart files load unchanged.
   static bool write_ch4;
+  // Phase 3 v2: optional puddle ice / liquid scalars, written only when
+  // runon_energy_mode==1. Absent in old restarts => MISSING_D on read.
+  static bool write_puddle;
+  void read_px_puddle_vars(const std::string& fname, const int rowidx, const int colidx);
+  void write_px_puddle_vars(const std::string& fname, const int rowidx, const int colidx);
   static int read_thermal_solver_attr(const std::string& fname);
 
   int chtid;
@@ -124,6 +129,8 @@ public :
   int rtfrozendays;
   int rtunfrozendays;
   double watertab;
+  double puddle_ice_mm;  // Phase 3 v2: frozen ponding (mm); optional NC var
+  double magic_puddle;   // Phase 3 v2: liquid ponding (mm); optional NC var (with ice)
   // v5q-d2m-gate: previous-year ALD (m); optional NetCDF scalar per pixel, written only if >= 0
   // (d2m_transfer_gate != 0), read as MISSING_D when absent (old restarts).
   double d2m_ald_prevyr;

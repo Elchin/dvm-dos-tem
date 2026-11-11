@@ -348,6 +348,8 @@ void RestartData::reinitValue() {
   rtfrozendays   = MISSING_I;
   rtunfrozendays = MISSING_I;
   watertab     = MISSING_D;
+  puddle_ice_mm = MISSING_D;
+  magic_puddle  = MISSING_D;
 
   for(int il =0; il<MAX_SOI_LAY; il++) {
     DZsoil[il]   = MISSING_D;
@@ -424,6 +426,7 @@ void RestartData::update_from_ncfile(const std::string& fname, const int rowidx,
   read_px_prev_pft_vars(fname, rowidx, colidx);
 
   read_px_d2m_vars(fname, rowidx, colidx);   // v5q-d2m-gate (optional variable)
+  read_px_puddle_vars(fname, rowidx, colidx); // phase 3 v2 (optional puddle ice / liquid)
 
   BOOST_LOG_SEV(glg, debug) << "Done reading data from file into RestartData.";
 }
@@ -457,6 +460,7 @@ void RestartData::write_pixel_to_ncfile(const std::string& fname, const int rowi
   write_px_prev_pft_vars(fname, rowidx, colidx);
 
   if (d2m_ald_prevyr >= 0.0) { write_px_d2m_vars(fname, rowidx, colidx); }   // v5q-d2m-gate
+  if (write_puddle) { write_px_puddle_vars(fname, rowidx, colidx); }        // phase 3 v2
 
   BOOST_LOG_SEV(glg, debug) << "Done writing RestartData.";
 
@@ -491,6 +495,54 @@ void RestartData::write_px_d2m_vars(const std::string& fname, const int rowidx, 
   }
   size_t start[2] = {(size_t)rowidx, (size_t)colidx};
   temutil::nc( nc_put_var1_double(ncid, cv, start, &d2m_ald_prevyr) );
+  temutil::nc( nc_close(ncid) );
+#endif
+}
+
+/** Phase 3 v2: optional puddle_ice / magic_puddle (Y,X); absent -> MISSING_D (old restarts). */
+void RestartData::read_px_puddle_vars(const std::string& fname, const int rowidx, const int colidx) {
+  puddle_ice_mm = MISSING_D;
+  magic_puddle  = MISSING_D;
+  int ncid, cv;
+  temutil::nc( nc_open(fname.c_str(), NC_NOWRITE, &ncid), fname );
+  size_t start[2] = {(size_t)rowidx, (size_t)colidx};
+  if (nc_inq_varid(ncid, "puddle_ice", &cv) == NC_NOERR) {
+    temutil::nc( nc_get_var1_double(ncid, cv, start, &puddle_ice_mm) );
+  }
+  if (nc_inq_varid(ncid, "magic_puddle", &cv) == NC_NOERR) {
+    temutil::nc( nc_get_var1_double(ncid, cv, start, &magic_puddle) );
+  }
+  temutil::nc( nc_close(ncid) );
+}
+
+void RestartData::write_px_puddle_vars(const std::string& fname, const int rowidx, const int colidx) {
+#ifdef WITHMPI
+  BOOST_LOG_SEV(glg, warn) << "puddle_ice not written to the restart in MPI builds (starts at 0 on restart).";
+#else
+  int ncid, cv;
+  temutil::nc( nc_open(fname.c_str(), NC_WRITE, &ncid), fname );
+  int dims[2];
+  temutil::nc( nc_inq_dimid(ncid, "Y", &dims[0]) );
+  temutil::nc( nc_inq_dimid(ncid, "X", &dims[1]) );
+  bool need_redef = false;
+  int iceV = -1, liqV = -1;
+  if (nc_inq_varid(ncid, "puddle_ice", &iceV) != NC_NOERR) { need_redef = true; }
+  if (nc_inq_varid(ncid, "magic_puddle", &liqV) != NC_NOERR) { need_redef = true; }
+  if (need_redef) {
+    temutil::nc( nc_redef(ncid) );
+    if (nc_inq_varid(ncid, "puddle_ice", &iceV) != NC_NOERR) {
+      temutil::nc( nc_def_var(ncid, "puddle_ice", NC_DOUBLE, 2, dims, &iceV) );
+      temutil::nc( nc_put_att_double(ncid, iceV, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
+    }
+    if (nc_inq_varid(ncid, "magic_puddle", &liqV) != NC_NOERR) {
+      temutil::nc( nc_def_var(ncid, "magic_puddle", NC_DOUBLE, 2, dims, &liqV) );
+      temutil::nc( nc_put_att_double(ncid, liqV, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
+    }
+    temutil::nc( nc_enddef(ncid) );
+  }
+  size_t start[2] = {(size_t)rowidx, (size_t)colidx};
+  temutil::nc( nc_put_var1_double(ncid, iceV, start, &puddle_ice_mm) );
+  temutil::nc( nc_put_var1_double(ncid, liqV, start, &magic_puddle) );
   temutil::nc( nc_close(ncid) );
 #endif
 }
@@ -1007,6 +1059,7 @@ void RestartData::read_px_prev_pft_vars(const std::string& fname, const int rowi
 /** Creates (overwrites) an empty restart file. */
 int RestartData::thermal_solver_expected = 0;
 bool RestartData::write_ch4 = false;
+bool RestartData::write_puddle = false;
 
 int RestartData::read_thermal_solver_attr(const std::string& fname) {
   int ncid, v = 0;

@@ -263,7 +263,7 @@ TEST_CASE("runon_energy_mode 0 still recycles (legacy path, existing water-balan
 }
 
 TEST_CASE("runon_energy_mode 1: puddle freezes at Tair < 0 and thaws at Tair > 0; Lf is booked") {
-  SM s(0.5); s.se.runon_energy_mode = 1;
+  SM s(0.5); s.se.runon_energy_mode = 1; s.runon(true);
   s.ed.d_soi2l.magic_puddle = 10.0; s.ed.d_atms.ta = -10.0; s.se.puddle_ice_mm = 0.0; s.se.puddle_heat_Jm2 = 0.0;
   s.se.updatePuddlePhase();
   CHECK(s.ed.d_soi2l.magic_puddle == doctest::Approx(0.0));
@@ -274,6 +274,25 @@ TEST_CASE("runon_energy_mode 1: puddle freezes at Tair < 0 and thaws at Tair > 0
   CHECK(s.ed.d_soi2l.magic_puddle == doctest::Approx(10.0));
   CHECK(s.se.puddle_ice_mm == doctest::Approx(0.0));
   CHECK(s.se.puddle_heat_Jm2 == doctest::Approx(0.0));
+}
+
+TEST_CASE("runon_energy_mode 1: puddle energy is applied only when runon_status is true") {
+  SM s(0.5); s.se.runon_energy_mode = 1; s.runon(false);
+  s.ed.d_soi2l.magic_puddle = 10.0; s.ed.d_atms.ta = -10.0;
+  s.se.puddle_ice_mm = 0.0; s.se.puddle_heat_Jm2 = 0.0;
+  s.se.updatePuddlePhase();
+  CHECK(s.ed.d_soi2l.magic_puddle == doctest::Approx(10.0));
+  CHECK(s.se.puddle_ice_mm == doctest::Approx(0.0));
+  CHECK(s.se.puddle_heat_Jm2 == doctest::Approx(0.0));
+}
+
+TEST_CASE("runon_energy_mode 1: ponding capacity is ponding_max minus liquid plus ice") {
+  SM s(0.5); s.se.runon_energy_mode = 1; s.runon(true);
+  s.se.ponding_max_mm = 50.0;
+  s.ed.d_soi2l.magic_puddle = 10.0;
+  s.se.puddle_ice_mm = 30.0;
+  CHECK(s.se.puddle_total_mm() == doctest::Approx(40.0));
+  CHECK(s.se.space_in_puddle_mm() == doctest::Approx(10.0));
 }
 
 TEST_CASE("ch4_conserve and ch4_daily default off; Soil_Bgc and BgcData flags start at 0") {

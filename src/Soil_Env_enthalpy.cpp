@@ -397,12 +397,12 @@ void Soil_Env::enthRemapWater(const EnthSnap& s) {
   const double frain = (rnth + melt > 0.0) ? rnth / (rnth + melt) : 0.0;
   // rain at max(Tair, 0 C); snow melt and ponded water at 0 C (liquid reference: h = 0)
   double h_in = SHCLIQ * fmax(ed->d_atms.ta, 0.0) * frain;
-  if (runon_energy_mode == 1) {
+  if (puddle_energy_on()) {
     // Phase 3 v2: all liquid inflow (rain, run-on, ponded water) at its booked specific enthalpy.
     h_in = infil_h_spec;
   }
   enthRemapWaterCore(s, ed->d_soi2l.qinfl, h_in);
-  if (runon_energy_mode == 1 && puddle_heat_Jm2 != 0.0 && ground != NULL && ground->fstsoill != NULL) {
+  if (puddle_energy_on() && puddle_heat_Jm2 != 0.0 && ground != NULL && ground->fstsoill != NULL) {
     // Book puddle freeze/thaw latent heat into the top soil and into bwater (closes the residual).
     Layer* l = ground->fstsoill;
     enthSetT(l, enthLayerH(l) + puddle_heat_Jm2);

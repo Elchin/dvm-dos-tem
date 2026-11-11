@@ -1035,7 +1035,7 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
       const double zt[5] = {0.1, 0.2, 0.5, 1.0, 2.0};
       if (wdg_day == 0) {
         wf << "day,year,doy,rain,snow,runon,qgw,eet,qover,qdrain,qinfl,soilw,swe,puddle,watertab,"
-           << "liq30,ice30,t_top,t010,t020,t050,t100,t200\n";
+           << "liq30,ice30,t_top,t010,t020,t050,t100,t200,puddle_ice\n";
       }
       double soilw = 0.0, liq30 = 0.0, ice30 = 0.0, tz[5] = {0, 0, 0, 0, 0};
       double zprev = -1.0, tprev = 0.0; bool tz_set[5] = {false, false, false, false, false};
@@ -1059,7 +1059,7 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
          << soilw << "," << edall->d_snws.swesum << "," << edall->d_soi2l.magic_puddle << ","
          << edall->d_sois.watertab << "," << liq30 << "," << ice30 << "," << ground.fstsoill->tem;
       for (int k = 0; k < 5; k++) { if (tz_set[k]) { wf << "," << tz[k]; } else { wf << ","; } }
-      wf << "\n";
+      wf << "," << soilenv.puddle_ice_mm << "\n";
       wdg_day++;
     }
 
@@ -1961,6 +1961,8 @@ void Cohort::set_restartdata_from_state() {
   restartdata.rtfrozendays   = edall->rtfrozendays;
   restartdata.rtunfrozendays = edall->rtunfrozendays;
   restartdata.watertab   = edall->d_sois.watertab;
+  restartdata.puddle_ice_mm = soilenv.puddle_ice_mm;
+  restartdata.magic_puddle  = edall->d_soi2l.magic_puddle;
 
   for(int il =0; il<cd.d_soil.numsl; il++) {
     restartdata.DZsoil[il]   = cd.d_soil.dz[il];

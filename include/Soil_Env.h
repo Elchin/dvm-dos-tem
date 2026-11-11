@@ -86,6 +86,10 @@ public:
   // Phase 3 v2: wetland.runon_energy_mode (default 0 = legacy, bit-identical).
   int runon_energy_mode = 0;
   double puddle_ice_mm = 0.0;     // frozen surface ponding (mm); liquid is ed->d_soi2l.magic_puddle
+  // Energy booking (freeze/thaw Lf, infil enthalpy) only when mode==1 AND runon_status.
+  bool puddle_energy_on() const;
+  double puddle_total_mm() const;   // liquid + ice
+  double space_in_puddle_mm() const; // ponding_max minus (liquid + ice)
   double puddle_heat_Jm2 = 0.0;   // heat released to the top soil today (Lf of freeze, minus melt)
   double infil_h_spec = 0.0;      // specific enthalpy of today's qinfl (J/kg); used when mode = 1
   void updatePuddlePhase();       // freeze/thaw the puddle at Tair; books puddle_heat_Jm2

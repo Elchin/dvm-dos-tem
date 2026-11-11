@@ -275,6 +275,9 @@ void Soil_Env::set_state_from_restartdata(const RestartData & rdata) {
   ed->rtfrozendays   = rdata.rtfrozendays;
   ed->rtunfrozendays = rdata.rtunfrozendays;
   ed->d_soid.rtdpgdd = rdata.growingttime[0];
+  // Phase 3 v2: optional puddle ice / liquid (MISSING_D or absent => 0 / leave liquid)
+  puddle_ice_mm = (rdata.puddle_ice_mm >= 0.0) ? rdata.puddle_ice_mm : 0.0;
+  if (rdata.magic_puddle >= 0.0) { ed->d_soi2l.magic_puddle = rdata.magic_puddle; }
   enth_init_pending = true; // Option C: project the restart state onto the curve (thermal_solver 1)
   enth_have_last = false;
 };
@@ -427,7 +430,7 @@ double Soil_Env::columnEnthalpy() const {
 void Soil_Env::rebookUnappliedRichards(const double infil, const double evap) {
   double in_mm = fmax(infil, 0.0) * SEC_IN_DAY;
   if (in_mm > 0.0) {
-    double sp = fmax(ponding_max_mm - ed->d_soi2l.magic_puddle, 0.0);
+    double sp = space_in_puddle_mm();
     double add = fmin(sp, in_mm);
     ed->d_soi2l.magic_puddle += add;
     ed->d_soi2l.qover += in_mm - add;
@@ -852,8 +855,9 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   space_for_liq -= infil;
   space_for_liq = fmax(space_for_liq, 0.0);
 
-  // Add runoff (up to 10 mm) to surface water storage (magic puddle)
-  double space_in_puddle = ponding_max_mm - ed->d_soi2l.magic_puddle;
+  // Add runoff to surface water storage (magic puddle). Capacity is ponding_max
+  // minus liquid plus ice so frozen ponding cannot be refilled on top of itself.
+  double space_in_puddle = space_in_puddle_mm();
   
   double add_to_puddle = fmax(fmin(ed->d_soi2l.qover, space_in_puddle), 0.0);
   ed->d_soi2l.magic_puddle += add_to_puddle;
@@ -861,9 +865,9 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   ed->d_soi2l.qover -= add_to_puddle;
 
   // runon_energy_mode 1: freeze/thaw the puddle at Tair before any puddle water infiltrates
-  // (frozen ponding stays as ice and cannot enter the soil).
+  // (frozen ponding stays as ice and cannot enter the soil). Gated on runon_status.
   const double infil_before_puddle = infil;
-  if (runon_energy_mode == 1) { updatePuddlePhase(); }
+  if (puddle_energy_on()) { updatePuddlePhase(); }
 
   //If there is space remaining in the soil, and water in
   // the puddle, transfer water from the puddle
@@ -898,7 +902,7 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   }
 
   ed->d_soi2l.qinfl = infil;
-  if (runon_energy_mode == 1 && infil > 0.0) {
+  if (puddle_energy_on() && infil > 0.0) {
     // Rain and run-on at max(Tair, 0 C); snow melt at 0 C (liquid reference h = 0);
     // puddle liquid (only present at Tair > 0 after updatePuddlePhase) at max(Tair, 0).
     const double h_liq = SHCLIQ * fmax(ed->d_atms.ta, 0.0);
@@ -979,7 +983,7 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
     if(infil > 0.0){
       infil *= SEC_IN_DAY;// -->mm/day
       //Add to ponding
-      space_in_puddle = ponding_max_mm- ed->d_soi2l.magic_puddle;
+      space_in_puddle = space_in_puddle_mm();
       add_to_puddle = fmin(space_in_puddle, infil);
       ed->d_soi2l.magic_puddle += add_to_puddle;
       infil -= add_to_puddle;
@@ -988,7 +992,7 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
       ed->d_soi2l.qover += infil;
       ed->d_soi2l.qinfl = 0;
       infil_h_spec = 0.0;
-      if (runon_energy_mode == 1) { updatePuddlePhase(); }
+      if (puddle_energy_on()) { updatePuddlePhase(); }
     }
     if(frozen_infil_eice >= 0.0){
       ed->d_soi2l.qinfl = frozen_infil_mm; // mm/day, DRAFT
@@ -1026,7 +1030,7 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   if(ed->d_soi2l.qdrain < 0){
    BOOST_LOG_SEV(glg, warn) << "qdrain is negative!";
   };
-  if (runon_energy_mode == 1) { applyPuddleHeatToSoil(); }
+  if (puddle_energy_on()) { applyPuddleHeatToSoil(); }
 }
 
 
@@ -1447,7 +1451,7 @@ void Soil_Env::checkSoilLiquidWaterValidity(Layer *topsoill, int topind){
     if (currl->liq > effmaxliq[ind]){
       double sink_liq = currl->liq - effmaxliq[ind];
       currl->liq -= sink_liq;
-      double space_in_puddle = ponding_max_mm - ed->d_soi2l.magic_puddle;
+      double space_in_puddle = space_in_puddle_mm();
       double to_puddle = fmin(sink_liq, space_in_puddle);
       ed->d_soi2l.magic_puddle += to_puddle;
       sink_liq -= to_puddle;
@@ -1706,8 +1710,21 @@ void Soil_Env::setEnvData(EnvData* edp) {
 // Phase 3 v2 (runon_energy_mode 1): the puddle can freeze and thaw. Liquid cannot be below
 // 0 C, so the puddle is taken to be in daily equilibrium with Tair. Latent heat is booked
 // to the top soil (both solvers). Frozen puddle water cannot infiltrate.
+bool Soil_Env::puddle_energy_on() const {
+  return runon_energy_mode == 1 && cd != NULL && cd->runon_status;
+}
+
+double Soil_Env::puddle_total_mm() const {
+  const double liq = (ed != NULL) ? fmax(ed->d_soi2l.magic_puddle, 0.0) : 0.0;
+  return liq + fmax(puddle_ice_mm, 0.0);
+}
+
+double Soil_Env::space_in_puddle_mm() const {
+  return fmax(ponding_max_mm - puddle_total_mm(), 0.0);
+}
+
 void Soil_Env::updatePuddlePhase() {
-  if (runon_energy_mode != 1 || ed == NULL) { return; }
+  if (!puddle_energy_on() || ed == NULL) { return; }
   const double Tair = ed->d_atms.ta;
   double liq = fmax(ed->d_soi2l.magic_puddle, 0.0);
   double ice = fmax(puddle_ice_mm, 0.0);
@@ -1723,7 +1740,7 @@ void Soil_Env::updatePuddlePhase() {
 }
 
 void Soil_Env::applyPuddleHeatToSoil() {
-  if (runon_energy_mode != 1 || ground == NULL) { return; }
+  if (!puddle_energy_on() || ground == NULL) { return; }
   // Solver 1: heat is applied in enthRemapWater (after the moisture window) so it is
   // booked in bwater. Solver 0 has no enthalpy budget: apply Lf as a temperature change now.
   if (thermal_solver == 1) { return; }
