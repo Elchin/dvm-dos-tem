@@ -408,9 +408,8 @@ void Soil_Env::enthRemapWater(const EnthSnap& s) {
   }
   enthRemapWaterCore(s, ed->d_soi2l.qinfl, h_in);
   if (puddle_energy_on() && puddle_heat_Jm2 != 0.0 && ground != NULL && ground->fstsoill != NULL) {
-    // Book puddle freeze/thaw latent heat into the top soil and into bwater (closes the residual).
-    Layer* l = ground->fstsoill;
-    enthSetT(l, enthLayerH(l) + puddle_heat_Jm2);
+    // Spread Lf over the near-surface soil (see applyHeatToNearSurfaceSoil).
+    applyHeatToNearSurfaceSoil(puddle_heat_Jm2);
     enth_bk_water += puddle_heat_Jm2;
   }
 }

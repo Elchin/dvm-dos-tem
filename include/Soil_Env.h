@@ -90,14 +90,16 @@ public:
   bool puddle_energy_on() const;
   double puddle_total_mm() const;   // liquid + ice
   double space_in_puddle_mm() const; // ponding_max minus (liquid + ice)
-  double puddle_heat_Jm2 = 0.0;   // heat released to the top soil today (Lf of freeze, minus melt)
+  double puddle_heat_Jm2 = 0.0;   // heat released to the top soil today (0: puddle Lf now goes to the atmosphere)
+  double puddle_atm_Jm2 = 0.0;    // diagnostic: puddle freeze Lf released to (melt: taken from) the atmosphere
   double infil_h_spec = 0.0;      // specific enthalpy of today's qinfl (J/kg); used when mode = 1
   void updatePuddlePhase();       // freeze/thaw the puddle at Tair; books puddle_heat_Jm2
-  void applyPuddleHeatToSoil();   // solver 0: change top-soil T; solver 1: booked in enthRemapWater
-  // runon_energy_mode 1: excess ice goes to puddle_ice if there is capacity; any remainder
-  // drains after the layer pays Lf so latent heat is not left in the soil. Mode 0 unchanged.
+  void applyPuddleHeatToSoil();   // solver 0: apply booked puddle/infil heat; solver 1 uses enthRemapWater
+  void applyHeatToNearSurfaceSoil(double Q); // spread Q (J/m2) over ~0.3 m of soil by heat capacity
+  // runon_energy_mode 1: excess ice pays Lf in THIS layer; the mass leaves as liquid
+  // (into the puddle if there is space, else drainage). Mode 0 unchanged.
   void expelLayerIce(Layer* l, double mass_mm);
-  void settleExpelledWater();     // solver 0: apply the same rule to ground->expelled_water_mm
+  void settleExpelledWater();     // leftover API; solver 0 expulsion stays on the legacy qdrain path
   // DRAFT (daily-structural): see ModelData::frozen_infil_eice (<0 = off)
   double frozen_infil_eice;
   // Refs: Swenson et al. 2012, doi:10.1029/2012MS000165; CLM5 Tech Note eq. 2.7.48 (Omega = 6); see docs/daily-mode-REFERENCES.md.

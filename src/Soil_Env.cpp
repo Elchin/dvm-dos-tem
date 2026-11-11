@@ -819,6 +819,7 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   // is available here, so runon_in_mm is 0); qover follows the pre-merge runoff path.
   runon_in_mm = 0.0;
   puddle_heat_Jm2 = 0.0;
+  puddle_atm_Jm2 = 0.0;
   infil_h_spec = 0.0;
   richards.qgw_mm = 0.0;   // diagnostic only (Richards may not run today)
   const bool recycle_runon = cd->runon_status && (runon_energy_mode != 1);
@@ -1732,12 +1733,18 @@ void Soil_Env::updatePuddlePhase() {
   const double Tair = ed->d_atms.ta;
   double liq = fmax(ed->d_soi2l.magic_puddle, 0.0);
   double ice = fmax(puddle_ice_mm, 0.0);
+  // The puddle sits on top of the soil and changes phase at Tair: a few cm of
+  // ponded water freezes by losing heat to the cold air above it and melts with
+  // air/radiation energy. Its latent heat is therefore exchanged with the
+  // atmosphere (puddle_atm_Jm2, diagnostic), not with the soil. Booking it into
+  // the top soil (E1r/E1t) put ~17 MJ/m2 of Lf into the soil every autumn and
+  // kept the CMT06 column above 0 C (Ttop DJF +2 C, 5.4 m talik).
   if (Tair < 0.0 && liq > 0.0) {
-    puddle_heat_Jm2 += liq * LHFUS;          // heat released to the soil
+    puddle_atm_Jm2 += liq * LHFUS;           // released to the atmosphere
     puddle_ice_mm = ice + liq;
     ed->d_soi2l.magic_puddle = 0.0;
   } else if (Tair > 0.0 && ice > 0.0) {
-    puddle_heat_Jm2 -= ice * LHFUS;          // heat taken from the soil to melt
+    puddle_atm_Jm2 -= ice * LHFUS;           // taken from the atmosphere to melt
     ed->d_soi2l.magic_puddle = liq + ice;
     puddle_ice_mm = 0.0;
   }
@@ -1749,11 +1756,38 @@ void Soil_Env::applyPuddleHeatToSoil() {
   // booked in bwater. Solver 0 has no enthalpy budget: apply Lf as a temperature change now.
   if (thermal_solver == 1) { return; }
   if (puddle_heat_Jm2 == 0.0 && infil_h_spec == 0.0) { return; }
-  Layer* l = ground->fstsoill;
-  if (l == NULL) { return; }
   const double Q = puddle_heat_Jm2 + infil_h_spec * fmax(ed->d_soi2l.qinfl, 0.0);
-  const double cap = l->getHeatCapacity() * l->dz;
-  if (cap > 0.0) { l->tem += Q / cap; }
+  applyHeatToNearSurfaceSoil(Q);
+}
+
+// Puddle freeze/thaw Lf used to be dumped entirely into fstsoill. On thin or
+// dry organic layers that sent t_top to thousands of C (E0r/E1r, ~1% of days).
+// Spread Q over the top ~0.3 m (daily conduction depth) in proportion to heat
+// capacity; skip zero-capacity layers; if the window is empty, go deeper.
+void Soil_Env::applyHeatToNearSurfaceSoil(double Q) {
+  if (Q == 0.0 || ground == NULL || ground->fstsoill == NULL) { return; }
+  const double ZWIN = 0.30;
+  Layer* ls[MAX_SOI_LAY];
+  double Cs[MAX_SOI_LAY];
+  int n = 0;
+  double z = 0.0, Ctot = 0.0;
+  for (Layer* l = ground->fstsoill; l != NULL && l->isSoil && n < MAX_SOI_LAY; l = l->nextl) {
+    const double C = (thermal_solver == 1)
+      ? (enthLayerCs(l) + fmax(l->liq, 0.0) * SHCLIQ + fmax(l->ice, 0.0) * SHCICE)
+      : (l->getHeatCapacity() * l->dz);
+    if (C > 0.0) { ls[n] = l; Cs[n] = C; Ctot += C; n++; }
+    z += l->dz;
+    if (z >= ZWIN && Ctot > 0.0) { break; }
+  }
+  if (Ctot <= 0.0 || n == 0) { return; }
+  for (int i = 0; i < n; ++i) {
+    const double Qi = Q * Cs[i] / Ctot;
+    if (thermal_solver == 1) {
+      enthSetT(ls[i], enthLayerH(ls[i]) + Qi);
+    } else {
+      ls[i]->tem += Qi / Cs[i];
+    }
+  }
 }
 
 void Soil_Env::expelLayerIce(Layer* l, double mass_mm) {

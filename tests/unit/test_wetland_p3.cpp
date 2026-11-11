@@ -262,13 +262,14 @@ TEST_CASE("runon_energy_mode 0 still recycles (legacy path, existing water-balan
   CHECK(s.se.runon_in_mm >= 0.0);
 }
 
-TEST_CASE("runon_energy_mode 1: puddle freezes at Tair < 0 and thaws at Tair > 0; Lf is booked") {
+TEST_CASE("runon_energy_mode 1: puddle freezes at Tair < 0 and thaws at Tair > 0; Lf goes to the atmosphere") {
   SM s(0.5); s.se.runon_energy_mode = 1; s.runon(true);
-  s.ed.d_soi2l.magic_puddle = 10.0; s.ed.d_atms.ta = -10.0; s.se.puddle_ice_mm = 0.0; s.se.puddle_heat_Jm2 = 0.0;
+  s.ed.d_soi2l.magic_puddle = 10.0; s.ed.d_atms.ta = -10.0; s.se.puddle_ice_mm = 0.0; s.se.puddle_heat_Jm2 = 0.0; s.se.puddle_atm_Jm2 = 0.0;
   s.se.updatePuddlePhase();
   CHECK(s.ed.d_soi2l.magic_puddle == doctest::Approx(0.0));
   CHECK(s.se.puddle_ice_mm == doctest::Approx(10.0));
-  CHECK(s.se.puddle_heat_Jm2 == doctest::Approx(10.0 * LHFUS));
+  CHECK(s.se.puddle_heat_Jm2 == doctest::Approx(0.0));
+  CHECK(s.se.puddle_atm_Jm2 == doctest::Approx(10.0 * LHFUS));
   s.ed.d_atms.ta = 5.0;
   s.se.updatePuddlePhase();
   CHECK(s.ed.d_soi2l.magic_puddle == doctest::Approx(10.0));
@@ -313,6 +314,20 @@ TEST_CASE("runon_energy_mode 1: expelled ice pays Lf in the source layer; mass b
   CHECK(l->ice == doctest::Approx(0.0));
   CHECK(s.c.g.expelled_water_mm == doctest::Approx(60.0));
   CHECK(l->tem < t0);   // source layer paid Lf for the whole 80 mm
+}
+
+TEST_CASE("runon_energy_mode 1: puddle heat is spread over the top 0.3 m, not dumped into a thin layer") {
+  SM s(0.5); s.se.runon_energy_mode = 1; s.runon(true);
+  s.se.thermal_solver = 0;
+  Layer* top = s.c.L[0];
+  top->dz = 0.002;
+  top->tem = -1.0;
+  for (size_t i = 1; i < s.c.L.size(); ++i) { s.c.L[i]->tem = -1.0; }
+  s.se.puddle_heat_Jm2 = 51.5 * LHFUS;
+  s.se.applyPuddleHeatToSoil();
+  // A 2 mm skin would jump thousands of C if it took all 51.5 mm of Lf.
+  CHECK(fabs(top->tem + 1.0) < 40.0);
+  CHECK(s.c.L[1]->tem > -1.0 + 0.5);  // heat reached the layers below
 }
 
 TEST_CASE("ch4_conserve and ch4_daily default off; Soil_Bgc and BgcData flags start at 0") {
