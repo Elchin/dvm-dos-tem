@@ -920,6 +920,9 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
   double alpha = 0.0;
   // Storing diffusion coefficient
   double diff[numlay] = {0};
+  // Finite-volume CN (v2): per-node reaction term and layer thickness for the second pass.
+  double react_n[numlay] = {0};
+  double dz_n[numlay] = {0};
 
   // ch4 production responses: kdc_ch4 * Tresp(q10) * SOM pool, Fan Eq. 9
   double prod_rawc_ch4[MAX_SOI_LAY] = {0};
@@ -968,8 +971,9 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
       double denom = 2.0 * scanl->dz * scanl->dz;
       if (denom > 0.0 && D > 0.0) {
         double a1 = D / denom; // alpha at dt = 1 hour
-        if (a1 > 0.5) {
-          int need = (int)(a1 / 0.5 + 0.999999);
+        // FV CN keeps RHS >= 0 when a+b <= 1; a+b <= 2 D dt / dz^2 = 4 a1, so use a1 <= 0.25.
+        if (a1 > 0.25) {
+          int need = (int)(a1 / 0.25 + 0.999999);
           if (need > nsub) { nsub = need; }
         }
       }
@@ -1306,6 +1310,8 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
         reaction_term = prod - oxid - ebul_efflux - plant;
 
         prev_pool_R[il] = currl->ch4 + reaction_term * dt;
+        react_n[il] = reaction_term;
+        dz_n[il] = currl->dz;
 
         if (currl->prevl->isMoss){
           // impose atmospheric concentration for upper boundary
@@ -1391,6 +1397,47 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
     // A X = (B + f(u,x)) * dx**2 / Dg * dt
     // where diagonals of matrix A become factors of
     // the inverse of r or sigma.
+
+    // Conservative (finite-volume) Crank-Nicolson rows. The rows above used each
+    // layer's own alpha for both neighbours, which is not mass conservative on a
+    // non-uniform grid with depth-varying D: CH4 was created/destroyed inside the
+    // column and showed up as negative "diffusion efflux" and a growing pool
+    // (C0e). Interface conductance g = 1/(dz_a/(2 D_a) + dz_b/(2 D_b)); top
+    // interface to the atmospheric node uses g = 2 D_1/dz_1; bottom is zero flux.
+    // Row i: (1+a_i+b_i) c_i - a_i c_{i-1} - b_i c_{i+1} =
+    //        a_i c_{i-1}^n + (1-a_i-b_i) c_i^n + b_i c_{i+1}^n + dt R_i,
+    // a_i = dt g_{i-1/2} / (2 dz_i), b_i = dt g_{i+1/2} / (2 dz_i).
+    {
+      int nlast = 0;
+      Layer* nodes[MAX_SOI_LAY + 2] = {0};
+      Layer* l2 = ground->fstshlwl;
+      int k = 1;
+      while (l2 && l2->isSoil && k < numlay - 1) { nodes[k] = l2; nlast = k; l2 = l2->nextl; k++; }
+      auto g_if = [&](int a, int b2) -> double {
+        if (diff[a] <= 0.0 || diff[b2] <= 0.0 || dz_n[a] <= 0.0 || dz_n[b2] <= 0.0) { return 0.0; }
+        return 1.0 / (dz_n[a] / (2.0 * diff[a]) + dz_n[b2] / (2.0 * diff[b2]));
+      };
+      for (int i = 1; i <= nlast; i++) {
+        const double dzi = dz_n[i];
+        if (dzi <= 0.0) { continue; }
+        const double g_up = (i == 1) ? ((diff[1] > 0.0) ? 2.0 * diff[1] / dzi : 0.0) : g_if(i - 1, i);
+        const double g_dn = (i == nlast) ? 0.0 : g_if(i, i + 1);
+        const double a = dt * g_up / (2.0 * dzi);
+        const double b2 = dt * g_dn / (2.0 * dzi);
+        const double c_up = (i == 1) ? upper_bound : nodes[i - 1]->ch4;
+        const double c_dn = (i == nlast) ? 0.0 : nodes[i + 1]->ch4;
+        const double ci = nodes[i]->ch4;
+        lower_diagonal[i] = -a;
+        upper_diagonal[i] = -b2;
+        main_diagonal[i] = 1.0 + a + b2;
+        solver_rhs[i] = a * c_up + (1.0 - a - b2) * ci + b2 * c_dn + dt * react_n[i];
+        prev_pool_R[i] = ci + dt * react_n[i];  // final pre-solve state (after ebullition transfers)
+      }
+      // Decouple the ghost node below the last soil layer (zero-flux handled by b = 0).
+      for (int i = nlast + 1; i < numlay; i++) {
+        main_diagonal[i] = 1.0; lower_diagonal[i] = 0.0; upper_diagonal[i] = 0.0; solver_rhs[i] = 0.0;
+      }
+    }
 
     TriSolver(numlay, lower_diagonal, main_diagonal, upper_diagonal, solver_rhs, solution);
 
