@@ -902,11 +902,11 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
   int numlay = numsoill + 1;
 
   // Storing pool + reaction term * dt prior to solver for calculating efflux
-  double prev_pool_R[MAX_SOI_LAY] = {0};
+  double prev_pool_R[MAX_SOI_LAY + 1] = {0};
 
   // For storing methane movement data by layer for output
-  double ch4_ebul_layer[MAX_SOI_LAY] = {0};
-  double ch4_oxid_layer[MAX_SOI_LAY] = {0};
+  double ch4_ebul_layer[MAX_SOI_LAY + 1] = {0};
+  double ch4_oxid_layer[MAX_SOI_LAY + 1] = {0};
 
   // Tridiagonal matrix components
   double main_diagonal[numlay] = {0};
@@ -959,7 +959,7 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
     double dt_stable = dt;
     
     currl = ground->lstsoill;
-    il = numsoill - 1;
+    il = numsoill;  // 0 = atmosphere Dirichlet node; soil is 1..numsoill;
     
     while (!currl->isMoss){
       // Calculate diffusion coefficient (same as later in code)
@@ -994,7 +994,7 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
     double krawc_ch4, ksoma_ch4, ksompr_ch4, ksomcr_ch4 = 0.0;
 
     currl = ground->lstsoill; // reset currl to bottom of the soil stack
-    il = numsoill - 1;        // reset manual layer index tracker. From 1 to allow future moss layer inclusion
+    il = numsoill;  // 0 = atmosphere Dirichlet node; soil is 1..numsoill;        // reset manual layer index tracker. From 1 to allow future moss layer inclusion
 
     // For the mass balance we include boundary conditions
     // final layer concentration to enforce zero flux or
@@ -1284,15 +1284,10 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
     lower_diagonal[0] = 0.0;  // Set to zero but not used in solver
     solver_rhs[0] = upper_bound;        // Fixed concentration at the upper boundary
 
-    // Lower boundary condition (no flux)
-    main_diagonal[numlay - 1] = 1.0;
-    upper_diagonal[numlay - 1] = 0.0;
-    lower_diagonal[numlay - 1] = -1.0;//0.0;
-    solver_rhs[numlay - 1] = 0.0;//ground->lstsoill->ch4; // Match last soil layer
+    // Lower boundary: last soil is index numsoill (== numlay-1). Zero-flux is
+    // already applied in the layer loop (mirror neighbor). Do not overwrite that row.
 
-    // Track flux out of the upper boundary considering the properties of the first
-    // non-moss soil layer
-    double upper_flux = diff[1] * (prev_pool_R[1] - upper_bound) / ground->fstshlwl->dz;
+    double upper_flux = 0.0;
 
     // Solve tridiagonal system
 
@@ -1348,10 +1343,15 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
     TriSolver(numlay, lower_diagonal, main_diagonal, upper_diagonal, solver_rhs, solution);
 
     currl = ground->fstshlwl; //reset currl to top of the soil stack
-    il = 1; //Reset manual layer index tracker. From 1 to allow moss layer in future
+    il = 1; // soil layers occupy 1..numsoill; node 0 is the atmospheric boundary
 
-    // Conservation check
+    // Conservation check and conservative diffusion efflux.
+    // prev_pool_R is concentration after the reaction term, before diffusion.
+    // mass_pred - mass_sol is the CH4 that left the column by diffusion this hour
+    // (umol L^-1 * m). Do not multiply by topsoil->dz again at output time.
     double total_ch4_after = 0.0;
+    double mass_pred = 0.0;
+    double mass_sol = 0.0;
 
     total_ch4_after += upper_bound;
 
@@ -1359,22 +1359,22 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
 
       currl->ch4 = solution[il];
       total_ch4_after += currl->ch4;
+      mass_pred += prev_pool_R[il] * currl->dz;
+      mass_sol  += currl->ch4 * currl->dz;
 
       currl = currl->nextl;
       il++;
 
     }
 
-    // summing additional final soil layer to account for boundary condition
-    total_ch4_after += currl->prevl->ch4;
-    // Adjust the conservation by summing the flux leaving the system
-    total_ch4_after += upper_flux * dt;
+    // Diffusion efflux, positive to the atmosphere, umol L^-1 * m * hr^-1
+    upper_flux = (dt > 0.0) ? (mass_pred - mass_sol) / dt : 0.0;
 
     if (fabs(total_ch4_after - total_ch4_before) > 0.1 * total_ch4_before) {
       BOOST_LOG_SEV(glg, warn) << "CH4 conseveration violated! Difference: " << total_ch4_after - total_ch4_before;
     }
 
-    diff_efflux_daily += upper_flux; // flux cumulated over 1 day, 24 time steps, Y.MI
+    diff_efflux_daily += upper_flux; // flux cumulated over 1 day, 24 time steps
   }
 
   //Storing daily CH4 movement for output
@@ -1399,7 +1399,8 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
   Layer* topsoil = ground->fstshlwl;
 
   // diffusion efflux unit conversion - g m^-2 d^-1
-  diff_efflux_gm2day = diff_efflux_daily * convert_umolL_to_gm3 * topsoil->dz;
+  // upper_flux already includes layer dz (umol L^-1 * m / hr, summed over 24 h)
+  diff_efflux_gm2day = diff_efflux_daily * convert_umolL_to_gm3;
 
   //Fan Eq. 21
   efflux_gm2day = plant_gm2day + diff_efflux_gm2day + ebul_efflux_gm2day;
