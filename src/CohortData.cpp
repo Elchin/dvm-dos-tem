@@ -43,6 +43,8 @@ void CohortData::clear() {
   cell_elevation = MISSING_D;
   hasnonvascular = false;
 
+  is_wetland = false;
+  ch4_on = false;
   groundwater_status = false;
   runon_status = false;
 

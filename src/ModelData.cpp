@@ -126,9 +126,7 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
   dynamic_LAI       = controldata["model_settings"]["dynamic_lai"].asInt(); // checked in Cohort::updateMonthly_DIMVeg
   baseline_start = controldata["model_settings"]["baseline_start"].asInt();
   baseline_end   = controldata["model_settings"]["baseline_end"].asInt();
-  ch4_module = controldata["model_settings"]["ch4"].asBool();
-  runon_enabled = controldata["model_settings"]["run-on"].asBool();
-  groundwater_enabled = controldata["model_settings"]["groundwater"].asBool();
+  // wetland block (phase 3), parsed below after the IO keys; see ModelData.h
 
   // Opt-in daily climate mode. Absent/empty key keeps original monthly
   // behavior. Any value other than "monthly" or "daily" is a hard error.
@@ -189,6 +187,72 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
       exit(EXIT_FAILURE);
     }
     snow_empty_cleanup = v.asInt();
+  }
+  {
+    // wetland (regional_wetland_deepc merge, phase 3): see ModelData.h. Default OFF.
+    const Json::Value& ms = controldata["model_settings"];
+    auto bad = [](const std::string& m) {
+      std::cerr << "FATAL: model_settings.wetland: " << m << std::endl;
+      exit(EXIT_FAILURE);
+    };
+    auto flag = [&bad](const Json::Value& v, const std::string& k, bool dflt) -> bool {
+      if (v.isNull()) { return dflt; }
+      if (v.isBool()) { return v.asBool(); }
+      if (bnf::valid_int(v, 0, 1)) { return v.asInt() == 1; }
+      bad(k + " must be true/false (or 0/1)");
+      return dflt;
+    };
+    wetland_enabled = false; wetland_ch4 = true; wetland_runon = false; wetland_groundwater = false;
+    { const int wc[] = {6, 31, 32, 55, 61, 75, 92, 93}; wetland_cmts.assign(wc, wc + 8); }
+    interception_scheme = 0; wetland_diag = 0;
+    const bool has_block = ms.isMember("wetland");
+    const bool has_flat = ms.isMember("ch4") || ms.isMember("run-on") || ms.isMember("groundwater");
+    if (has_flat) {
+      std::cerr << "WARNING: model_settings.ch4 / run-on / groundwater are deprecated; use the "
+                << "model_settings.wetland block" << (has_block ? " (flat keys ignored: wetland block present)" : "")
+                << std::endl;
+    }
+    if (has_block) {
+      const Json::Value& w = ms["wetland"];
+      if (!w.isObject()) { bad("must be an object"); }
+      const char* known[] = {"enabled", "ch4", "run_on", "groundwater", "cmts", "interception_scheme", "diag"};
+      std::vector<std::string> keys = w.getMemberNames();
+      for (size_t i = 0; i < keys.size(); i++) {
+        bool ok = false;
+        for (size_t j = 0; j < sizeof(known) / sizeof(known[0]); j++) { if (keys[i] == known[j]) { ok = true; } }
+        if (!ok) { bad("unknown key '" + keys[i] + "'"); }
+      }
+      wetland_enabled     = flag(w["enabled"], "enabled", false);
+      wetland_ch4         = flag(w["ch4"], "ch4", true);
+      wetland_runon       = flag(w["run_on"], "run_on", false);
+      wetland_groundwater = flag(w["groundwater"], "groundwater", false);
+      if (w.isMember("cmts")) {
+        const Json::Value& c = w["cmts"];
+        if (!c.isArray()) { bad("cmts must be an array of CMT numbers"); }
+        wetland_cmts.clear();
+        for (Json::ArrayIndex i = 0; i < c.size(); i++) {
+          if (!bnf::valid_int(c[i], 0, 99)) { bad("cmts entries must be integers 0-99"); }
+          wetland_cmts.push_back(c[i].asInt());
+        }
+      }
+      Json::Value is = w.get("interception_scheme", 0);
+      if (!bnf::valid_int(is, 0, 1)) { bad("interception_scheme must be 0 (legacy, default) or 1 (upstream CLM5-style)"); }
+      interception_scheme = is.asInt();
+      Json::Value dg = w.get("diag", 0);
+      if (!bnf::valid_int(dg, 0, 1)) { bad("diag must be 0 (default) or 1"); }
+      wetland_diag = dg.asInt();
+    } else if (has_flat) {
+      wetland_ch4         = flag(ms["ch4"], "ch4", false);
+      wetland_runon       = flag(ms["run-on"], "run-on", false);
+      wetland_groundwater = flag(ms["groundwater"], "groundwater", false);
+      wetland_enabled     = wetland_ch4 || wetland_runon || wetland_groundwater;
+    }
+    if (wetland_enabled && wetland_ch4 && controldata["IO"]["ch4_file"].asString().empty()) {
+      bad("enabled with ch4 needs IO.ch4_file (and IO.proj_ch4_file for the scenario stage)");
+    }
+    ch4_module          = wetland_enabled && wetland_ch4;
+    runon_enabled       = wetland_enabled && wetland_runon;
+    groundwater_enabled = wetland_enabled && wetland_groundwater;
   }
   stefan_fronts_fix  = controldata["model_settings"].get("stefan_fronts_fix", 0).asInt();
   snow_albedo_fix    = controldata["model_settings"].get("snow_albedo_fix", 0).asInt();
@@ -541,6 +605,10 @@ ModelData::ModelData():force_cmt(-1) {
   richards_dt_fix = 0; // bug R1 fix (off)
   snow_scheme = 0; snow_class_wind = -1.0; snow_diag = 0; // Schaefer 2009 snow classes (off)
   snow_empty_cleanup = 0; // emptied snow layer removal (off)
+  wetland_enabled = false; wetland_ch4 = true; wetland_runon = false; wetland_groundwater = false; // phase 3 (off)
+  { const int wc[] = {6, 31, 32, 55, 61, 75, 92, 93}; wetland_cmts.assign(wc, wc + 8); }
+  interception_scheme = 0; wetland_diag = 0;
+  ch4_module = false; runon_enabled = false; groundwater_enabled = false;
   et_fpc_once_fix = 0; nv_snow_bury_fix = 0; rain_int_lai_fix = 0; nv_rain_surface = 0; // v5l (off)
   n_safetynet_conserve = 0; // v5m L1 (off)
   n_extract_limiter = 0; soil_giveup_retry = 0; soil_giveup_diag = 0; n_extract_tau = 0.2; n_netnmin_rescale_guard = 0; // v5n (off)
@@ -624,6 +692,13 @@ bool ModelData::get_runon_status() {
 }
 bool ModelData::get_groundwater_status() {
   return this->groundwater_enabled;
+}
+
+/** wetland gate (phase 3): true if the wetland bundle is enabled and cmt is listed. */
+bool ModelData::is_wetland_cmt(int cmt) const {
+  if (!wetland_enabled) { return false; }
+  for (size_t i = 0; i < wetland_cmts.size(); i++) { if (wetland_cmts[i] == cmt) { return true; } }
+  return false;
 }
 
 bool ModelData::get_dslmodule() {

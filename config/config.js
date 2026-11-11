@@ -134,6 +134,17 @@
     "daily_c_split": 0,                 // v5p: statistical daily split of the monthly C fluxes, output only (0 off, 1 on; the *_DS outputs need 1)
     "baseline_start": 1901,  //start year for baseline EQ climate
     "baseline_end": 1931,    //end year for baseline EQ climate
+    // Wetland bundle (regional_wetland_deepc merge, phase 3). OFF by default; enabled = false is
+    // bit-identical to the pre-merge fork. The old flat keys "ch4", "run-on", "groundwater"
+    // are deprecated aliases (used only if this block is absent).
+    "wetland": {
+      "enabled": false,                       // master switch
+      "ch4": true,                            // CH4 production/oxidation/transport (only if enabled)
+      "run_on": false,                        // run-on hydrology (only if enabled)
+      "groundwater": false,                   // calibrated groundwater recharge (only if enabled)
+      "cmts": [6, 31, 32, 55, 61, 75, 92, 93],// CMTs treated as wetland
+      "interception_scheme": 0                // 0 = legacy/v5q interception (all cohorts); 1 = upstream CLM5-style formula
+    },
     // thermal_solver defaults to 0 (legacy Stefan/CN). With thermal_solver = 1,
     // thermal_substeps defaults to 4 (Elchin, 2026-11-10); allowed 1, 2, 4, 8, 12, 24 or 48.
     // Do not set thermal_substeps with thermal_solver = 0 (FATAL unless it is 1).

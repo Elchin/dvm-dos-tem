@@ -2,6 +2,7 @@
 #define MODELDATA_H_
 #include "Bnf.h"
 #include <string>
+#include <vector>
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -193,6 +194,19 @@ public:
   // update, so they never enter the next thermal step (root cause of the r1 1 Jun 2024 melt-out
   // closure miss, fix/meltout-closure). Applies to both thermal solvers. See Ground.h.
   int snow_empty_cleanup;
+  // wetland (regional_wetland_deepc merge, phase 3): model_settings.wetland block, OFF by default
+  // (enabled false => no cohort is a wetland cohort; bit-identical to the pre-merge fork).
+  //   enabled (false), ch4 (true), run_on (false), groundwater (false): as in merge plan section 1.5;
+  //   cmts ([6,31,32,55,61,75,92,93]): CMTs treated as wetland (replaces the hard-coded lists);
+  //   interception_scheme (0): 0 = legacy/v5q canopy interception, 1 = upstream CLM5-style formula;
+  //   diag (0): 1 = write output/wetland_daily.csv for wetland cohorts (diagnostics only).
+  // Old flat keys model_settings.ch4 / run-on / groundwater are deprecated aliases (used only when
+  // there is no wetland block; enabled = any of them true).
+  bool wetland_enabled, wetland_ch4, wetland_runon, wetland_groundwater;
+  std::vector<int> wetland_cmts;
+  int interception_scheme;
+  int wetland_diag;
+  bool is_wetland_cmt(int cmt) const;
   // Refs: at each declaration named above (Climate.h, Soil_Env.h, Stefan.h, Snow_Env.h) and in docs/daily-mode-REFERENCES.md.
   // Fix C1 (v5k), OFF by default (0 = legacy): soil integrator NMIN error
   // tolerance, see Integrator.h (soil_nmin_tol_fix).

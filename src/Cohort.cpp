@@ -88,19 +88,15 @@ Cohort::Cohort(int y, int x, ModelData* modeldatapointer):
   // overwritten by projected climate later when necessary.
   this->climate = Climate(modeldatapointer->hist_climate_file, modeldatapointer->co2_file, y, x);
 
-  if(modeldatapointer->get_ch4_module()){
+  // wetland (phase 3): per-cohort flags (model_settings.wetland; replaces the hard-coded CMT
+  // lists and the shared ModelData::set_ch4_module mutation of the upstream branch)
+  cd.is_wetland = modeldatapointer->is_wetland_cmt(cd.cmttype);
+  cd.ch4_on = cd.is_wetland && modeldatapointer->wetland_ch4;
+  cd.groundwater_status = cd.is_wetland && modeldatapointer->wetland_groundwater;
+  cd.runon_status = cd.is_wetland && modeldatapointer->wetland_runon;
+  if (cd.ch4_on) {
     this->climate.load_ch4(modeldatapointer->ch4_file);
   }
-
-    // adding catch for regional simulations to circumvent config file and minimize additional ch4 related processes in non-wetlands
-  if(this->cd.cmttype == 6 || this->cd.cmttype == 31 || this->cd.cmttype == 32 || this->cd.cmttype == 55 || this->cd.cmttype == 61 || this->cd.cmttype == 75 || this->cd.cmttype == 92 || this->cd.cmttype == 93){
-    modeldatapointer->set_ch4_module(true);
-  } else {
-    modeldatapointer->set_ch4_module(false);
-  }
-
-  cd.groundwater_status = modeldatapointer->get_groundwater_status();
-  cd.runon_status = modeldatapointer->get_runon_status();
 
   this->climate.baseline_start = modeldatapointer->baseline_start;
   this->climate.baseline_end = modeldatapointer->baseline_end;
@@ -1133,14 +1129,14 @@ void Cohort::updateMonthly_Bgc(const int & currmind, const int & dinmcurr) {
   // Running ch4 calculations prior to updateMonthlySbgc
   // So accrued daily ch4 production and oxidation
   // alter SOM pools and CO2 emission
-  for (int id = 0; id < dinmcurr; id++){
-    int doy = temutil::day_of_year(currmind, id);
-
-    if(md->get_ch4_module()){
+  // wetland (phase 3): only for CH4 cohorts (cd.ch4_on); otherwise the daily CH4 accumulators
+  // stay 0 and the soil C update is the pre-merge one.
+  if (cd.ch4_on) {
+    for (int id = 0; id < dinmcurr; id++){
+      int doy = temutil::day_of_year(currmind, id);
       soilbgc.CH4Flux(currmind, id);
+      bdall->soil_endOfDay(dinmcurr, doy);
     }
-
-    bdall->soil_endOfDay(dinmcurr, doy);
   }
 
   solintegrator.updateMonthlySbgc(MAX_SOI_LAY);
