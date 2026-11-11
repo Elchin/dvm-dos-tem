@@ -826,6 +826,40 @@ void Soil_Bgc::CH4Flux(const int mind, const int id) {
   ebul_efflux_gm2day = 0.0;
 }
 
+/*
+  Phase 3 v2 (ch4_conserve = 1): finite-volume Crank-Nicolson rows for nodes 1..nlast.
+  Inputs indexed 1..nlast: diff (D), dz, c (concentration at time n), react (R).
+  g_{a,b} = 1/(dz_a/(2 D_a) + dz_b/(2 D_b)); top interface to the atmospheric node
+  g = 2 D_1/dz_1; zero flux below nlast. Row i:
+  (1+a_i+b_i) c_i - a_i c_{i-1} - b_i c_{i+1} = a_i c_{i-1}^n + (1-a_i-b_i) c_i^n + b_i c_{i+1}^n + dt R_i,
+  a_i = dt g_{i-1/2} / (2 dz_i), b_i = dt g_{i+1/2} / (2 dz_i). Interface fluxes are
+  antisymmetric, so sum(dz_i c_i) changes only by dt sum(dz_i R_i) and the top flux.
+*/
+void Soil_Bgc::ch4FvCnRows(const int nlast, const double *diff, const double *dz_n,
+                           const double *c, const double upper_bound, const double *react_n,
+                           const double dt, double *lower_diagonal, double *main_diagonal,
+                           double *upper_diagonal, double *solver_rhs) {
+  auto g_if = [&](int a, int b2) -> double {
+    if (diff[a] <= 0.0 || diff[b2] <= 0.0 || dz_n[a] <= 0.0 || dz_n[b2] <= 0.0) { return 0.0; }
+    return 1.0 / (dz_n[a] / (2.0 * diff[a]) + dz_n[b2] / (2.0 * diff[b2]));
+  };
+  for (int i = 1; i <= nlast; i++) {
+    const double dzi = dz_n[i];
+    if (dzi <= 0.0) { continue; }
+    const double g_up = (i == 1) ? ((diff[1] > 0.0) ? 2.0 * diff[1] / dzi : 0.0) : g_if(i - 1, i);
+    const double g_dn = (i == nlast) ? 0.0 : g_if(i, i + 1);
+    const double a = dt * g_up / (2.0 * dzi);
+    const double b2 = dt * g_dn / (2.0 * dzi);
+    const double c_up = (i == 1) ? upper_bound : c[i - 1];
+    const double c_dn = (i == nlast) ? 0.0 : c[i + 1];
+    const double ci = c[i];
+    lower_diagonal[i] = -a;
+    upper_diagonal[i] = -b2;
+    main_diagonal[i] = 1.0 + a + b2;
+    solver_rhs[i] = a * c_up + (1.0 - a - b2) * ci + b2 * c_dn + dt * react_n[i];
+  }
+}
+
 void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
   // Initial atmospheric CH4 concentration upper boundary condition
   // Fan et al. 2010 supplement Eq. 13. Units: umol L^-1
@@ -1413,25 +1447,13 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
       Layer* l2 = ground->fstshlwl;
       int k = 1;
       while (l2 && l2->isSoil && k < numlay - 1) { nodes[k] = l2; nlast = k; l2 = l2->nextl; k++; }
-      auto g_if = [&](int a, int b2) -> double {
-        if (diff[a] <= 0.0 || diff[b2] <= 0.0 || dz_n[a] <= 0.0 || dz_n[b2] <= 0.0) { return 0.0; }
-        return 1.0 / (dz_n[a] / (2.0 * diff[a]) + dz_n[b2] / (2.0 * diff[b2]));
-      };
+      double cvec[MAX_SOI_LAY + 2] = {0};
+      for (int i = 1; i <= nlast; i++) { cvec[i] = nodes[i]->ch4; }
+      ch4FvCnRows(nlast, diff, dz_n, cvec, upper_bound, react_n, dt,
+                  lower_diagonal, main_diagonal, upper_diagonal, solver_rhs);
       for (int i = 1; i <= nlast; i++) {
-        const double dzi = dz_n[i];
-        if (dzi <= 0.0) { continue; }
-        const double g_up = (i == 1) ? ((diff[1] > 0.0) ? 2.0 * diff[1] / dzi : 0.0) : g_if(i - 1, i);
-        const double g_dn = (i == nlast) ? 0.0 : g_if(i, i + 1);
-        const double a = dt * g_up / (2.0 * dzi);
-        const double b2 = dt * g_dn / (2.0 * dzi);
-        const double c_up = (i == 1) ? upper_bound : nodes[i - 1]->ch4;
-        const double c_dn = (i == nlast) ? 0.0 : nodes[i + 1]->ch4;
-        const double ci = nodes[i]->ch4;
-        lower_diagonal[i] = -a;
-        upper_diagonal[i] = -b2;
-        main_diagonal[i] = 1.0 + a + b2;
-        solver_rhs[i] = a * c_up + (1.0 - a - b2) * ci + b2 * c_dn + dt * react_n[i];
-        prev_pool_R[i] = ci + dt * react_n[i];  // final pre-solve state (after ebullition transfers)
+        if (dz_n[i] <= 0.0) { continue; }
+        prev_pool_R[i] = cvec[i] + dt * react_n[i];  // final pre-solve state (after ebullition transfers)
       }
       // Decouple the ghost node below the last soil layer (zero-flux handled by b = 0).
       for (int i = nlast + 1; i < numlay; i++) {

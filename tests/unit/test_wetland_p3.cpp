@@ -345,3 +345,58 @@ TEST_CASE("ch4_conserve and ch4_daily default off; Soil_Bgc and BgcData flags st
 }
 
 } // TEST_SUITE
+
+TEST_SUITE("wetland_p3_fvcn") {
+namespace {
+// Solve one FV-CN step on nodes 0..n+1 (0 = atmospheric node fixed at ub, n+1 = decoupled ghost).
+std::vector<double> fv_step(const std::vector<double>& D, const std::vector<double>& dz,
+                            const std::vector<double>& c, const std::vector<double>& R, double ub, double dt) {
+  const int n = (int)D.size() - 2, N = n + 2;
+  std::vector<double> lo(N, 0.0), md(N, 1.0), up(N, 0.0), rhs(N, 0.0), x(N, 0.0);
+  rhs[0] = ub;
+  Soil_Bgc::ch4FvCnRows(n, D.data(), dz.data(), c.data(), ub, R.data(), dt, lo.data(), md.data(), up.data(), rhs.data());
+  Soil_Bgc sb; sb.TriSolver(N, lo.data(), md.data(), up.data(), rhs.data(), x.data());
+  return x;
+}
+double mass(const std::vector<double>& dz, const std::vector<double>& c) {
+  double m = 0.0; for (size_t i = 1; i + 1 < c.size(); ++i) { m += dz[i] * c[i]; } return m;
+}
+// Non-uniform grid, D varying by 3 orders of magnitude (moss/peat/saturated mineral).
+const std::vector<double> DZ = {0, 0.02, 0.05, 0.1, 0.1, 0.2, 0.3, 0.5, 0};
+const std::vector<double> DD = {0, 0.07, 0.03, 0.002, 1e-4, 8e-5, 5e-5, 2e-5, 0};
+}
+
+TEST_CASE("ch4_conserve FV-CN: closed top conserves column CH4 exactly (non-uniform grid, varying D)") {
+  std::vector<double> D = DD; D[1] = 0.0;  // no exchange with the atmosphere
+  std::vector<double> c = {0, 0.1, 5, 40, 300, 900, 1200, 1500, 0}, R(9, 0.0);
+  const double m0 = mass(DZ, c);
+  for (int s = 0; s < 240; ++s) { std::vector<double> x = fv_step(D, DZ, c, R, 0.0, 1.0); for (int i = 1; i <= 7; ++i) c[i] = x[i]; }
+  CHECK(mass(DZ, c) == doctest::Approx(m0).epsilon(1e-12));
+  for (int i = 1; i <= 7; ++i) CHECK(c[i] >= 0.0);
+}
+
+TEST_CASE("ch4_conserve FV-CN: mass change = dt*sum(dz R) - top CN flux; uniform field stays uniform") {
+  std::vector<double> c = {0, 0.5, 5, 40, 300, 900, 1200, 1500, 0};
+  std::vector<double> R = {0, -0.01, 0.0, 0.3, 2.0, 1.0, 0.5, 0.1, 0};
+  const double ub = 0.08, dt = 1.0 / 12.0;
+  std::vector<double> x = fv_step(DD, DZ, c, R, ub, dt);
+  double sR = 0.0; for (int i = 1; i <= 7; ++i) sR += DZ[i] * R[i];
+  const double gtop = 2.0 * DD[1] / DZ[1];
+  const double ftop = dt * gtop * (0.5 * (x[1] + c[1]) - ub);  // CN top flux (positive out)
+  CHECK(mass(DZ, x) - mass(DZ, c) == doctest::Approx(dt * sR - ftop).epsilon(1e-10));
+  // well balanced: a uniform field at ub with no reactions does not move
+  std::vector<double> u(9, ub), Z(9, 0.0); u[0] = u[8] = 0.0;
+  std::vector<double> y = fv_step(DD, DZ, u, Z, ub, dt);
+  for (int i = 1; i <= 7; ++i) CHECK(y[i] == doctest::Approx(ub).epsilon(1e-13));
+}
+
+TEST_CASE("ch4_conserve FV-CN: explicit half stays non-negative when D dt/(2 dz^2) <= 0.25") {
+  std::vector<double> D = DD, c(9, 0.0), R(9, 0.0);
+  c[4] = 100.0;  // single spike
+  double a1max = 0.0; for (int i = 1; i <= 7; ++i) a1max = std::max(a1max, D[i] / (2.0 * DZ[i] * DZ[i]));
+  int nsub = std::max(1, (int)(a1max / 0.25 + 0.999999)); double dt = 1.0 / nsub;
+  std::vector<double> lo(9, 0.0), md(9, 1.0), up(9, 0.0), rhs(9, 0.0);
+  Soil_Bgc::ch4FvCnRows(7, D.data(), DZ.data(), c.data(), 0.0, R.data(), dt, lo.data(), md.data(), up.data(), rhs.data());
+  for (int i = 1; i <= 7; ++i) { CHECK(rhs[i] >= 0.0); CHECK(-lo[i] - up[i] <= 1.0 + 1e-12); }
+}
+} // TEST_SUITE

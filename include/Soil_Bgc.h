@@ -368,6 +368,10 @@ public:
   void bnfRecordMonth(const int m, const double npp, const double et);
   void CH4Flux(const int mind, const int id);
   void CH4FluxConserve(const int mind, const int id); // phase 3 v2; called from CH4Flux when ch4_conserve == 1
+  static void ch4FvCnRows(const int nlast, const double *diff, const double *dz_n, const double *c,
+                          const double upper_bound, const double *react_n, const double dt,
+                          double *lower_diagonal, double *main_diagonal, double *upper_diagonal,
+                          double *solver_rhs); // phase 3 v2: conservative CN rows (unit tested)
   int ch4_conserve = 0; // wetland.ch4_conserve (0 = legacy, bit-identical)
   int ch4_daily = 0;    // wetland.ch4_daily (0 = monthly snapshot; informational here)
 
