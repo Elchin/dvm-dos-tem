@@ -80,6 +80,9 @@ public:
   // checkSoilLiquidWaterValidity(), and soil evaporation that was reported but never removed
   // from the soil (frozen-top branch). Cohort subtracts these from the reported ET.
   double floor_added_mm;
+  // wetland (phase 3) diagnostics, mm/day: run-on inflow added to infiltration today (0 unless
+  // cd->runon_status); groundwater recharge is Richards::qgw_mm.
+  double runon_in_mm = 0.0;
   // DRAFT (daily-structural): see ModelData::frozen_infil_eice (<0 = off)
   double frozen_infil_eice;
   // Refs: Swenson et al. 2012, doi:10.1029/2012MS000165; CLM5 Tech Note eq. 2.7.48 (Omega = 6); see docs/daily-mode-REFERENCES.md.
@@ -209,9 +212,6 @@ private:
   CohortLookup* chtlu;
 
   double ponding_max_mm;
-  // wetland (phase 3) diagnostics, mm/day: run-on inflow added to infiltration today (0 unless
-  // cd->runon_status); groundwater recharge is Richards::qgw_mm.
-  double runon_in_mm = 0.0;
   double frozenInfiltration(Layer* fstsoill, double supply_mm);//max ponding (surface water storage) (mm)
 
   void updateDailySurfFlux(Layer* frontl, const double & dayl);
