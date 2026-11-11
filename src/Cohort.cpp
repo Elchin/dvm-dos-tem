@@ -381,6 +381,7 @@ void Cohort::initialize_state_parameters() {
     vegenv[ip].nv_snow_bury_fix   = md->nv_snow_bury_fix;
     vegenv[ip].nv_snow_bury_depth = md->nv_snow_bury_depth;
     vegenv[ip].rain_int_lai_fix   = md->rain_int_lai_fix;
+    vegenv[ip].interception_scheme = md->interception_scheme; // wetland phase 3 (0 = legacy)
     vegenv[ip].nv_rain_surface    = md->nv_rain_surface;
   }
   soilenv.snowenvp      = &snowenv;

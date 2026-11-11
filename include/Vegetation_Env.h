@@ -67,6 +67,11 @@ public:
   //   and what is left stays in storage for the next day (excess over capacity
   //   drips). Legacy: max_int = 0.21*P + 0.5 mm/day per PFT (no LAI, ircoef unused).
   int rain_int_lai_fix;
+  // model_settings.wetland.interception_scheme (phase 3): 0 = pre-merge interception (default),
+  // 1 = upstream regional_wetland_deepc formula (rain*ircoef*(1-tanh(-0.5 LAI)), snow*iscoef*(1-exp(-0.5 LAI)))
+  int interception_scheme = 0;
+  double getRainInterceptionLegacy(const double & rain, const double & lai);
+  double getSnowInterceptionLegacy(const double & snow, const double & lai);
   // Refs (S3): p_liq = 0.1 mm per unit (LAI+SAI) (Dickinson et al. 1993, doi:10.5065/D67W6959; CLM5 Tech Note eq. 2.7.12); S_max(LAI) of
   //   von Hoyningen-Huene 1981 (DVWK report, no DOI) as in LISFLOOD (van der Knijff et al. 2010, doi:10.1080/13658810802549154); TVC interception
   //   observations: Zwieback et al. 2019, doi:10.1088/1748-9326/ab1049; Chang et al. 2022, doi:10.1016/j.rse.2021.112747.
