@@ -1232,7 +1232,7 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
         oxid_gm2hr = oxid * convert_umolL_to_gm2;
 
         // accumulating to monthly to add to RH output
-        ch4_oxid_monthly[il] += oxid_gm2hr;
+        ch4_oxid_monthly[il] += oxid_gm2hr * dt;
 
         // Production:
         // Fan Eq. 9: rate constant * carbon pool * Q10
@@ -1407,7 +1407,7 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
       BOOST_LOG_SEV(glg, warn) << "CH4 conseveration violated! Difference: " << total_ch4_after - total_ch4_before;
     }
 
-    diff_efflux_daily += upper_flux; // flux cumulated over 1 day, 24 time steps
+    diff_efflux_daily += upper_flux * dt; // integrate hourly rate over nsteps = 24*nsub
   }
 
   //Storing daily CH4 movement for output
