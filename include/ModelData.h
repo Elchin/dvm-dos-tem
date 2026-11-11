@@ -212,6 +212,8 @@ public:
   //   books latent heat to the top soil; solver 1 also books sensible heat. (b) a cell no longer
   //   recycles its own runoff as run-on. Inflow T is max(Tair, 0), same as Stage C2 rain: liquid
   //   cannot be below 0 C, and after (b) there is no source-cell temperature.
+  //   runon_energy_mode 2 (diagnostic, Phase 3 v2): (a) only; the cell keeps recycling its own
+  //   runoff as upstream does. Separates the energy and the water effect of mode 1.
   // ch4_conserve: consistent hourly dt covering a full day, alpha from D, fluxes scaled by dt,
   //   oxidation added to RH. Off = legacy (dt=1/24 of a day vs rates per hour, alpha stays 0,
   //   reduced dt persists, oxidation not in the C budget).

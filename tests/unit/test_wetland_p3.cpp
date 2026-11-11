@@ -107,7 +107,8 @@ TEST_CASE("wetland block: invalid values are FATAL") {
   { Json::Value w = wl(false); w["cmts"].append(150); CHECK(st(ms(w)) == EXIT_FAILURE); }
   { Json::Value w = wl(false); w["interception_scheme"] = 2; CHECK(st(ms(w)) == EXIT_FAILURE); }
   { Json::Value w = wl(false); w["diag"] = -1; CHECK(st(ms(w)) == EXIT_FAILURE); }
-  { Json::Value w = wl(false); w["runon_energy_mode"] = 2; CHECK(st(ms(w)) == EXIT_FAILURE); }
+  { Json::Value w = wl(false); w["runon_energy_mode"] = 3; CHECK(st(ms(w)) == EXIT_FAILURE); }
+  { Json::Value w = wl(true); w["ch4"] = false; w["runon_energy_mode"] = 2; CHECK(ModelData(ms(w)).runon_energy_mode == 2); }
   { Json::Value w = wl(false); w["ch4_conserve"] = -1; CHECK(st(ms(w)) == EXIT_FAILURE); }
   { Json::Value w = wl(false); w["ch4_daily"] = 2; CHECK(st(ms(w)) == EXIT_FAILURE); }
   { Json::Value w = wl(true); w["ch4"] = false; w["runon_energy_mode"] = 1; w["ch4_conserve"] = 1; w["ch4_daily"] = 1; CHECK(st(ms(w)) == 0); }
@@ -254,6 +255,14 @@ TEST_CASE("runon_energy_mode 1: a cell does not recycle its own runoff; water st
     CHECK(s.ed.d_soi2l.qover >= 0.0);
     CHECK(fabs(err) < 1e-8);
   }
+}
+
+TEST_CASE("runon_energy_mode 2: puddle energy on, own runoff still recycled; water closes") {
+  SM s(0.95); s.runon(true); s.se.runon_energy_mode = 2;
+  CHECK(s.se.puddle_energy_on());
+  const double err = s.day(20.0);
+  CHECK(s.se.runon_in_mm >= 0.0);
+  CHECK(fabs(err) < 1e-8);
 }
 
 TEST_CASE("runon_energy_mode 0 still recycles (legacy path, existing water-balance tests)") {

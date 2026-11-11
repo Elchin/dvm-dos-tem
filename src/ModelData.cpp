@@ -242,7 +242,7 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
       if (!bnf::valid_int(dg, 0, 1)) { bad("diag must be 0 (default) or 1"); }
       wetland_diag = dg.asInt();
       Json::Value re = w.get("runon_energy_mode", 0);
-      if (!bnf::valid_int(re, 0, 1)) { bad("runon_energy_mode must be 0 (default, legacy) or 1"); }
+      if (!bnf::valid_int(re, 0, 2)) { bad("runon_energy_mode must be 0 (default, legacy), 1 (energy, no self-recycling) or 2 (energy, upstream recycling kept)"); }
       runon_energy_mode = re.asInt();
       Json::Value cc = w.get("ch4_conserve", 0);
       if (!bnf::valid_int(cc, 0, 1)) { bad("ch4_conserve must be 0 (default, legacy) or 1"); }

@@ -822,6 +822,7 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   puddle_atm_Jm2 = 0.0;
   infil_h_spec = 0.0;
   richards.qgw_mm = 0.0;   // diagnostic only (Richards may not run today)
+  // mode 2 (diagnostic): same energy treatment as mode 1 but keeps the upstream recycling.
   const bool recycle_runon = cd->runon_status && (runon_energy_mode != 1);
   if( (rnth + melt) > 0 ) {
     if(recycle_runon){
@@ -1716,7 +1717,7 @@ void Soil_Env::setEnvData(EnvData* edp) {
 // 0 C, so the puddle is taken to be in daily equilibrium with Tair. Latent heat is booked
 // to the top soil (both solvers). Frozen puddle water cannot infiltrate.
 bool Soil_Env::puddle_energy_on() const {
-  return runon_energy_mode == 1 && cd != NULL && cd->runon_status;
+  return runon_energy_mode >= 1 && cd != NULL && cd->runon_status;
 }
 
 double Soil_Env::puddle_total_mm() const {
