@@ -24,6 +24,7 @@ public:
 
   void clear();
   void zero_daily_ch4();   // phase 3: daily CH4 accumulators start at 0 (struct ctors set UIN_D)
+  int ch4_conserve = 0;    // phase 3 v2: add oxidation and CH4 efflux to RH/RECO
 
   CohortData * cd;
 

@@ -83,6 +83,13 @@ public:
   // wetland (phase 3) diagnostics, mm/day: run-on inflow added to infiltration today (0 unless
   // cd->runon_status); groundwater recharge is Richards::qgw_mm.
   double runon_in_mm = 0.0;
+  // Phase 3 v2: wetland.runon_energy_mode (default 0 = legacy, bit-identical).
+  int runon_energy_mode = 0;
+  double puddle_ice_mm = 0.0;     // frozen surface ponding (mm); liquid is ed->d_soi2l.magic_puddle
+  double puddle_heat_Jm2 = 0.0;   // heat released to the top soil today (Lf of freeze, minus melt)
+  double infil_h_spec = 0.0;      // specific enthalpy of today's qinfl (J/kg); used when mode = 1
+  void updatePuddlePhase();       // freeze/thaw the puddle at Tair; books puddle_heat_Jm2
+  void applyPuddleHeatToSoil();   // solver 0: change top-soil T; solver 1: booked in enthRemapWater
   // DRAFT (daily-structural): see ModelData::frozen_infil_eice (<0 = off)
   double frozen_infil_eice;
   // Refs: Swenson et al. 2012, doi:10.1029/2012MS000165; CLM5 Tech Note eq. 2.7.48 (Omega = 6); see docs/daily-mode-REFERENCES.md.

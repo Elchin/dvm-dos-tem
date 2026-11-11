@@ -33,6 +33,7 @@
 #include "../include/Climate.h" // Option 4 (v5j) SEB: Climate::vp_hpa_fix
 #include "../include/Snow_Env.h"
 
+#include "../include/physicalconst.h"
 #include "../include/TEMLogger.h"
 extern src::severity_logger< severity_level > glg;
 
@@ -807,10 +808,15 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   // the cell's own would-be runoff (upstream regional_wetland_deepc design) and sets local
   // runoff to 0; the inflow is booked in runon_in_mm for the water balance. runon_status
   // false is the pre-merge path.
+  // runon_energy_mode 1 (phase 3 v2): do not recycle the cell's own runoff (no lateral source
+  // is available here, so runon_in_mm is 0); qover follows the pre-merge runoff path.
   runon_in_mm = 0.0;
+  puddle_heat_Jm2 = 0.0;
+  infil_h_spec = 0.0;
   richards.qgw_mm = 0.0;   // diagnostic only (Richards may not run today)
+  const bool recycle_runon = cd->runon_status && (runon_energy_mode != 1);
   if( (rnth + melt) > 0 ) {
-    if(cd->runon_status){
+    if(recycle_runon){
       ed->d_soi2l.qover = 0.0;
     }else{
       ed->d_soi2l.qover = getRunoff(fstsoill, drainl, rnth, melt);
@@ -821,7 +827,7 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
 
   //Calculate infiltration (mm/day)
   double infil = 0.0;
-  if(cd->runon_status){
+  if(recycle_runon){
     runon_in_mm = getRunoff(fstsoill, drainl, rnth, melt);
     infil = rnth + melt + runon_in_mm;
   }else{
@@ -853,6 +859,11 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   ed->d_soi2l.magic_puddle += add_to_puddle;
   //Subtracting surface water storage from runoff
   ed->d_soi2l.qover -= add_to_puddle;
+
+  // runon_energy_mode 1: freeze/thaw the puddle at Tair before any puddle water infiltrates
+  // (frozen ponding stays as ice and cannot enter the soil).
+  const double infil_before_puddle = infil;
+  if (runon_energy_mode == 1) { updatePuddlePhase(); }
 
   //If there is space remaining in the soil, and water in
   // the puddle, transfer water from the puddle
@@ -887,6 +898,16 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   }
 
   ed->d_soi2l.qinfl = infil;
+  if (runon_energy_mode == 1 && infil > 0.0) {
+    // Rain and run-on at max(Tair, 0 C); snow melt at 0 C (liquid reference h = 0);
+    // puddle liquid (only present at Tair > 0 after updatePuddlePhase) at max(Tair, 0).
+    const double h_liq = SHCLIQ * fmax(ed->d_atms.ta, 0.0);
+    const double src = rnth + melt + runon_in_mm;
+    const double h_src = (src > 0.0) ? (rnth * h_liq + runon_in_mm * h_liq) / src : 0.0;
+    const double from_puddle = fmax(infil - infil_before_puddle, 0.0);
+    const double from_src = infil - from_puddle;
+    infil_h_spec = (from_src * h_src + from_puddle * h_liq) / infil;
+  }
 
   //Soil water dynamics at daily time step
 
@@ -966,6 +987,8 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
       // (water deleted); the excess always leaves as surface runoff (pre-merge behaviour).
       ed->d_soi2l.qover += infil;
       ed->d_soi2l.qinfl = 0;
+      infil_h_spec = 0.0;
+      if (runon_energy_mode == 1) { updatePuddlePhase(); }
     }
     if(frozen_infil_eice >= 0.0){
       ed->d_soi2l.qinfl = frozen_infil_mm; // mm/day, DRAFT
@@ -1003,6 +1026,7 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   if(ed->d_soi2l.qdrain < 0){
    BOOST_LOG_SEV(glg, warn) << "qdrain is negative!";
   };
+  if (runon_energy_mode == 1) { applyPuddleHeatToSoil(); }
 }
 
 
@@ -1678,6 +1702,38 @@ void Soil_Env::setEnvData(EnvData* edp) {
 
 /////////////////////////////////////////////////////////////////////////
 // The following codes NOT used
+
+// Phase 3 v2 (runon_energy_mode 1): the puddle can freeze and thaw. Liquid cannot be below
+// 0 C, so the puddle is taken to be in daily equilibrium with Tair. Latent heat is booked
+// to the top soil (both solvers). Frozen puddle water cannot infiltrate.
+void Soil_Env::updatePuddlePhase() {
+  if (runon_energy_mode != 1 || ed == NULL) { return; }
+  const double Tair = ed->d_atms.ta;
+  double liq = fmax(ed->d_soi2l.magic_puddle, 0.0);
+  double ice = fmax(puddle_ice_mm, 0.0);
+  if (Tair < 0.0 && liq > 0.0) {
+    puddle_heat_Jm2 += liq * LHFUS;          // heat released to the soil
+    puddle_ice_mm = ice + liq;
+    ed->d_soi2l.magic_puddle = 0.0;
+  } else if (Tair > 0.0 && ice > 0.0) {
+    puddle_heat_Jm2 -= ice * LHFUS;          // heat taken from the soil to melt
+    ed->d_soi2l.magic_puddle = liq + ice;
+    puddle_ice_mm = 0.0;
+  }
+}
+
+void Soil_Env::applyPuddleHeatToSoil() {
+  if (runon_energy_mode != 1 || ground == NULL) { return; }
+  // Solver 1: heat is applied in enthRemapWater (after the moisture window) so it is
+  // booked in bwater. Solver 0 has no enthalpy budget: apply Lf as a temperature change now.
+  if (thermal_solver == 1) { return; }
+  if (puddle_heat_Jm2 == 0.0 && infil_h_spec == 0.0) { return; }
+  Layer* l = ground->fstsoill;
+  if (l == NULL) { return; }
+  const double Q = puddle_heat_Jm2 + infil_h_spec * fmax(ed->d_soi2l.qinfl, 0.0);
+  const double cap = l->getHeatCapacity() * l->dz;
+  if (cap > 0.0) { l->tem += Q / cap; }
+}
 
 /*when soil column is frozen and there is snowmelt, assume that infiltration
  * will saturate first 3 layers (change to all organic layers and first

@@ -207,6 +207,19 @@ public:
   int interception_scheme;
   int wetland_diag;
   int eq_co2_mode;   // model_settings.eq_co2_mode: 0 = first co2 value in EQ/pre-run (default), 1 = baseline mean (upstream)
+  // Phase 3 v2 (Elchin 2026-11-11: "1 agree, 2 fix it, 3 agree"). All default 0 = bit-identical.
+  // runon_energy_mode: (a) run-on/ponded water carry energy at max(Tair, 0 C); puddle freeze/thaw
+  //   books latent heat to the top soil; solver 1 also books sensible heat. (b) a cell no longer
+  //   recycles its own runoff as run-on. Inflow T is max(Tair, 0), same as Stage C2 rain: liquid
+  //   cannot be below 0 C, and after (b) there is no source-cell temperature.
+  // ch4_conserve: consistent hourly dt covering a full day, alpha from D, fluxes scaled by dt,
+  //   oxidation added to RH. Off = legacy (dt=1/24 of a day vs rates per hour, alpha stays 0,
+  //   reduced dt persists, oxidation not in the C budget).
+  // ch4_daily: CH4Flux is called from the daily env loop on that day's soil state. Off = called
+  //   from the monthly BGC loop, every day seeing the end-of-month snapshot.
+  int runon_energy_mode;
+  int ch4_conserve;
+  int ch4_daily;
   bool is_wetland_cmt(int cmt) const;
   // Refs: at each declaration named above (Climate.h, Soil_Env.h, Stefan.h, Snow_Env.h) and in docs/daily-mode-REFERENCES.md.
   // Fix C1 (v5k), OFF by default (0 = legacy): soil integrator NMIN error

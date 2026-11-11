@@ -416,6 +416,11 @@ void BgcData::soil_endOfMonth(const int currmind) {
                   m_soi2a.rhsomasum +
                   m_soi2a.rhsomprsum +
                   m_soi2a.rhsomcrsum;
+  // Phase 3 v2: oxidation is CO2 from methanotrophy; CH4 efflux is C leaving the
+  // ecosystem. Adding both to rhsom (hence RECO) makes dC_org + RECO - GPP ≈ -d(CH4 pool).
+  if (ch4_conserve == 1) {
+    m_soi2a.rhsom += m_soi2a.ch4_oxid_sum + m_soi2a.ch4efflux;
+  }
 
   //cumulative annually
   y_soi2a.rhwdeb    += m_soi2a.rhwdeb;

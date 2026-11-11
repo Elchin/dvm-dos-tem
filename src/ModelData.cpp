@@ -204,7 +204,7 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     };
     wetland_enabled = false; wetland_ch4 = true; wetland_runon = false; wetland_groundwater = false;
     { const int wc[] = {6, 31, 32, 55, 61, 75, 92, 93}; wetland_cmts.assign(wc, wc + 8); }
-    interception_scheme = 0; wetland_diag = 0;
+    interception_scheme = 0; wetland_diag = 0; runon_energy_mode = 0; ch4_conserve = 0; ch4_daily = 0;
     const bool has_block = ms.isMember("wetland");
     const bool has_flat = ms.isMember("ch4") || ms.isMember("run-on") || ms.isMember("groundwater");
     if (has_flat) {
@@ -215,7 +215,7 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     if (has_block) {
       const Json::Value& w = ms["wetland"];
       if (!w.isObject()) { bad("must be an object"); }
-      const char* known[] = {"enabled", "ch4", "run_on", "groundwater", "cmts", "interception_scheme", "diag"};
+      const char* known[] = {"enabled", "ch4", "run_on", "groundwater", "cmts", "interception_scheme", "diag", "runon_energy_mode", "ch4_conserve", "ch4_daily"};
       std::vector<std::string> keys = w.getMemberNames();
       for (size_t i = 0; i < keys.size(); i++) {
         bool ok = false;
@@ -241,6 +241,15 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
       Json::Value dg = w.get("diag", 0);
       if (!bnf::valid_int(dg, 0, 1)) { bad("diag must be 0 (default) or 1"); }
       wetland_diag = dg.asInt();
+      Json::Value re = w.get("runon_energy_mode", 0);
+      if (!bnf::valid_int(re, 0, 1)) { bad("runon_energy_mode must be 0 (default, legacy) or 1"); }
+      runon_energy_mode = re.asInt();
+      Json::Value cc = w.get("ch4_conserve", 0);
+      if (!bnf::valid_int(cc, 0, 1)) { bad("ch4_conserve must be 0 (default, legacy) or 1"); }
+      ch4_conserve = cc.asInt();
+      Json::Value cd = w.get("ch4_daily", 0);
+      if (!bnf::valid_int(cd, 0, 1)) { bad("ch4_daily must be 0 (default, monthly snapshot) or 1"); }
+      ch4_daily = cd.asInt();
     } else if (has_flat) {
       wetland_ch4         = flag(ms["ch4"], "ch4", false);
       wetland_runon       = flag(ms["run-on"], "run-on", false);
@@ -613,7 +622,7 @@ ModelData::ModelData():force_cmt(-1) {
   snow_empty_cleanup = 0; // emptied snow layer removal (off)
   wetland_enabled = false; wetland_ch4 = true; wetland_runon = false; wetland_groundwater = false; // phase 3 (off)
   { const int wc[] = {6, 31, 32, 55, 61, 75, 92, 93}; wetland_cmts.assign(wc, wc + 8); }
-  interception_scheme = 0; wetland_diag = 0; eq_co2_mode = 0;
+  interception_scheme = 0; wetland_diag = 0; eq_co2_mode = 0; runon_energy_mode = 0; ch4_conserve = 0; ch4_daily = 0;
   ch4_module = false; runon_enabled = false; groundwater_enabled = false;
   et_fpc_once_fix = 0; nv_snow_bury_fix = 0; rain_int_lai_fix = 0; nv_rain_surface = 0; // v5l (off)
   n_safetynet_conserve = 0; // v5m L1 (off)

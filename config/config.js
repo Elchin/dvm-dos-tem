@@ -143,7 +143,10 @@
       "run_on": false,                        // run-on hydrology (only if enabled)
       "groundwater": false,                   // calibrated groundwater recharge (only if enabled)
       "cmts": [6, 31, 32, 55, 61, 75, 92, 93],// CMTs treated as wetland
-      "interception_scheme": 0                // 0 = legacy/v5q interception (all cohorts); 1 = upstream CLM5-style formula
+      "interception_scheme": 0,               // 0 = legacy/v5q interception (all cohorts); 1 = upstream CLM5-style formula
+      "runon_energy_mode": 0,                 // 0 = legacy (recycle own runoff, puddle has no heat). 1 = no self-recycle; run-on/puddle carry energy at max(Tair, 0 C)
+      "ch4_conserve": 0,                      // 0 = legacy CH4 bookkeeping. 1 = full-day dt, diffusion alpha, fluxes scaled, oxidation in RH
+      "ch4_daily": 0                          // 0 = CH4Flux in the monthly loop (end-of-month state every day). 1 = daily env loop
     },
     // thermal_solver defaults to 0 (legacy Stefan/CN). With thermal_solver = 1,
     // thermal_substeps defaults to 4 (Elchin, 2026-11-10); allowed 1, 2, 4, 8, 12, 24 or 48.

@@ -6,11 +6,13 @@
 //    P + run-on = infil + qover + d(ponding) before the soil step
 //  - eq_co2_mode, interception_scheme defaults; parameter block lengths (18/35/41, 33/34)
 //  - CH4 bookkeeping: daily accumulators start at 0; layer CH4 concentration kept on split/combine
+// Phase 3 v2: runon_energy_mode, ch4_conserve, ch4_daily (all default 0)
 #include "doctest.h"
 #include "test_helpers.h"
 #include <json/value.h>
 #include <cmath>
 #include <fstream>
+#include "../include/physicalconst.h"
 
 using ut::make_soil_layer;
 
@@ -67,6 +69,7 @@ TEST_CASE("wetland block defaults: off in ModelData() and ModelData(Json) withou
   CHECK_FALSE(m0.wetland_enabled); CHECK(m0.wetland_ch4); CHECK_FALSE(m0.wetland_runon); CHECK_FALSE(m0.wetland_groundwater);
   CHECK(m0.wetland_cmts == std::vector<int>({6, 31, 32, 55, 61, 75, 92, 93}));
   CHECK(m0.interception_scheme == 0); CHECK(m0.eq_co2_mode == 0); CHECK(m0.wetland_diag == 0);
+  CHECK(m0.runon_energy_mode == 0); CHECK(m0.ch4_conserve == 0); CHECK(m0.ch4_daily == 0);
   CHECK_FALSE(m0.get_ch4_module()); CHECK_FALSE(m0.get_runon_status()); CHECK_FALSE(m0.get_groundwater_status());
   Json::Value c; c["model_settings"]["svp_ice_fix"] = 0; ModelData mj(c);
   CHECK_FALSE(mj.wetland_enabled); CHECK(mj.wetland_cmts.size() == 8); CHECK(mj.interception_scheme == 0);
@@ -104,6 +107,11 @@ TEST_CASE("wetland block: invalid values are FATAL") {
   { Json::Value w = wl(false); w["cmts"].append(150); CHECK(st(ms(w)) == EXIT_FAILURE); }
   { Json::Value w = wl(false); w["interception_scheme"] = 2; CHECK(st(ms(w)) == EXIT_FAILURE); }
   { Json::Value w = wl(false); w["diag"] = -1; CHECK(st(ms(w)) == EXIT_FAILURE); }
+  { Json::Value w = wl(false); w["runon_energy_mode"] = 2; CHECK(st(ms(w)) == EXIT_FAILURE); }
+  { Json::Value w = wl(false); w["ch4_conserve"] = -1; CHECK(st(ms(w)) == EXIT_FAILURE); }
+  { Json::Value w = wl(false); w["ch4_daily"] = 2; CHECK(st(ms(w)) == EXIT_FAILURE); }
+  { Json::Value w = wl(true); w["ch4"] = false; w["runon_energy_mode"] = 1; w["ch4_conserve"] = 1; w["ch4_daily"] = 1; CHECK(st(ms(w)) == 0); }
+  { Json::Value w = wl(true); w["ch4"] = false; w["runon_energy_mode"] = 1; CHECK(ModelData(ms(w)).runon_energy_mode == 1); }
   { Json::Value c; c["model_settings"]["wetland"] = 1; CHECK(st(c) == EXIT_FAILURE); }
   { Json::Value c; c["model_settings"]["eq_co2_mode"] = 2; CHECK(st(c) == EXIT_FAILURE); }
   { Json::Value c; c["model_settings"]["eq_co2_mode"] = 1; CHECK(st(c) == 0); CHECK(ModelData(c).eq_co2_mode == 1); }
@@ -234,6 +242,43 @@ TEST_CASE("CH4 bookkeeping: daily accumulators start at 0; layer concentration k
     d.g.combineTwoSoilLayersL2U(dynamic_cast<SoilLayer*>(d.L[1]), dynamic_cast<SoilLayer*>(d.L[0]));
     CHECK(d.L[0]->ch4 == doctest::Approx(3.0));
   }
+}
+
+
+TEST_CASE("runon_energy_mode 1: a cell does not recycle its own runoff; water still closes") {
+  for (int frozen : {0, 1}) {
+    CAPTURE(frozen);
+    SM s(0.95, frozen == 1); s.runon(true); s.se.runon_energy_mode = 1;
+    const double err = s.day(20.0);
+    CHECK(s.se.runon_in_mm == 0.0);
+    CHECK(s.ed.d_soi2l.qover >= 0.0);
+    CHECK(fabs(err) < 1e-8);
+  }
+}
+
+TEST_CASE("runon_energy_mode 0 still recycles (legacy path, existing water-balance tests)") {
+  SM s(0.95); s.runon(true); s.se.runon_energy_mode = 0;
+  s.day(20.0);
+  CHECK(s.se.runon_in_mm >= 0.0);
+}
+
+TEST_CASE("runon_energy_mode 1: puddle freezes at Tair < 0 and thaws at Tair > 0; Lf is booked") {
+  SM s(0.5); s.se.runon_energy_mode = 1;
+  s.ed.d_soi2l.magic_puddle = 10.0; s.ed.d_atms.ta = -10.0; s.se.puddle_ice_mm = 0.0; s.se.puddle_heat_Jm2 = 0.0;
+  s.se.updatePuddlePhase();
+  CHECK(s.ed.d_soi2l.magic_puddle == doctest::Approx(0.0));
+  CHECK(s.se.puddle_ice_mm == doctest::Approx(10.0));
+  CHECK(s.se.puddle_heat_Jm2 == doctest::Approx(10.0 * LHFUS));
+  s.ed.d_atms.ta = 5.0;
+  s.se.updatePuddlePhase();
+  CHECK(s.ed.d_soi2l.magic_puddle == doctest::Approx(10.0));
+  CHECK(s.se.puddle_ice_mm == doctest::Approx(0.0));
+  CHECK(s.se.puddle_heat_Jm2 == doctest::Approx(0.0));
+}
+
+TEST_CASE("ch4_conserve and ch4_daily default off; Soil_Bgc and BgcData flags start at 0") {
+  Soil_Bgc sb; CHECK(sb.ch4_conserve == 0); CHECK(sb.ch4_daily == 0);
+  BgcData bd; CHECK(bd.ch4_conserve == 0);
 }
 
 } // TEST_SUITE

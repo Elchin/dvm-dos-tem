@@ -367,6 +367,9 @@ public:
   void bnfBeginMonth(const int m, const bool nfeedon);
   void bnfRecordMonth(const int m, const double npp, const double et);
   void CH4Flux(const int mind, const int id);
+  void CH4FluxConserve(const int mind, const int id); // phase 3 v2; called from CH4Flux when ch4_conserve == 1
+  int ch4_conserve = 0; // wetland.ch4_conserve (0 = legacy, bit-identical)
+  int ch4_daily = 0;    // wetland.ch4_daily (0 = monthly snapshot; informational here)
 
 private:
 

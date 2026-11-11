@@ -362,6 +362,10 @@ void Cohort::initialize_state_parameters() {
   }
   soilenv.richards_infil_fix = md->richards_infil_fix; // Fix B2 (v5k)
   soilenv.richards.dt_fix = md->richards_dt_fix;       // bug R1 (default 0 = legacy)
+  soilenv.runon_energy_mode = md->runon_energy_mode;   // phase 3 v2 (0 = legacy)
+  soilbgc.ch4_conserve = md->ch4_conserve;             // phase 3 v2 (0 = legacy)
+  soilbgc.ch4_daily = md->ch4_daily;                   // phase 3 v2 (0 = monthly snapshot)
+  bdall->ch4_conserve = md->ch4_conserve;
   soilbgc.n_rootless_fix = md->n_rootless_fix;         // Fix N1 (v5k)
   soilbgc.n_som_move_fix = md->n_som_move_fix;         // Fix N2 (v5k)
   soilbgc.bnfp = md->bnf;                              // v5q BNF (scheme 0 = off)
@@ -958,6 +962,13 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
       soilenv.updateDailySM(weighted_veg_tran);  //soil moisture
       if (md->thermal_solver == 1) { soilenv.enthRemapWater(es); }
     }
+    // Phase 3 v2: ch4_daily 1 = CH4Flux sees today's soil T, liquid/ice and water table.
+    // soil_endOfDay still accumulates daily CH4 into the monthly totals used by updateMonthlySbgc.
+    if (cd.ch4_on && md->ch4_daily == 1) {
+      if (id == 0) { bdall->soil_beginOfMonth(); }
+      soilbgc.CH4Flux(currmind, id);
+      bdall->soil_endOfDay(dinmcurr, doy);
+    }
     if (md->nonvasc_trans_withdraw == 1) {
       // Fix (c) (v5j): transpiration whose uptake updateDailySM did not apply
       // (frozen-top branch skips frozen layers; Richards ignores layers below
@@ -1127,7 +1138,11 @@ void Cohort::updateMonthly_Bgc(const int & currmind, const int & dinmcurr) {
       }
     }
   }
-  bdall->soil_beginOfMonth();
+  // Phase 3 v2: when ch4_daily is on, soil_beginOfMonth already ran on day 0 of the
+  // env loop (before the first CH4Flux) so that soil_endOfDay can fill this month's totals.
+  if (md->ch4_daily == 0) {
+    bdall->soil_beginOfMonth();
+  }
 
   // vegetation BGC module calling
   for (int ip=0; ip<NUM_PFT; ip++) {
@@ -1168,7 +1183,7 @@ void Cohort::updateMonthly_Bgc(const int & currmind, const int & dinmcurr) {
   // alter SOM pools and CO2 emission
   // wetland (phase 3): only for CH4 cohorts (cd.ch4_on); otherwise the daily CH4 accumulators
   // stay 0 and the soil C update is the pre-merge one.
-  if (cd.ch4_on) {
+  if (cd.ch4_on && md->ch4_daily == 0) {
     for (int id = 0; id < dinmcurr; id++){
       int doy = temutil::day_of_year(currmind, id);
       soilbgc.CH4Flux(currmind, id);
