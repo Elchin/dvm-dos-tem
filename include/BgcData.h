@@ -23,6 +23,7 @@ public:
   ~BgcData();
 
   void clear();
+  void zero_daily_ch4();   // phase 3: daily CH4 accumulators start at 0 (struct ctors set UIN_D)
 
   CohortData * cd;
 

@@ -322,6 +322,7 @@ int ntasks = 1;
   BOOST_LOG_SEV(glg, info) << "Creating restart files for stages to be run";
   if(args->get_pr_yrs() > 0){
     BOOST_LOG_SEV(glg, info) << "Creating empty PR restart file";
+    RestartData::write_ch4 = modeldata.wetland_enabled && modeldata.wetland_ch4;   // phase 3
     RestartData::create_empty_file(pr_restart_fname, num_rows, num_cols, modeldata.thermal_solver);
   }
   if(args->get_eq_yrs() > 0){

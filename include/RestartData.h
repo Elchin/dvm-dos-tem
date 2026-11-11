@@ -56,6 +56,10 @@ public :
   // unchanged); a file without it is a legacy restart (0). On read, a mismatch with the running
   // mode is a WARNING only (switch-on projection / legacy front rebuild handle both directions).
   static int thermal_solver_expected;
+  // wetland (phase 3): the per-layer 'ch4' variable is defined/written only when the wetland
+  // bundle with CH4 is enabled (set in TEM.cpp); on read it is optional (missing => layers keep
+  // their initial CH4 concentration), so pre-merge restart files load unchanged.
+  static bool write_ch4;
   static int read_thermal_solver_attr(const std::string& fname);
 
   int chtid;

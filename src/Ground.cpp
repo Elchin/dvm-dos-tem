@@ -1757,11 +1757,11 @@ void Ground::splitOneSoilLayer(SoilLayer*usl, SoilLayer* lsl,
 
   //update layer temperature first, because it's needed for determine
   //  frozen status below
+  lsl->ch4 = usl->ch4;   // phase 3: CH4 concentration (umol/L) kept by both parts
   if (enthalpy_remap == 1) {   // Option C: both parts keep the parent's temperature
     lsl->tem = usl->tem;
   } else if(usl->nextl==NULL) {
     lsl->tem = usl->tem;
-    lsl->ch4 = usl->ch4;
   } else {
     //temperature
     double ultem = usl->tem;
@@ -1775,9 +1775,8 @@ void Ground::splitOneSoilLayer(SoilLayer*usl, SoilLayer* lsl,
     lsl->tem = (slz - nxlz) * gradient + nxltem;
     ulz = usl->z + 0.5 * usl->dz;
 
-    // Splitting ch4 pool between new layers based on thickness
-    lsl->ch4 = usl->ch4 * lslfrac;
-    usl->ch4 -= lsl->ch4;
+    // phase 3: ch4 is a concentration (umol/L), both parts keep it (set below for all branches);
+    // upstream split it by thickness fraction like a pool.
 
     if (usl->prevl == NULL){ // if no prevl, use same gradient
       usl->tem = (ulz - nxlz) * gradient + nxltem;
@@ -1930,8 +1929,8 @@ void Ground::combineTwoSoilLayersU2L(SoilLayer* usl, SoilLayer* lsl) {
   lsl->somcr += usl->somcr;
   lsl->orgn += usl->orgn;
   lsl->avln += usl->avln;
-  //update methane:
-  lsl->ch4 += usl->ch4;
+  //update methane: concentration (umol/L) -> thickness-weighted mean (phase 3; upstream summed)
+  lsl->ch4 = lsl->ch4 * (1. - upfrac) + usl->ch4 * upfrac;
   // after combination, needs to update 'lsl'- 'frozen' status based on
   //   'fronts' if given
   getLayerFrozenstatusByFronts(lsl);
@@ -1964,8 +1963,8 @@ void Ground::combineTwoSoilLayersL2U(SoilLayer* lsl, SoilLayer* usl) {
   } else {
     usl->avln =+lsl->avln;    // legacy: assigns (typo kept so switch 0 stays bit-identical)
   }
-  //update methane:
-  usl->ch4 += lsl->ch4;
+  //update methane: concentration (umol/L) -> thickness-weighted mean (phase 3; upstream summed)
+  usl->ch4 = usl->ch4 * (1. - lsfrac) + lsl->ch4 * lsfrac;
   // after combination, needs to update 'usl'- 'frozen' status based on
   //   'fronts' if given
   getLayerFrozenstatusByFronts(usl);
@@ -2860,7 +2859,7 @@ void Ground::set_ch4_bylayer(const double* newch4){
 std::array<double, MAX_SOI_LAY> Ground::get_ch4_bylayer(){
   BOOST_LOG_SEV(glg, debug) << "Getting by-layer ch4";
 
-  std::array<double, MAX_SOI_LAY> curr_ch4;
+  std::array<double, MAX_SOI_LAY> curr_ch4{};   // phase 3: zero-init (was uninitialised)
 
   Layer* currl = fstsoill;
   int il = 0;

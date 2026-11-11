@@ -4,7 +4,22 @@
 #include "../include/BgcData.h"
 extern src::severity_logger< severity_level > glg;
 
-BgcData::BgcData() {};
+BgcData::BgcData() { zero_daily_ch4(); };
+
+// wetland (phase 3): CH4Flux accumulates ('+=') into d_soi2soi.ch4_*; with the UIN_D (-77777)
+// initial values the first day's production (and hence the first month's SOM subtraction in
+// Soil_Bgc::deltac/deltastate) was off by -77777 per layer.
+void BgcData::zero_daily_ch4() {
+  for (int il = 0; il < MAX_SOI_LAY; il++) {
+    d_soi2soi.ch4_diff[il] = 0.; d_soi2soi.ch4_ebul[il] = 0.;
+    d_soi2soi.ch4_rawc[il] = 0.; d_soi2soi.ch4_soma[il] = 0.;
+    d_soi2soi.ch4_sompr[il] = 0.; d_soi2soi.ch4_somcr[il] = 0.;
+    d_soi2a.ch4_oxid[il] = 0.;
+    for (int ip = 0; ip < NUM_PFT; ip++) { d_soi2a.ch4_transport[il][ip] = 0.; }
+  }
+  d_soi2a.ch4efflux = 0.; d_soi2a.ch4efflux_ebul = 0.; d_soi2a.ch4effdiff = 0.; d_soi2a.ch4_oxid_sum = 0.;
+  d_soid.ch4ebulsum = 0.;
+}
 
 BgcData::~BgcData() {};
 
@@ -16,6 +31,7 @@ void BgcData::clear() {
   d_soid = soidiag_bgc();
   d_soi2a = soi2atm_bgc();
   d_soi2soi = soi2soi_bgc();
+  zero_daily_ch4();
   //monthly
   m_vegs = vegstate_bgc();
   m_sois = soistate_bgc();

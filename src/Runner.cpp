@@ -5598,8 +5598,8 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
             rh_arr[il] = cohort.bdall->m_soi2a.rhrawc[il]
                        + cohort.bdall->m_soi2a.rhsoma[il]
                        + cohort.bdall->m_soi2a.rhsompr[il]
-                       + cohort.bdall->m_soi2a.rhsomcr[il]
-                       + cohort.bdall->m_soi2a.ch4_oxid[il];
+                       + cohort.bdall->m_soi2a.rhsomcr[il];
+            if (cohort.cd.ch4_on) { rh_arr[il] += cohort.bdall->m_soi2a.ch4_oxid[il]; } // phase 3
           }
           outhold.rh_for_output.push_back(rh_arr);
 
@@ -5614,8 +5614,8 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
             rh_arr[il] = cohort.bdall->y_soi2a.rhrawc[il]
                        + cohort.bdall->y_soi2a.rhsoma[il]
                        + cohort.bdall->y_soi2a.rhsompr[il]
-                       + cohort.bdall->y_soi2a.rhsomcr[il]
-                       + cohort.bdall->y_soi2a.ch4_oxid[il];
+                       + cohort.bdall->y_soi2a.rhsomcr[il];
+            if (cohort.cd.ch4_on) { rh_arr[il] += cohort.bdall->y_soi2a.ch4_oxid[il]; } // phase 3
           }
           outhold.rh_for_output.push_back(rh_arr);
 

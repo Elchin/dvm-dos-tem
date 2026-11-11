@@ -583,7 +583,7 @@ void RestartData::verify_logical_values(){
     check_bounds("soma", soma[ii]);
     check_bounds("sompr", sompr[ii]);
     check_bounds("somcr", somcr[ii]);
-    check_bounds("ch4", ch4[ii]);
+    if (write_ch4) { check_bounds("ch4", ch4[ii]); }
     check_bounds("orgn", orgn[ii]);
     check_bounds("avln", avln[ii]);
     for(int jj=0; jj<12; jj++){
@@ -876,8 +876,16 @@ void RestartData::read_px_soil_vars(const std::string& fname, const int rowidx, 
   temutil::nc( nc_get_vara_double(ncid, cv, start, count, &sompr[0]) );
   temutil::nc( nc_inq_varid(ncid, "somcr", &cv) );
   temutil::nc( nc_get_vara_double(ncid, cv, start, count, &somcr[0]) );
-  temutil::nc( nc_inq_varid(ncid, "ch4", &cv) );
-  temutil::nc( nc_get_vara_double(ncid, cv, start, count, &ch4[0]) );
+  if (nc_inq_varid(ncid, "ch4", &cv) == NC_NOERR) {   // phase 3: optional
+    temutil::nc( nc_get_vara_double(ncid, cv, start, count, &ch4[0]) );
+  } else {
+    for (int il = 0; il < MAX_SOI_LAY; il++) { ch4[il] = MISSING_D; }  // set_ch4_bylayer ignores <= 0
+    static bool ch4_warned = false;
+    if (!ch4_warned) {
+      BOOST_LOG_SEV(glg, warn) << "Restart file " << fname << " has no 'ch4' variable; soil CH4 starts from its initial value";
+      ch4_warned = true;
+    }
+  }
   temutil::nc( nc_inq_varid(ncid, "orgn", &cv) );
   temutil::nc( nc_get_vara_double(ncid, cv, start, count, &orgn[0]) );
   temutil::nc( nc_inq_varid(ncid, "avln", &cv) );
@@ -998,6 +1006,7 @@ void RestartData::read_px_prev_pft_vars(const std::string& fname, const int rowi
 
 /** Creates (overwrites) an empty restart file. */
 int RestartData::thermal_solver_expected = 0;
+bool RestartData::write_ch4 = false;
 
 int RestartData::read_thermal_solver_attr(const std::string& fname) {
   int ncid, v = 0;
@@ -1301,8 +1310,10 @@ void RestartData::create_empty_file(const std::string& fname,
   temutil::nc( nc_put_att_double(ncid, somprV, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
   temutil::nc( nc_def_var(ncid, "somcr", NC_DOUBLE, 3, vartype3D_dimids, &somcrV) );
   temutil::nc( nc_put_att_double(ncid, somcrV, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
-  temutil::nc( nc_def_var(ncid, "ch4", NC_DOUBLE, 3, vartype3D_dimids, &ch4V) );
-  temutil::nc( nc_put_att_double(ncid, ch4V, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
+  if (write_ch4) {   // phase 3: only with the wetland CH4 bundle
+    temutil::nc( nc_def_var(ncid, "ch4", NC_DOUBLE, 3, vartype3D_dimids, &ch4V) );
+    temutil::nc( nc_put_att_double(ncid, ch4V, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
+  }
   temutil::nc( nc_def_var(ncid, "orgn", NC_DOUBLE, 3, vartype3D_dimids, &orgnV) );
   temutil::nc( nc_put_att_double(ncid, orgnV, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
   temutil::nc( nc_def_var(ncid, "avln", NC_DOUBLE, 3, vartype3D_dimids, &avlnV) );
@@ -1319,7 +1330,7 @@ void RestartData::create_empty_file(const std::string& fname,
   temutil::nc(nc_var_par_access(ncid, somaV, NC_INDEPENDENT));
   temutil::nc(nc_var_par_access(ncid, somprV, NC_INDEPENDENT));
   temutil::nc(nc_var_par_access(ncid, somcrV, NC_INDEPENDENT));
-  temutil::nc(nc_var_par_access(ncid, ch4V, NC_INDEPENDENT));
+  if (write_ch4) { temutil::nc(nc_var_par_access(ncid, ch4V, NC_INDEPENDENT)); }
   temutil::nc(nc_var_par_access(ncid, orgnV, NC_INDEPENDENT));
   temutil::nc(nc_var_par_access(ncid, avlnV, NC_INDEPENDENT));
 #endif
@@ -1781,8 +1792,10 @@ void RestartData::write_px_soil_vars(const std::string& fname, const int rowidx,
   temutil::nc( nc_put_vara_double(ncid, cv, start, count, &sompr[0]) );
   temutil::nc( nc_inq_varid(ncid, "somcr", &cv) );
   temutil::nc( nc_put_vara_double(ncid, cv, start, count, &somcr[0]) );
-  temutil::nc( nc_inq_varid(ncid, "ch4", &cv) );
-  temutil::nc( nc_put_vara_double(ncid, cv, start, count, &ch4[0]) );
+  if (write_ch4) {   // phase 3: only with the wetland CH4 bundle
+    temutil::nc( nc_inq_varid(ncid, "ch4", &cv) );
+    temutil::nc( nc_put_vara_double(ncid, cv, start, count, &ch4[0]) );
+  }
   temutil::nc( nc_inq_varid(ncid, "orgn", &cv) );
   temutil::nc( nc_put_vara_double(ncid, cv, start, count, &orgn[0]) );
   temutil::nc( nc_inq_varid(ncid, "avln", &cv) );
