@@ -339,7 +339,7 @@ struct AldEnv {
       ed.d_soid.permafrost = frozen_flag; ed.d_soid.aldflag = daily[d]; ed.d_soid.ald = 0.3;
       ed.grnd_endOfDay((int)daily.size(), 180 + (int)d);
     }
-    ed.grnd_endOfMonth();
+    ed.grnd_endOfMonth(5);   // merge glue: upstream added the month index (CH4 dfratio only)
   }
 };
 }
