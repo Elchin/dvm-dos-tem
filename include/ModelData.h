@@ -214,14 +214,18 @@ public:
   //   cannot be below 0 C, and after (b) there is no source-cell temperature.
   //   runon_energy_mode 2 (diagnostic, Phase 3 v2): (a) only; the cell keeps recycling its own
   //   runoff as upstream does. Separates the energy and the water effect of mode 1.
-  // ch4_conserve: consistent hourly dt covering a full day, alpha from D, fluxes scaled by dt,
-  //   oxidation added to RH. Off = legacy (dt=1/24 of a day vs rates per hour, alpha stays 0,
+  // ch4_conserve: consistent hourly dt covering a full day, alpha from D, fluxes scaled by dt.
+  //   (Since reco_ch4ox_output it no longer adds oxidation/efflux to RH.) Off = legacy (dt=1/24 of a day vs rates per hour, alpha stays 0,
   //   reduced dt persists, oxidation not in the C budget).
   // ch4_daily: CH4Flux is called from the daily env loop on that day's soil state. Off = called
   //   from the monthly BGC loop, every day seeing the end-of-month snapshot.
   int runon_energy_mode;
   int ch4_conserve;
   int ch4_daily;
+  // reco_ch4ox_output (output only, Elchin 2026-11-11): 0 = legacy (CH4 oxidation CO2 not in RH/RECO/NEE);
+  //   1 = oxidation CO2 added to RH/RECO/NEE/nep outputs (and RHSOM_DS/RECO_DS/NEE_DS);
+  //   2 = also CH4 efflux (total ecosystem C loss). Only CH4 cells (cd.ch4_on).
+  int reco_ch4ox_output;
   bool is_wetland_cmt(int cmt) const;
   // Refs: at each declaration named above (Climate.h, Soil_Env.h, Stefan.h, Snow_Env.h) and in docs/daily-mode-REFERENCES.md.
   // Fix C1 (v5k), OFF by default (0 = legacy): soil integrator NMIN error

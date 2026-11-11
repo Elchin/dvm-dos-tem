@@ -341,7 +341,7 @@ TEST_CASE("runon_energy_mode 1: puddle heat is spread over the top 0.3 m, not du
 
 TEST_CASE("ch4_conserve and ch4_daily default off; Soil_Bgc and BgcData flags start at 0") {
   Soil_Bgc sb; CHECK(sb.ch4_conserve == 0); CHECK(sb.ch4_daily == 0);
-  BgcData bd; CHECK(bd.ch4_conserve == 0);
+  BgcData bd; CHECK(bd.reco_ch4ox_output == 0);
 }
 
 } // TEST_SUITE
@@ -399,4 +399,70 @@ TEST_CASE("ch4_conserve FV-CN: explicit half stays non-negative when D dt/(2 dz^
   Soil_Bgc::ch4FvCnRows(7, D.data(), DZ.data(), c.data(), 0.0, R.data(), dt, lo.data(), md.data(), up.data(), rhs.data());
   for (int i = 1; i <= 7; ++i) { CHECK(rhs[i] >= 0.0); CHECK(-lo[i] - up[i] <= 1.0 + 1e-12); }
 }
+} // TEST_SUITE
+
+TEST_SUITE("wetland_p3_reco_ch4ox") {
+namespace {
+// One month of BgcData bookkeeping with given per-layer RH, CH4 oxidation and efflux.
+struct RecoMonth { double rhsom, y_rhsom, nep, y_nep; };
+RecoMonth reco_month(int mode, bool ch4_on, int months = 1) {
+  CohortData cd; cd.ch4_on = ch4_on;
+  for (int il = 0; il < MAX_SOI_LAY; il++) { cd.m_soil.type[il] = (il < 3) ? 1 : 3; }
+  BgcData bd; bd.cd = &cd; bd.reco_ch4ox_output = mode;
+  for (int il = 0; il < MAX_SOI_LAY; il++) {
+    bd.m_sois.rawc[il] = bd.m_sois.soma[il] = bd.m_sois.sompr[il] = bd.m_sois.somcr[il] = 1.0;
+    bd.m_sois.orgn[il] = bd.m_sois.avln[il] = 0.1;
+  }
+  bd.soil_beginOfYear(); bd.land_beginOfYear();
+  for (int m = 0; m < months; m++) {
+    bd.soil_beginOfMonth();
+    for (int il = 0; il < MAX_SOI_LAY; il++) {
+      bd.m_soi2a.rhrawc[il] = 0.10 * (il < 5); bd.m_soi2a.rhsoma[il] = 0.20 * (il < 5);
+      bd.m_soi2a.rhsompr[il] = 0.05 * (il < 5); bd.m_soi2a.rhsomcr[il] = 0.01 * (il < 5);
+      bd.m_soi2soi.netnmin[il] = 0.0; bd.m_soi2soi.nimmob[il] = 0.0;
+      bd.m_soi2a.ch4_oxid[il] = (il < 4) ? 0.75 : 0.0;   // 3.0 g C m-2 month-1
+    }
+    bd.m_soi2a.ch4efflux = 1.25; bd.m_soi2a.rhwdeb = 0.0; bd.m_a2v.nppall = 20.0;
+    bd.soil_endOfMonth(m);
+    bd.land_endOfMonth();
+  }
+  return {bd.m_soi2a.rhsom, bd.y_soi2a.rhsom, bd.m_l2a.nep, bd.y_l2a.nep};
+}
+}
+
+TEST_CASE("reco_ch4ox_output: default 0, parsed 0..2, other values FATAL") {
+  ModelData m0; CHECK(m0.reco_ch4ox_output == 0);
+  CHECK(ModelData(ms(wl(false))).reco_ch4ox_output == 0);
+  auto st = [](Json::Value c) { return ut::exit_status_of([c] { ModelData m(c); }); };
+  for (int v : {1, 2}) {
+    Json::Value w = wl(true); w["ch4"] = false; w["reco_ch4ox_output"] = v;
+    CAPTURE(v); CHECK(ModelData(ms(w)).reco_ch4ox_output == v);
+  }
+  { Json::Value w = wl(false); w["reco_ch4ox_output"] = 3; CHECK(st(ms(w)) == EXIT_FAILURE); }
+  { Json::Value w = wl(false); w["reco_ch4ox_output"] = -1; CHECK(st(ms(w)) == EXIT_FAILURE); }
+  { Json::Value w = wl(false); w["reco_ch4ox_output"] = "1"; CHECK(st(ms(w)) == EXIT_FAILURE); }
+}
+
+TEST_CASE("reco_ch4ox_add: 0 adds nothing, 1 adds oxidation, 2 adds oxidation + efflux") {
+  CHECK(BgcData::reco_ch4ox_add(0, 3.0, 1.25) == 0.0);
+  CHECK(BgcData::reco_ch4ox_add(1, 3.0, 1.25) == 3.0);
+  CHECK(BgcData::reco_ch4ox_add(2, 3.0, 1.25) == 4.25);
+}
+
+TEST_CASE("reco_ch4ox_output: rhsom (RH/RECO/NEE) and nep, monthly and yearly; ch4_conserve no longer adds") {
+  const RecoMonth r0 = reco_month(0, true), r1 = reco_month(1, true), r2 = reco_month(2, true);
+  CHECK(r0.rhsom == doctest::Approx(5 * 0.36));
+  CHECK(r1.rhsom - r0.rhsom == doctest::Approx(3.0));
+  CHECK(r2.rhsom - r0.rhsom == doctest::Approx(4.25));
+  CHECK(r1.nep - r0.nep == doctest::Approx(-3.0));        // NEP loses the oxidation CO2
+  CHECK(r2.nep - r0.nep == doctest::Approx(-4.25));
+  const RecoMonth y0 = reco_month(0, true, 12), y1 = reco_month(1, true, 12), y2 = reco_month(2, true, 12);
+  CHECK(y1.y_rhsom - y0.y_rhsom == doctest::Approx(12 * 3.0));
+  CHECK(y2.y_rhsom - y0.y_rhsom == doctest::Approx(12 * 4.25));
+  CHECK(y1.y_nep - y0.y_nep == doctest::Approx(-12 * 3.0));
+  // CH4 off: every mode is bit-identical to mode 0
+  const RecoMonth n0 = reco_month(0, false, 12), n2 = reco_month(2, false, 12);
+  CHECK(n0.y_rhsom == y0.y_rhsom); CHECK(n2.y_rhsom == n0.y_rhsom); CHECK(n2.y_nep == n0.y_nep);
+}
+
 } // TEST_SUITE

@@ -24,7 +24,13 @@ public:
 
   void clear();
   void zero_daily_ch4();   // phase 3: daily CH4 accumulators start at 0 (struct ctors set UIN_D)
-  int ch4_conserve = 0;    // phase 3 v2: add oxidation and CH4 efflux to RH/RECO
+  // reco_ch4ox_output (output only, default 0 = legacy, bit-identical): 1 = add the CO2 from CH4
+  // oxidation (m_soi2a.ch4_oxid_sum, g C m-2) to rhsom, hence to RH/RHSOM, RECO, NEE and nep outputs;
+  // 2 = also add the CH4 efflux (total ecosystem C loss). No state variable reads rhsom.
+  int reco_ch4ox_output = 0;
+  static double reco_ch4ox_add(int mode, double ch4_oxid, double ch4_efflux) {
+    return mode == 2 ? ch4_oxid + ch4_efflux : (mode == 1 ? ch4_oxid : 0.0);
+  }
 
   CohortData * cd;
 

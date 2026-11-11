@@ -365,7 +365,7 @@ void Cohort::initialize_state_parameters() {
   soilenv.runon_energy_mode = md->runon_energy_mode;   // phase 3 v2 (0 = legacy)
   soilbgc.ch4_conserve = md->ch4_conserve;             // phase 3 v2 (0 = legacy)
   soilbgc.ch4_daily = md->ch4_daily;                   // phase 3 v2 (0 = monthly snapshot)
-  bdall->ch4_conserve = md->ch4_conserve;
+  bdall->reco_ch4ox_output = md->reco_ch4ox_output;   // output only (0 = legacy)
   soilbgc.n_rootless_fix = md->n_rootless_fix;         // Fix N1 (v5k)
   soilbgc.n_som_move_fix = md->n_som_move_fix;         // Fix N2 (v5k)
   soilbgc.bnfp = md->bnf;                              // v5q BNF (scheme 0 = off)
@@ -2098,6 +2098,16 @@ void Cohort::updateMonthly_DailyCSplit(const int & dinm) {
     for (int d = 0; d < n; d++) { u[d] = 0.0; }
     add_rh(bdall->m_soi2a.rhwdeb, u, n, ds_daily[RHDWD]);
     ds_flags |= FLAG_RHDWD;
+  }
+
+  // reco_ch4ox_output (output only): the same CH4 terms as the monthly rhsom, day by day
+  // from the daily CH4 accumulators (their month sums are the monthly totals).
+  if (md->reco_ch4ox_output >= 1 && cd.ch4_on) {
+    for (int d = 0; d < n; d++) {
+      double ox = 0.0;
+      for (int il = 0; il < MAX_SOI_LAY; il++) { ox += bdall->daily_ch4_oxid[d][il]; }
+      ds_daily[RHSOM][d] += BgcData::reco_ch4ox_add(md->reco_ch4ox_output, ox, bdall->daily_ch4_efflux[d]);
+    }
   }
 
   finish(ds_daily, n);
