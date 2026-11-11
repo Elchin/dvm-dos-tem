@@ -366,6 +366,7 @@ public:
   void bnfRecordPft(const int ip, const double npp);
   void bnfBeginMonth(const int m, const bool nfeedon);
   void bnfRecordMonth(const int m, const double npp, const double et);
+  void CH4Flux(const int mind, const int id);
 
 private:
 
@@ -388,6 +389,16 @@ private:
   double ltrflc[MAX_SOI_LAY];     //litterfall C into each soil layer
   double ltrfln[MAX_SOI_LAY];     //litterfall N into each soil layer
 
+  // Monthly accumulation of carbon to be removed from SOM pools
+  // in deltastate() from ch4 production in ch4flux() in Soil_Bgc
+  double ch4_prod_rawc_monthly[MAX_SOI_LAY];   
+  double ch4_prod_soma_monthly[MAX_SOI_LAY];
+  double ch4_prod_sompr_monthly[MAX_SOI_LAY];
+  double ch4_prod_somcr_monthly[MAX_SOI_LAY];
+  // Monthly accumulation of CO2 from oxidation of CH4 to be 
+  // combined with rhsum in deltastate()
+  double ch4_oxid_monthly[MAX_SOI_LAY];
+
   double rtnextract[MAX_SOI_LAY];  // root N extraction from each soil layer
 
   double kdshlw;
@@ -409,6 +420,10 @@ private:
   CohortLookup * chtlu;
   Ground * ground;
 
+  //TODO This should likely be replaced with the same solver
+  //  used for soil moisture
+  void TriSolver(int matrix_size, double *A, double *D, double *C, double *B, double *X);
+
   void initSoilCarbon(double & initshlwc, double & initdeepc,
                       double & initminec);
   void initOslayerCarbon(double & shlwc, double & deepc);
@@ -417,6 +432,7 @@ private:
   double getRhmoist(const double &vsm, const double & moistmin,
                     const double & moistmax, const double & moistopt);
   double getRhq10(const double & tsoil);
+  double getQ10(const double & q10_param, const double & tsoil);
 
   double getNimmob(const double & soilh2o, const double & soilorgc,
                    const double & soilorgn, const double & availn,

@@ -950,6 +950,9 @@ void advance_model(const int rowidx, const int colidx,
                 << " = \"daily\")" << std::endl;
     }
     runner.cohort.load_proj_explicit_fire(modeldata.proj_exp_fire_file);
+    if(runner.cohort.md->get_ch4_module()){
+      runner.cohort.load_ch4(modeldata.proj_ch4_file);
+    }
 
     BOOST_LOG_SEV(glg, warn) << "MAKE SURE YOUR FIRE INPUTS ARE SETUP CORRECTLY!";
 

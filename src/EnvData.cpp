@@ -176,6 +176,10 @@ void EnvData::grnd_beginOfYear() {
   y_soid.hkmineb= 0.;
   y_soid.hkminec= 0.;
 
+  y_soid.dfratio = 0.;
+  y_soid.co2ch4 = 0.;
+  y_soid.oxid = 0.;
+
   for (int il=0; il<MAX_SOI_LAY; il++) {
     y_sois.frozen[il]      = 0.;
     y_sois.frozenfrac[il]  = 0.;
@@ -317,6 +321,11 @@ void EnvData::grnd_beginOfMonth() {
   m_soid.hkminea= 0.;
   m_soid.hkmineb= 0.;
   m_soid.hkminec= 0.;
+
+  //Methane related values
+  m_soid.oxid = 0.;
+  m_soid.co2ch4 = 0.;
+  m_soid.dfratio = 0.;
 
   for (int il=0; il<MAX_SOI_LAY; il++) {
     m_sois.frozen[il]     = 0.;
@@ -475,6 +484,11 @@ void EnvData::grnd_endOfDay(const int & dinm, const int & doy) {
   m_snw2soi.melt += d_snw2soi.melt;
   // soils
   int numsoi = cd->m_soil.numsl;
+
+  //Methane related values
+  m_soid.dfratio += d_soid.dfratio / dinm;
+  m_soid.co2ch4 += d_soid.co2ch4 / dinm;
+  m_soid.oxid += d_soid.oxid;
 
   for(int il =0; il<numsoi; il++) {
     m_sois.frozen[il] += d_sois.frozen[il]/dinm; //so, if some days frozen, some day not, its value shall be between -1 and 1.
@@ -793,7 +807,7 @@ void EnvData::veg_endOfMonth(const int & currmind) {
   y_v2g.sthfl += m_v2g.sthfl;
 };
 
-void EnvData::grnd_endOfMonth() {
+void EnvData::grnd_endOfMonth(const int & currmind) {
   // snow
   y_snws.swesum  += m_snws.swesum/12.; // it's not practical to calculate the
                                        // yearly-averaged layered snow variables
@@ -803,6 +817,13 @@ void EnvData::grnd_endOfMonth() {
   y_snw2soi.melt += m_snw2soi.melt;
   // soils
   int numsoi = cd->m_soil.numsl;
+
+  //Methane related values
+  y_soid.oxid += m_soid.oxid;
+  y_soid.co2ch4 += m_soid.co2ch4 / 12.;
+  if(currmind == 5 || currmind == 6 || currmind == 7){
+    y_soid.dfratio += m_soid.dfratio / 3.;
+  }
 
   for(int il =0; il<numsoi; il++) {
     y_sois.frozen[il] += m_sois.frozen[il]/12; //so, if some months frozen, some
@@ -915,6 +936,8 @@ void EnvData::update_from_climate(const Climate& clm, const int midx, const int 
     this->seb_lwdown = clm.lwdown_d[doy_idx];
     this->seb_wind = clm.wind_d[doy_idx];
   }
+
+  this->atmospheric_ch4 = clm.ch4_d;
 
   // Adjust days-since-rain (used by Soil_Env::getEvaporation(), where the
   // realized fraction of potential soil evaporation is 0.3/dsr^2, floored at

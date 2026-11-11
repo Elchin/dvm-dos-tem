@@ -135,6 +135,8 @@ public :
   int ds_flags = 0;
   long ds_fallback_months = 0;  // months with any fallback flag (cumulative)
   long ds_remap_months = 0;     // months with the midpoint layer remap (cumulative)
+  void load_ch4(const std::string& ch4_file);
+
 private:
   // v5p daily_c_split: soil layer structure of the Env loop and of the Bgc step
   int ds_env_numsl = 0, ds_bgc_numsl = 0;
@@ -153,7 +155,7 @@ private:
   void updateMonthly_DIMgrd(const int & currmind, const bool & dslmodule);
 
   void updateMonthly_Env(const int & currmind, const int & dinmcurr);
-  void updateMonthly_Bgc(const int & currmind);
+  void updateMonthly_Bgc(const int & currmind, const int & dinmcurr);
   void updateMonthly_Dsb(const int & yrcnt, const int & currmind, std::string stage);
 
   // Fire is a type of disturbance

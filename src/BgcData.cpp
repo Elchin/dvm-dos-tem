@@ -1,4 +1,5 @@
 #include "../include/TEMLogger.h"
+#include "../include/TEMUtilityFunctions.h"
 
 #include "../include/BgcData.h"
 extern src::severity_logger< severity_level > glg;
@@ -10,6 +11,11 @@ BgcData::~BgcData() {};
 // re-initialize BgcData class explicitly
 void BgcData::clear() {
   cd->clear();
+  //daily
+  d_sois = soistate_bgc();
+  d_soid = soidiag_bgc();
+  d_soi2a = soi2atm_bgc();
+  d_soi2soi = soi2soi_bgc();
   //monthly
   m_vegs = vegstate_bgc();
   m_sois = soistate_bgc();
@@ -202,27 +208,94 @@ void BgcData::veg_beginOfYear() {
 void BgcData::veg_endOfYear() {
 }
 
-void BgcData::soil_beginOfMonth() {
-  
+/** Averages or accumulates daily BGC values
+  */
+void BgcData::soil_endOfDay(const int& dinm, const int& doy){
+  int dom = temutil::doy2dom(doy);
 
+  for(int il=0; il<MAX_SOI_LAY; il++){
+    m_soi2a.ch4_oxid[il] += d_soi2a.ch4_oxid[il];
+    m_soi2soi.ch4_diff[il] += d_soi2soi.ch4_diff[il];
+    m_soi2soi.ch4_ebul[il] += d_soi2soi.ch4_ebul[il];
+    m_soi2soi.ch4_rawc[il] += d_soi2soi.ch4_rawc[il];
+    m_soi2soi.ch4_soma[il] += d_soi2soi.ch4_soma[il];
+    m_soi2soi.ch4_sompr[il] += d_soi2soi.ch4_sompr[il];
+    m_soi2soi.ch4_somcr[il] += d_soi2soi.ch4_somcr[il];
 
-    for(int il=0; il<MAX_SOI_LAY; il++){
-      m_sois.rawc[il] = 0.;
-      m_sois.soma[il] = 0.;
-      m_sois.sompr[il]= 0.;
-      m_sois.somcr[il]= 0.;
+    //Storing daily data for NetCDF output
+    daily_ch4_diff[dom][il] = d_soi2soi.ch4_diff[il];
+    daily_ch4_ebullition[dom][il] = d_soi2soi.ch4_ebul[il];
+    daily_ch4_oxid[dom][il] = d_soi2a.ch4_oxid[il];
+    daily_ch4_rawc[dom][il] = d_soi2soi.ch4_rawc[il];
+    daily_ch4_soma[dom][il] = d_soi2soi.ch4_soma[il];
+    daily_ch4_sompr[dom][il] = d_soi2soi.ch4_sompr[il];
+    daily_ch4_somcr[dom][il] = d_soi2soi.ch4_somcr[il];
 
-      m_sois.orgn[il] = 0.;
-      m_sois.avln[il] = 0.;
+    d_soi2soi.ch4_diff[il] = 0.;
+    d_soi2soi.ch4_ebul[il] = 0.;
+    d_soi2a.ch4_oxid[il] = 0.;
+    d_soi2soi.ch4_rawc[il] = 0.;
+    d_soi2soi.ch4_soma[il] = 0.;
+    d_soi2soi.ch4_sompr[il] = 0.;
+    d_soi2soi.ch4_somcr[il] = 0.;
 
-      m_soi2a.rhrawc[il] = 0.;
-        m_soi2a.rhsoma[il] = 0.;
-        m_soi2a.rhsoma[il] = 0.;
-        m_soi2a.rhsompr[il]= 0.;
-        m_soi2a.rhsomcr[il]= 0.;
-
+    for(int ip=0; ip<NUM_PFT; ip++){
+      daily_ch4_transport[dom][il][ip] = d_soi2a.ch4_transport[il][ip];
+      m_soi2a.ch4_transport[il][ip] += d_soi2a.ch4_transport[il][ip];
+      d_soi2a.ch4_transport[il][ip] = 0.0;
     }
-  
+  }
+
+  m_soid.ch4ebulsum += d_soid.ch4ebulsum;
+  d_soid.ch4ebulsum = 0.;
+
+  m_soi2a.ch4efflux += d_soi2a.ch4efflux;
+  d_soi2a.ch4efflux = 0.;
+
+  m_soi2a.ch4efflux_ebul += d_soi2a.ch4efflux_ebul;
+  d_soi2a.ch4efflux_ebul = 0.;
+
+  daily_ch4_effdiff[dom] = d_soi2a.ch4effdiff;
+  m_soi2a.ch4effdiff += d_soi2a.ch4effdiff;
+  d_soi2a.ch4effdiff = 0.;
+}
+
+void BgcData::soil_beginOfMonth() {
+
+  for(int il=0; il<MAX_SOI_LAY; il++){
+//    m_sois.rawc[il] = 0.;
+//    m_sois.soma[il] = 0.;
+//    m_sois.sompr[il]= 0.;
+//    m_sois.somcr[il]= 0.;
+
+//    m_sois.orgn[il] = 0.;
+//    m_sois.avln[il] = 0.;
+
+//    m_soi2a.rhrawc[il] = 0.;
+//    m_soi2a.rhsoma[il] = 0.;
+//    m_soi2a.rhsoma[il] = 0.;
+//    m_soi2a.rhsompr[il]= 0.;
+//    m_soi2a.rhsomcr[il]= 0.;
+
+    m_soi2soi.ch4_diff[il] = 0.;
+    m_soi2soi.ch4_ebul[il] = 0.;
+
+    m_soi2a.ch4_oxid[il] = 0.;
+
+    m_soi2soi.ch4_rawc[il] = 0.;
+    m_soi2soi.ch4_soma[il] = 0.;
+    m_soi2soi.ch4_sompr[il] = 0.;
+    m_soi2soi.ch4_somcr[il] = 0.;
+
+    for(int ip=0; ip<NUM_PFT; ip++){
+      m_soi2a.ch4_transport[il][ip] = 0.;
+    }
+  }
+
+  m_soid.ch4ebulsum = 0.;
+  m_soi2a.ch4efflux = 0.;
+  m_soi2a.ch4efflux_ebul = 0.;
+  m_soi2a.ch4effdiff = 0.;
 };
 
 void BgcData::soil_beginOfYear() {
@@ -239,12 +312,17 @@ void BgcData::soil_beginOfYear() {
   y_soid.somcrsum= 0.;
   y_soid.orgnsum = 0.;
   y_soid.avlnsum = 0.;
+  y_soid.ch4ebulsum = 0.;
   y_soi2a.rhsom = 0.;
   y_soi2a.rhwdeb    =0.;
   y_soi2a.rhrawcsum =0.;
   y_soi2a.rhsomasum =0.;
   y_soi2a.rhsomprsum=0.;
   y_soi2a.rhsomcrsum=0.;
+  y_soi2a.ch4_oxid_sum = 0.;
+  y_soi2a.ch4efflux = 0.;
+  y_soi2a.ch4efflux_ebul = 0.;
+  y_soi2a.ch4effdiff = 0.;
   y_soi2soi.netnminsum = 0.;
   y_soi2soi.nimmobsum  = 0.;
 
@@ -266,9 +344,21 @@ void BgcData::soil_beginOfYear() {
     y_soi2a.rhsoma[il] = 0.;
     y_soi2a.rhsompr[il]= 0.;
     y_soi2a.rhsomcr[il]= 0.;
+    y_soi2a.ch4_oxid[il] = 0.;
     //
     y_soi2soi.netnmin[il] = 0.;
     y_soi2soi.nimmob[il]  = 0.;
+    //
+    y_soi2soi.ch4_diff[il] = 0.;
+    y_soi2soi.ch4_ebul[il] = 0.;
+    y_soi2soi.ch4_rawc[il] = 0.;
+    y_soi2soi.ch4_soma[il] = 0.;
+    y_soi2soi.ch4_sompr[il] = 0.;
+    y_soi2soi.ch4_somcr[il] = 0.;
+
+    for(int ip=0; ip<NUM_PFT; ip++){
+      y_soi2a.ch4_transport[il][ip] = 0.0;
+    }
   }
 
   //
@@ -294,6 +384,7 @@ void BgcData::soil_endOfMonth(const int currmind) {
   m_soi2a.rhsomcrsum= 0.;
   m_soi2soi.netnminsum= 0.;
   m_soi2soi.nimmobsum = 0.;
+  m_soi2a.ch4_oxid_sum = 0.;   // wetland (regional_wetland_deepc)
 
   for (int il =0; il<MAX_SOI_LAY; il++) {
     m_soi2a.rhrawcsum += m_soi2a.rhrawc[il];
@@ -302,6 +393,7 @@ void BgcData::soil_endOfMonth(const int currmind) {
     m_soi2a.rhsomcrsum+= m_soi2a.rhsomcr[il];
     m_soi2soi.netnminsum+= m_soi2soi.netnmin[il];
     m_soi2soi.nimmobsum += m_soi2soi.nimmob[il];
+    m_soi2a.ch4_oxid_sum += m_soi2a.ch4_oxid[il];
   }
 
   m_soi2a.rhsom = m_soi2a.rhrawcsum +
@@ -317,6 +409,12 @@ void BgcData::soil_endOfMonth(const int currmind) {
   y_soi2a.rhsomcrsum+= m_soi2a.rhsomcrsum;
   y_soi2a.rhsom += m_soi2a.rhsom;
 
+  // wetland CH4 (regional_wetland_deepc); all zero when CH4 is off
+  y_soi2a.ch4_oxid_sum += m_soi2a.ch4_oxid_sum;
+  y_soi2a.ch4efflux += m_soi2a.ch4efflux;
+  y_soi2a.ch4efflux_ebul += m_soi2a.ch4efflux_ebul;
+  y_soi2a.ch4effdiff += m_soi2a.ch4effdiff;
+
   for (int il =0; il<MAX_SOI_LAY; il++) {
     y_soi2a.rhrawc[il] += m_soi2a.rhrawc[il];
     y_soi2a.rhsoma[il] += m_soi2a.rhsoma[il];
@@ -324,6 +422,16 @@ void BgcData::soil_endOfMonth(const int currmind) {
     y_soi2a.rhsomcr[il]+= m_soi2a.rhsomcr[il];
     y_soi2soi.netnmin[il]+= m_soi2soi.netnmin[il];
     y_soi2soi.nimmob[il] += m_soi2soi.nimmob[il];
+    y_soi2soi.ch4_diff[il] += m_soi2soi.ch4_diff[il];
+    y_soi2soi.ch4_ebul[il] += m_soi2soi.ch4_ebul[il];
+    y_soi2a.ch4_oxid[il] += m_soi2a.ch4_oxid[il];
+    y_soi2soi.ch4_rawc[il] += m_soi2soi.ch4_rawc[il];
+    y_soi2soi.ch4_soma[il] += m_soi2soi.ch4_soma[il];
+    y_soi2soi.ch4_sompr[il] += m_soi2soi.ch4_sompr[il];
+    y_soi2soi.ch4_somcr[il] += m_soi2soi.ch4_somcr[il];
+    for(int ip=0; ip<NUM_PFT; ip++){
+      y_soi2a.ch4_transport[il][ip] += m_soi2a.ch4_transport[il][ip];
+    }
   }
 
   y_soi2soi.netnminsum+= m_soi2soi.netnminsum;

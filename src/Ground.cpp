@@ -1761,7 +1761,9 @@ void Ground::splitOneSoilLayer(SoilLayer*usl, SoilLayer* lsl,
     lsl->tem = usl->tem;
   } else if(usl->nextl==NULL) {
     lsl->tem = usl->tem;
+    lsl->ch4 = usl->ch4;
   } else {
+    //temperature
     double ultem = usl->tem;
     double ulz = usl->z+0.5*(usl->dz+lsl->dz);//the original 'usl' mid-node
                                               //  depth (here, usl->dz
@@ -1769,16 +1771,21 @@ void Ground::splitOneSoilLayer(SoilLayer*usl, SoilLayer* lsl,
     double nxltem = usl->nextl->tem;
     double nxlz = usl->nextl->z+0.5*usl->nextl->dz;
     double gradient = (ultem - nxltem)/(ulz -nxlz); //linearly interpolated
-    double slz = lsl->z+0.5*lsl->dz;
-    lsl->tem = (slz-nxlz) * gradient + nxltem;
-    ulz = usl->z+0.5*usl->dz;
-    if(usl->prevl == NULL){ //if no prevl, use same gradient
-      usl->tem = (ulz-nxlz) * gradient + nxltem;
-    } else { //otherwise incorporate prevl temp
+    double slz = lsl->z + 0.5 * lsl->dz;
+    lsl->tem = (slz - nxlz) * gradient + nxltem;
+    ulz = usl->z + 0.5 * usl->dz;
+
+    // Splitting ch4 pool between new layers based on thickness
+    lsl->ch4 = usl->ch4 * lslfrac;
+    usl->ch4 -= lsl->ch4;
+
+    if (usl->prevl == NULL){ // if no prevl, use same gradient
+      usl->tem = (ulz - nxlz) * gradient + nxltem;
+    } else { // otherwise incorporate prevl temp
       double pltem = usl->prevl->tem;
       double plz = usl->prevl->z + 0.5 * usl->prevl->dz;
       gradient = (pltem - lsl->tem) / (plz - slz);
-      usl->tem = (ulz-slz) * gradient + lsl->tem;
+      usl->tem = (ulz - slz) * gradient + lsl->tem;
     }
   }
 
@@ -1917,12 +1924,14 @@ void Ground::combineTwoSoilLayersU2L(SoilLayer* usl, SoilLayer* lsl) {
   lsl->tem += usl->tem*upfrac;
   }
   // update C content:
-  lsl->rawc +=usl->rawc;
-  lsl->soma +=usl->soma;
-  lsl->sompr+=usl->sompr;
-  lsl->somcr+=usl->somcr;
-  lsl->orgn +=usl->orgn;
-  lsl->avln +=usl->avln;
+  lsl->rawc += usl->rawc;
+  lsl->soma += usl->soma;
+  lsl->sompr += usl->sompr;
+  lsl->somcr += usl->somcr;
+  lsl->orgn += usl->orgn;
+  lsl->avln += usl->avln;
+  //update methane:
+  lsl->ch4 += usl->ch4;
   // after combination, needs to update 'lsl'- 'frozen' status based on
   //   'fronts' if given
   getLayerFrozenstatusByFronts(lsl);
@@ -1933,9 +1942,9 @@ void Ground::combineTwoSoilLayersU2L(SoilLayer* usl, SoilLayer* lsl) {
 void Ground::combineTwoSoilLayersL2U(SoilLayer* lsl, SoilLayer* usl) {
   const double cu = enthHeatCap(usl), cl = enthHeatCap(lsl); // Option C (before the merge)
   // update water content
-  usl->dz  +=lsl->dz;
-  usl->liq +=lsl->liq;
-  usl->ice +=lsl->ice;
+  usl->dz  += lsl->dz;
+  usl->liq += lsl->liq;
+  usl->ice += lsl->ice;
   // update temperature
   double lsfrac = lsl->dz/usl->dz;
   if (enthalpy_remap == 1) {   // Option C: heat-capacity weighted (conserves enthalpy)
@@ -1955,6 +1964,8 @@ void Ground::combineTwoSoilLayersL2U(SoilLayer* lsl, SoilLayer* usl) {
   } else {
     usl->avln =+lsl->avln;    // legacy: assigns (typo kept so switch 0 stays bit-identical)
   }
+  //update methane:
+  usl->ch4 += lsl->ch4;
   // after combination, needs to update 'usl'- 'frozen' status based on
   //   'fronts' if given
   getLayerFrozenstatusByFronts(usl);
@@ -2828,5 +2839,41 @@ void Ground::setBgcData(BgcData *bdp){
 
 void Ground::setCohortLookup(CohortLookup* chtlup) {
   chtlu = chtlup;
+};
+
+void Ground::set_ch4_bylayer(const double* newch4){
+  BOOST_LOG_SEV(glg, debug) << "Setting by-layer ch4";
+
+  Layer* currl = fstsoill;
+  int il = 0;
+
+  while(currl!=NULL) {
+    if(currl->isSoil && newch4[il]>0) {
+      currl->ch4 = newch4[il];
+    }
+
+    currl = currl->nextl;
+    il++;
+  }
+};
+
+std::array<double, MAX_SOI_LAY> Ground::get_ch4_bylayer(){
+  BOOST_LOG_SEV(glg, debug) << "Getting by-layer ch4";
+
+  std::array<double, MAX_SOI_LAY> curr_ch4;
+
+  Layer* currl = fstsoill;
+  int il = 0;
+
+  while(currl!=NULL) {
+    if(currl->isSoil && currl->ch4>0) {
+      curr_ch4[il] = currl->ch4;
+    }
+
+    currl = currl->nextl;
+    il++;
+  }
+
+  return curr_ch4;
 };
 

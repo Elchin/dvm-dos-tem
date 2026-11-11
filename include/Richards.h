@@ -49,9 +49,18 @@ public :
   long n_rejections = 0;   // rejected trial substeps (dtsub halvings)
   long n_reject_calls = 0; // update() calls with >= 1 rejection
 
+  // regional_wetland_deepc (wetland phase 3): run-on / groundwater; set per cohort in
+  // Soil_Env::initializeParameter (wetland off: max_ponding 100 mm = the legacy literal,
+  // inflow_factor 0, both flags false).
+  double max_ponding = 100.0;
+  double inflow_factor = 0.0;
+  bool groundwater_status = false;
+  bool runon_status = false;
+
   //Array to hold lateral drainage values for output to file.
   double layer_drain[MAX_RICH_IND];
   double percolation[MAX_RICH_IND];
+  double layer_input[MAX_RICH_IND];   // groundwater input by Richards index (mm/day)
 
   void update(Layer *fstsoill, Layer* bdrainl, const double & bdraindepth,
               const double & fbaseflow, const double & watertab,

@@ -6,16 +6,42 @@
 
 CC=g++
 CFLAGS=-c -ansi -g -gdwarf-2 -std=c++11 -fPIC -DBOOST_ALL_DYN_LINK -Werror # -W -Wall -Werror -Wno-system-headers
+# Optional extra optimization/debug tuning flags (e.g., OPTFLAGS='-O3 -DNDEBUG').
+OPTFLAGS ?=
+
+# HPC (exacloud) module environment from regional_wetland_deepc, opt-in: make HPC_MODULES=1.
+# Default (unset): the box/VM build is unchanged (merge plan section 1.6 / 4).
+ifeq ($(HPC_MODULES),1)
+SHELL := /bin/bash
+MODULE_SETUP_CMD := source /etc/profile.d/z00_lmod.sh && module purge && module use /mnt/exacloud/lustre/modulefiles && module load openmpi && module load dvmdostem-deps/2026-02
+# Prefer module-exported roots if present; otherwise fall back to SW.
+SW ?= /mnt/exacloud/lustre/software
+BOOST_PREFIX  ?= $(if $(BOOST_ROOT),$(BOOST_ROOT),$(SW)/boost/1.80.0)
+HDF5_PREFIX   ?= $(if $(HDF5_ROOT),$(HDF5_ROOT),$(SW)/hdf5/1.10.9)
+NETCDF_PREFIX ?= $(if $(NETCDF_ROOT),$(NETCDF_ROOT),$(SW)/netcdf-c/4.4.1.1)
+SITE_SPECIFIC_INCLUDES += -I$(BOOST_PREFIX)/include -I$(HDF5_PREFIX)/include -I$(NETCDF_PREFIX)/include -I/usr/include/jsoncpp
+SITE_SPECIFIC_LIBS     += -L$(BOOST_PREFIX)/lib -L$(HDF5_PREFIX)/lib -L$(NETCDF_PREFIX)/lib
+SITE_SPECIFIC_LINK_FLAGS += -Wl,-rpath,$(BOOST_PREFIX)/lib -Wl,-rpath,$(HDF5_PREFIX)/lib -Wl,-rpath,$(NETCDF_PREFIX)/lib
+LIBS = -lnetcdf -lhdf5_hl -lhdf5 -lboost_system -lboost_filesystem \
+       -lboost_program_options -lboost_thread -lboost_log -ljsoncpp -lpthread \
+       -lreadline -llapacke -lz -ldl -lm
+else
 LIBS=-lnetcdf -lboost_system -lboost_filesystem \
 -lboost_program_options -lboost_thread -lboost_log -ljsoncpp -lpthread -lreadline -llapacke
+endif
 
 USEMPI = false
 USEOMP = false
 
 ifeq ($(USEMPI),true)
-  MPIINCLUDES = $(shell mpic++ -showme:compile)
+  ifeq ($(HPC_MODULES),1)
+    MPIINCLUDES = $(shell bash -lc '$(MODULE_SETUP_CMD) && mpic++ -showme:compile')
+    MPILFLAGS = $(shell bash -lc '$(MODULE_SETUP_CMD) && mpic++ -showme:link')
+  else
+    MPIINCLUDES = $(shell mpic++ -showme:compile)
+    MPILFLAGS = $(shell mpic++ -showme:link)
+  endif
   MPICFLAGS = -DWITHMPI
-  MPILFLAGS = $(shell mpic++ -showme:link)
 else
   # do nothing..
 endif
@@ -153,7 +179,7 @@ lib: $(SOURCES)
 CFLAGS += -DGIT_SHA=\"$(GIT_SHA)\"
 
 .cpp.o:
-	$(CC) $(CFLAGS) $(MPICFLAGS) $(OMPCFLAGS) $(INCLUDES) $(MPIINCLUDES) $< -o obj/$(notdir $@)
+	$(CC) $(CFLAGS) $(OPTFLAGS) $(MPICFLAGS) $(OMPCFLAGS) $(INCLUDES) $(MPIINCLUDES) $< -o obj/$(notdir $@)
 
 clean:
 	rm -f $(OBJECTS) $(APPNAME) TEM.o libTEM.so* *~ obj/*
