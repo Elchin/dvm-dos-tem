@@ -1153,8 +1153,12 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
         // adjusted and may need to be a parameter.
         double frac_ebul = exp(-(currl->z / currl->poro));
         ebul_efflux = frac_ebul * ebul;
-        currl->ch4 -= ebul * dt;
-        wtlayer->ch4 += ebul - ebul_efflux;
+        // Transfer only the retained bubble to the water-table layer, scaled
+        // by dt (ebul is an hourly rate). ebul_efflux stays in reaction_term
+        // so it is not subtracted from currl here and not added unscaled to wtlayer.
+        const double ebul_retain = (ebul - ebul_efflux) * dt;
+        currl->ch4 -= ebul_retain;
+        wtlayer->ch4 += ebul_retain;
       } // else ebul is only redistributing CH4 between unfrozen layers
 
       ebul_gm2hr = ebul * convert_umolL_to_gm2;
