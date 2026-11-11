@@ -1870,7 +1870,7 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
         }
 
         if(end_of_year){
-          output_nc_4dim(&curr_spec, file_stage_suffix, &outhold.ch4effdiff_for_output[0], 1, day_timestep, DINY);
+          output_nc_3dim(&curr_spec, file_stage_suffix, &outhold.ch4effdiff_for_output[0], 1, day_timestep, DINY);
           outhold.ch4effdiff_for_output.clear();
         }
       }
@@ -1920,7 +1920,7 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
         }
 
         if(end_of_year){
-          output_nc_4dim(&curr_spec, file_stage_suffix, &outhold.ch4effebul_for_output[0], 1, day_timestep, DINY);
+          output_nc_3dim(&curr_spec, file_stage_suffix, &outhold.ch4effebul_for_output[0], 1, day_timestep, DINY);
           outhold.ch4effebul_for_output.clear();
         }
       }
@@ -1966,7 +1966,7 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
         }
 
         if(end_of_year){
-          output_nc_4dim(&curr_spec, file_stage_suffix, &outhold.ch4efflux_for_output[0], 1, day_timestep, DINY);
+          output_nc_3dim(&curr_spec, file_stage_suffix, &outhold.ch4efflux_for_output[0], 1, day_timestep, DINY);
           outhold.ch4efflux_for_output.clear();
         }
       }
@@ -2299,7 +2299,7 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
           outhold.ch4prod_sum_for_output.push_back(ch4prod);
 
           if(output_this_timestep){
-            output_nc_4dim(&curr_spec, file_stage_suffix, &outhold.ch4prod_sum_for_output[0], 1, year_start_idx, years_to_output);
+            output_nc_3dim(&curr_spec, file_stage_suffix, &outhold.ch4prod_sum_for_output[0], 1, year_start_idx, years_to_output);
             outhold.ch4prod_sum_for_output.clear();
           }
         }
