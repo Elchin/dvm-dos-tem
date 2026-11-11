@@ -94,6 +94,10 @@ public:
   double infil_h_spec = 0.0;      // specific enthalpy of today's qinfl (J/kg); used when mode = 1
   void updatePuddlePhase();       // freeze/thaw the puddle at Tair; books puddle_heat_Jm2
   void applyPuddleHeatToSoil();   // solver 0: change top-soil T; solver 1: booked in enthRemapWater
+  // runon_energy_mode 1: excess ice goes to puddle_ice if there is capacity; any remainder
+  // drains after the layer pays Lf so latent heat is not left in the soil. Mode 0 unchanged.
+  void expelLayerIce(Layer* l, double mass_mm);
+  void settleExpelledWater();     // solver 0: apply the same rule to ground->expelled_water_mm
   // DRAFT (daily-structural): see ModelData::frozen_infil_eice (<0 = off)
   double frozen_infil_eice;
   // Refs: Swenson et al. 2012, doi:10.1029/2012MS000165; CLM5 Tech Note eq. 2.7.48 (Omega = 6); see docs/daily-mode-REFERENCES.md.

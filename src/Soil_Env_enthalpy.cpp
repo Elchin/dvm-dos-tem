@@ -249,8 +249,13 @@ void Soil_Env::enthalpyThermalStep(const double tsurface, const double qmelt_Wm2
     if (l->ice >= (l->maxice - icebylwc)) {
       const double icecap = fmax(0., l->maxice - icebylwc);
       if (l->ice > icecap) {
-        ground->expelled_water_mm += l->ice - icecap;
-        l->ice = icecap;
+        const double m = l->ice - icecap;
+        if (puddle_energy_on()) {
+          expelLayerIce(l, m);
+        } else {
+          ground->expelled_water_mm += m;
+          l->ice = icecap;
+        }
       }
     }
   }

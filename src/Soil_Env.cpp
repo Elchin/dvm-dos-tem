@@ -803,8 +803,12 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   ed->d_soi2l.qdrain = 0.0;
   // Water-leak fix (v5f): water expelled by freeze expansion / organic layer
   // shrinkage since the last call leaves the column as subsurface drainage.
-  ed->d_soi2l.qdrain += ground->expelled_water_mm;
-  ground->expelled_water_mm = 0.0;
+  if (puddle_energy_on()) {
+    settleExpelledWater();
+  } else {
+    ed->d_soi2l.qdrain += ground->expelled_water_mm;
+    ground->expelled_water_mm = 0.0;
+  }
   //Update water table for runoff calculation
   ed->d_sois.watertab = getWaterTable(lstsoill);
   // wetland (phase 3): run-on (cd->runon_status, CMT-gated per cohort) adds an inflow equal to
@@ -1750,6 +1754,45 @@ void Soil_Env::applyPuddleHeatToSoil() {
   const double Q = puddle_heat_Jm2 + infil_h_spec * fmax(ed->d_soi2l.qinfl, 0.0);
   const double cap = l->getHeatCapacity() * l->dz;
   if (cap > 0.0) { l->tem += Q / cap; }
+}
+
+void Soil_Env::expelLayerIce(Layer* l, double mass_mm) {
+  if (l == NULL || mass_mm <= 0.0) { return; }
+  mass_mm = fmin(mass_mm, fmax(l->ice, 0.0));
+  if (mass_mm <= 0.0) { return; }
+  const double T = l->tem;
+  l->ice = fmax(l->ice - mass_mm, 0.0);
+  const double to_p = fmin(mass_mm, space_in_puddle_mm());
+  puddle_ice_mm += to_p;
+  const double remain = mass_mm - to_p;
+  if (remain <= 0.0) { return; }
+  // Remainder leaves the domain as liquid at 0 C: the layer pays Lf so the
+  // ice does not vanish at constant T (which would leave latent heat behind).
+  ground->expelled_water_mm += remain;
+  if (thermal_solver == 1) {
+    enthSetT(l, enthLayerH(l) - remain * (LHFUS - SHCICE * T));
+  } else {
+    const double cap = l->getHeatCapacity() * l->dz;
+    if (cap > 0.0) { l->tem -= remain * (LHFUS - SHCICE * T) / cap; }
+  }
+}
+
+void Soil_Env::settleExpelledWater() {
+  // Solver 0 (and any leftover expelled mass): Stefan has already removed the
+  // ice at constant T. Keep what fits as puddle ice; pay Lf on the top soil
+  // for the drained remainder.
+  double m = fmax(ground->expelled_water_mm, 0.0);
+  ground->expelled_water_mm = 0.0;
+  if (m <= 0.0) { return; }
+  const double to_p = fmin(m, space_in_puddle_mm());
+  puddle_ice_mm += to_p;
+  const double remain = m - to_p;
+  if (remain <= 0.0) { return; }
+  ed->d_soi2l.qdrain += remain;
+  Layer* l = (ground != NULL) ? ground->fstsoill : NULL;
+  if (l == NULL) { return; }
+  const double cap = l->getHeatCapacity() * l->dz;
+  if (cap > 0.0) { l->tem -= remain * LHFUS / cap; }
 }
 
 /*when soil column is frozen and there is snowmelt, assume that infiltration
