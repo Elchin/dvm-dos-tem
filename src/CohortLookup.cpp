@@ -188,9 +188,15 @@ std::string CohortLookup::calparbgc2str() {
 void CohortLookup::assignBgcCalpar(std::string & dircmt) {
 
   // get a list of data for the cmt number
-  std::list<std::string> l = temutil::parse_parameter_file(
-      dircmt + "cmt_calparbgc.txt", temutil::cmtcode2num(this->cmtcode), 41
+  // Block lengths (regional_wetland_deepc merge): 18 = legacy (all fork calibration sets),
+  // 35 = + ponding/inflow/s2df_rawc/d2mf_rawc/12 CH4 lines (upstream upland CMTs),
+  // 41 = + s2df/d2mf for soma/sompr/somcr (upstream wetland CMTs). Missing trailing lines
+  // take the defaults below, which reproduce the pre-merge behaviour (ponding 4/100 mm,
+  // no inflow, no CH4 production/transport, deep_carbon_v2 hard-coded fractions).
+  std::list<std::string> l = temutil::parse_parameter_file_any(
+      dircmt + "cmt_calparbgc.txt", temutil::cmtcode2num(this->cmtcode), {18, 35, 41}
   );
+  const size_t calpar_nlines = l.size();
 
   // pop each line off the front of the list
   // and assign to the right data member.
@@ -213,6 +219,17 @@ void CohortLookup::assignBgcCalpar(std::string & dircmt) {
   temutil::pfll2data(l, kdcsoma);
   temutil::pfll2data(l, kdcsompr);
   temutil::pfll2data(l, kdcsomcr);
+
+  max_ponding_s = 4.0; max_ponding_w = 100.0; inflow_factor = 0.0;
+  s2df_rawc = 0.5; d2mf_rawc = 0.5;
+  kdcrawc_ch4 = 0.0; kdcsoma_ch4 = 0.0; kdcsompr_ch4 = 0.0; kdcsomcr_ch4 = 0.0;
+  ch4_ebul_rate = 0.0; ch4_transport_rate = 0.0;
+  prodq10_ch4 = 4.5; oxidq10_ch4 = 1.9; prodTref_ch4 = 10.0; oxidTref_ch4 = 10.0;
+  oxidkm_ch4 = 5.0; oxidVmax_ch4 = 20.0;
+  s2df_soma = 1.0; s2df_sompr = 1.0; s2df_somcr = 1.0;
+  d2mf_soma = 1.0; d2mf_sompr = 1.0; d2mf_somcr = 1.0;
+  if (calpar_nlines < 35) { return; }
+
   temutil::pfll2data(l, max_ponding_s);
   temutil::pfll2data(l, max_ponding_w);
   temutil::pfll2data(l, inflow_factor);
@@ -235,6 +252,7 @@ void CohortLookup::assignBgcCalpar(std::string & dircmt) {
 
   temutil::pfll2data(l, oxidkm_ch4);
   temutil::pfll2data(l, oxidVmax_ch4);
+  if (calpar_nlines < 41) { return; }
 
   temutil::pfll2data(l, s2df_soma);
   temutil::pfll2data(l, s2df_sompr);
@@ -375,9 +393,11 @@ void CohortLookup::assignEnv4Canopy(string &dir) {
 void CohortLookup::assignBgc4Vegetation(string & dircmt) {
   
   // get a list of data for the cmt number
-  std::list<std::string> l = temutil::parse_parameter_file(
-      dircmt + "cmt_bgcvegetation.txt", temutil::cmtcode2num(this->cmtcode), 34
+  // 33 = legacy block (no transport_capacity line, CH4 plant transport 0), 34 = wetland format
+  std::list<std::string> l = temutil::parse_parameter_file_any(
+      dircmt + "cmt_bgcvegetation.txt", temutil::cmtcode2num(this->cmtcode), {33, 34}
   );
+  const size_t bgcveg_nlines = l.size();
 
   // pop each line off the front of the list
   // and assign to the right data member.
@@ -414,7 +434,8 @@ void CohortLookup::assignBgc4Vegetation(string & dircmt) {
   temutil::pfll2data_pft(l, initvegn[I_root]);
   temutil::pfll2data_pft(l, initdeadc);
   temutil::pfll2data_pft(l, initdeadn);
-  temutil::pfll2data_pft(l, transport_capacity);
+  for (int ip = 0; ip < NUM_PFT; ip++) { transport_capacity[ip] = 0.0; }
+  if (bgcveg_nlines >= 34) { temutil::pfll2data_pft(l, transport_capacity); }
 
 
   // Makes sure that the 'cpart' compartment variables match the proportions

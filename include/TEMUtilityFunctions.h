@@ -199,6 +199,10 @@ namespace temutil {
 
   std::list<std::string> parse_parameter_file(
       const std::string& fname, int cmtnumber, int linesofdata);
+  // As parse_parameter_file, but accepts any of several block lengths (legacy and wetland
+  // formats, see CohortLookup::assignBgcCalpar); exits if the block length is not listed.
+  std::list<std::string> parse_parameter_file_any(
+      const std::string& fname, int cmtnumber, const std::vector<int>& allowed_lines);
 
 
   /** Templated function for reading a timeseries variable from a basic netcdf

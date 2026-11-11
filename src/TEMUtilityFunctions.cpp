@@ -1169,6 +1169,22 @@ namespace temutil {
    * data, returns a list of strings with just that data, after stripping 
    * comments.
    */
+  std::list<std::string> parse_parameter_file_any(
+      const std::string& fname, int cmtnumber, const std::vector<int>& allowed_lines) {
+    std::vector<std::string> v(get_cmt_data_block(fname, cmtnumber));
+    std::list<std::string> datalist(strip_comments(v));
+    for (size_t i = 0; i < allowed_lines.size(); ++i) {
+      if (datalist.size() == (size_t)allowed_lines[i]) { return datalist; }
+    }
+    std::stringstream ok;
+    for (size_t i = 0; i < allowed_lines.size(); ++i) { ok << (i ? " or " : "") << allowed_lines[i]; }
+    BOOST_LOG_SEV(glg, fatal) << "Expected " << ok.str() << " lines of data. Found " << datalist.size()
+                              << ". (" << fname << ", community " << cmtnumber << ")";
+    std::cerr << "FATAL: expected " << ok.str() << " lines of data, found " << datalist.size()
+              << " (" << fname << ", community " << cmtnumber << ")" << std::endl;
+    exit(-1);
+  }
+
   std::list<std::string> parse_parameter_file(
       const std::string& fname, int cmtnumber, int linesofdata) {
     
