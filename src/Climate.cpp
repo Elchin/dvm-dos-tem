@@ -571,7 +571,10 @@ void Climate::prep_avg_climate(){
 
   // averaging yearly co2 and ch4 time series over baseline years
   // produces a scalar value 
-  avgX_co2 = avg_over_yearly(co2, baseline_start, baseline_end);
+  avgX_co2 = 0.0; avgX_ch4 = 0.0;
+  if (eq_co2_mode == 1) {   // phase 3: only when the baseline-mean EQ CO2 is requested
+    avgX_co2 = avg_over_yearly(co2, baseline_start, baseline_end);
+  }
   if (!ch4.empty()){
     avgX_ch4 = avg_over_yearly(ch4, baseline_start, baseline_end);
   }
@@ -816,6 +819,7 @@ void Climate::index_proj_co2_by_year(const std::string& clim_fname,
     double days_from_ref_jan1 = t0 + cum[(ref_m-1) % 12] + (ref_d - 1);
     first_year = ref_y + int(floor(days_from_ref_jan1 / 365.0));
   }
+  sc_first_year = first_year;   // phase 3: reused by index_proj_ch4_by_year
 
   // --- co2 year axis
   std::vector<float> yrs;
@@ -867,6 +871,52 @@ void Climate::index_proj_co2_by_year(const std::string& clim_fname,
 void Climate::load_ch4(const std::string& fname){
   BOOST_LOG_SEV(glg, info) << "Loading ch4 from file";
   this->ch4 = temutil::get_timeseries(fname, "ch4");
+  this->ch4_idx_offset = 0;
+}
+
+/** wetland (phase 3): ch4 value for model year index iy (plus the SC calendar offset). */
+float Climate::ch4_for_year_index(int iy) const {
+  long idx = long(iy) + long(ch4_idx_offset);
+  if (idx < 0 || idx >= long(ch4.size())) {
+    BOOST_LOG_SEV(glg, fatal) << "CH4 index " << idx << " (year index " << iy << ", offset "
+                              << ch4_idx_offset << ") outside ch4 series of length " << ch4.size();
+    std::cerr << "FATAL: CH4 index " << idx << " (year index " << iy << ", offset " << ch4_idx_offset
+              << ") outside ch4 series of length " << ch4.size() << std::endl;
+    exit(EXIT_FAILURE);
+  }
+  return ch4.at(idx);
+}
+
+/** wetland (phase 3): align the projected ch4 series with the projected climate calendar
+* (first year from index_proj_co2_by_year, which must run first) using the ch4 file's 'year'
+* axis. Upstream read ch4.at(iy) from index 0, so e.g. projected-ch4.nc (2024-) was used for
+* 2016- with the demo projected climate. Fails loudly if the years are not covered. */
+void Climate::index_proj_ch4_by_year(const std::string& ch4_fname, int sc_yrs) {
+  std::vector<float> yrs = temutil::get_timeseries(ch4_fname, "year");
+  std::stringstream err;
+  if (yrs.size() != ch4.size() || yrs.empty()) {
+    err << "'year' axis length " << yrs.size() << " != ch4 length " << ch4.size() << " in " << ch4_fname;
+  } else {
+    for (size_t i = 1; i < yrs.size(); i++) {
+      if (int(yrs[i]) != int(yrs[0]) + int(i)) { err << "'year' axis of " << ch4_fname << " is not consecutive"; break; }
+    }
+  }
+  if (err.str().empty()) {
+    int y0 = int(yrs.front()), y1 = int(yrs.back());
+    if (sc_first_year < y0 || sc_first_year + sc_yrs - 1 > y1) {
+      err << "scenario needs CH4 for years " << sc_first_year << "-" << sc_first_year + sc_yrs - 1
+          << " but " << ch4_fname << " covers " << y0 << "-" << y1;
+    } else {
+      ch4_idx_offset = sc_first_year - y0;
+    }
+  }
+  if (!err.str().empty()) {
+    BOOST_LOG_SEV(glg, fatal) << "SC CH4 indexing: " << err.str();
+    std::cerr << "FATAL (SC CH4 indexing): " << err.str() << std::endl;
+    exit(EXIT_FAILURE);
+  }
+  std::cout << "SC CH4 indexing: ch4 file years " << int(yrs.front()) << "-" << int(yrs.back())
+            << ", index offset " << ch4_idx_offset << std::endl;
 }
 
 std::vector<float> Climate::avg_over(const std::vector<float> & var, const int start_yr, const int end_yr) {
@@ -1045,8 +1095,14 @@ void Climate::prepare_daily_driving_data(int iy, const std::string& stage) {
       || (stage.find("eq") != std::string::npos) ){
 
     // Constant atmospheric co2 and ch4
-    // Taking an average using baseline years specified in config file
-    co2_d = avgX_co2;
+    // eq_co2_mode 0 (default, pre-merge): constant co2 = first year in the input data;
+    // eq_co2_mode 1 (upstream): average over the baseline years specified in the config file.
+    // ch4: baseline average (only used by CH4 cohorts).
+    if (eq_co2_mode == 1) {
+      co2_d = avgX_co2;
+    } else {
+      co2_d = co2.at(0);
+    }
     ch4_d = avgX_ch4;
 
     // Create daily data by interpolating
@@ -1065,7 +1121,7 @@ void Climate::prepare_daily_driving_data(int iy, const std::string& stage) {
     co2_d = co2_for_year_index(iy);
     ch4_d = 0;
     if (!ch4.empty()){
-      ch4_d = ch4.at(iy);
+      ch4_d = ch4_for_year_index(iy);   // phase 3: calendar-aligned (offset 0 except SC)
     }
 
     // Create daily data by interpolating
@@ -1126,6 +1182,7 @@ void Climate::prepare_daily_driving_data_from_daily(int iy) {
 
   // Same co2 handling as the monthly path (one value per model year).
   co2_d = co2_for_year_index(iy);
+  if (!ch4.empty()) { ch4_d = ch4_for_year_index(iy); }   // phase 3 (was never set in daily mode)
 
   tair_d.assign(tair.begin() + start, tair.begin() + start + DINY);
   vapo_d.assign(vapo.begin() + start, vapo.begin() + start + DINY);

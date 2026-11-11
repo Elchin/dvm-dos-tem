@@ -952,6 +952,7 @@ void advance_model(const int rowidx, const int colidx,
     runner.cohort.load_proj_explicit_fire(modeldata.proj_exp_fire_file);
     if(runner.cohort.cd.ch4_on){   // wetland (phase 3): per-cohort flag
       runner.cohort.load_ch4(modeldata.proj_ch4_file);
+      runner.cohort.climate.index_proj_ch4_by_year(modeldata.proj_ch4_file, modeldata.sc_yrs);
     }
 
     BOOST_LOG_SEV(glg, warn) << "MAKE SURE YOUR FIRE INPUTS ARE SETUP CORRECTLY!";

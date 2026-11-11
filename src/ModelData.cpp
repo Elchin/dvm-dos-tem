@@ -250,6 +250,12 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     if (wetland_enabled && wetland_ch4 && controldata["IO"]["ch4_file"].asString().empty()) {
       bad("enabled with ch4 needs IO.ch4_file (and IO.proj_ch4_file for the scenario stage)");
     }
+    Json::Value ec = ms.get("eq_co2_mode", 0);
+    if (!bnf::valid_int(ec, 0, 1)) {
+      std::cerr << "FATAL: model_settings.eq_co2_mode must be 0 (first co2 value, default) or 1 (baseline-mean co2)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    eq_co2_mode = ec.asInt();
     ch4_module          = wetland_enabled && wetland_ch4;
     runon_enabled       = wetland_enabled && wetland_runon;
     groundwater_enabled = wetland_enabled && wetland_groundwater;
@@ -607,7 +613,7 @@ ModelData::ModelData():force_cmt(-1) {
   snow_empty_cleanup = 0; // emptied snow layer removal (off)
   wetland_enabled = false; wetland_ch4 = true; wetland_runon = false; wetland_groundwater = false; // phase 3 (off)
   { const int wc[] = {6, 31, 32, 55, 61, 75, 92, 93}; wetland_cmts.assign(wc, wc + 8); }
-  interception_scheme = 0; wetland_diag = 0;
+  interception_scheme = 0; wetland_diag = 0; eq_co2_mode = 0;
   ch4_module = false; runon_enabled = false; groundwater_enabled = false;
   et_fpc_once_fix = 0; nv_snow_bury_fix = 0; rain_int_lai_fix = 0; nv_rain_surface = 0; // v5l (off)
   n_safetynet_conserve = 0; // v5m L1 (off)

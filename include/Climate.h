@@ -140,6 +140,14 @@ public:
                               int sc_yrs);
   float co2_for_year_index(int iy) const;
   int co2_idx_offset = 0; // added to the model year index when reading co2
+  // wetland (phase 3): calendar alignment of the ch4 series, as for co2 (see index_proj_ch4_by_year)
+  int ch4_idx_offset = 0;
+  int sc_first_year = 0;  // first calendar year of the projected climate (set by index_proj_co2_by_year)
+  float ch4_for_year_index(int iy) const;
+  void index_proj_ch4_by_year(const std::string& ch4_fname, int sc_yrs);
+  // model_settings.eq_co2_mode (phase 3): 0 = pre-merge EQ/pre-run CO2 = first value of the
+  // co2 series (default); 1 = mean over baseline_start..baseline_end (upstream regional_wetland_deepc)
+  int eq_co2_mode = 0;
 
 
   void load_ch4(const std::string&);

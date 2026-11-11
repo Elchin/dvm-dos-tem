@@ -206,6 +206,7 @@ public:
   std::vector<int> wetland_cmts;
   int interception_scheme;
   int wetland_diag;
+  int eq_co2_mode;   // model_settings.eq_co2_mode: 0 = first co2 value in EQ/pre-run (default), 1 = baseline mean (upstream)
   bool is_wetland_cmt(int cmt) const;
   // Refs: at each declaration named above (Climate.h, Soil_Env.h, Stefan.h, Snow_Env.h) and in docs/daily-mode-REFERENCES.md.
   // Fix C1 (v5k), OFF by default (0 = legacy): soil integrator NMIN error
