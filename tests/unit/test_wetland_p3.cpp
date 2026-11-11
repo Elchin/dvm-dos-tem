@@ -295,7 +295,7 @@ TEST_CASE("runon_energy_mode 1: ponding capacity is ponding_max minus liquid plu
   CHECK(s.se.space_in_puddle_mm() == doctest::Approx(10.0));
 }
 
-TEST_CASE("runon_energy_mode 1: expelled ice that fits goes to puddle_ice; drained remainder pays Lf") {
+TEST_CASE("runon_energy_mode 1: expelled ice pays Lf in the source layer; mass becomes liquid") {
   SM s(0.5); s.se.runon_energy_mode = 1; s.runon(true);
   s.se.ponding_max_mm = 20.0;
   s.se.puddle_ice_mm = 0.0;
@@ -308,10 +308,11 @@ TEST_CASE("runon_energy_mode 1: expelled ice that fits goes to puddle_ice; drain
   l->tem = -2.0;
   const double t0 = l->tem;
   s.se.expelLayerIce(l, 80.0);
-  CHECK(s.se.puddle_ice_mm == doctest::Approx(20.0));
+  CHECK(s.ed.d_soi2l.magic_puddle == doctest::Approx(20.0));
+  CHECK(s.se.puddle_ice_mm == doctest::Approx(0.0));
   CHECK(l->ice == doctest::Approx(0.0));
   CHECK(s.c.g.expelled_water_mm == doctest::Approx(60.0));
-  CHECK(l->tem < t0);   // drained remainder paid Lf
+  CHECK(l->tem < t0);   // source layer paid Lf for the whole 80 mm
 }
 
 TEST_CASE("ch4_conserve and ch4_daily default off; Soil_Bgc and BgcData flags start at 0") {
