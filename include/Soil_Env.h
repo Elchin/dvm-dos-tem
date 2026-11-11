@@ -209,6 +209,9 @@ private:
   CohortLookup* chtlu;
 
   double ponding_max_mm;
+  // wetland (phase 3) diagnostics, mm/day: run-on inflow added to infiltration today (0 unless
+  // cd->runon_status); groundwater recharge is Richards::qgw_mm.
+  double runon_in_mm = 0.0;
   double frozenInfiltration(Layer* fstsoill, double supply_mm);//max ponding (surface water storage) (mm)
 
   void updateDailySurfFlux(Layer* frontl, const double & dayl);

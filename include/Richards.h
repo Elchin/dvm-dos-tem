@@ -60,7 +60,8 @@ public :
   //Array to hold lateral drainage values for output to file.
   double layer_drain[MAX_RICH_IND];
   double percolation[MAX_RICH_IND];
-  double layer_input[MAX_RICH_IND];   // groundwater input by Richards index (mm/day)
+  double layer_input[MAX_RICH_IND];
+  double qgw_mm = 0.0;   // wetland (phase 3) diagnostic: groundwater recharge added in the last update (mm)   // groundwater input by Richards index (mm/day)
 
   void update(Layer *fstsoill, Layer* bdrainl, const double & bdraindepth,
               const double & fbaseflow, const double & watertab,

@@ -38,6 +38,7 @@ void Richards::update(Layer *fstsoill, Layer* bdrainl,
   qinfil = infil;
   qevap  = evap;
   qdrain = 0.0;
+  qgw_mm = 0.0;
   early_return = false;
 
   if (bdraindepth <= fstsoill->z) {// no percolation
@@ -382,6 +383,7 @@ void Richards::update(Layer *fstsoill, Layer* bdrainl,
             // add to total groundwater input used in subsequent loop
             // qgroundwater += layer_input[ind]; // mm/day
             currl->liq += layer_input[ind];
+            qgw_mm += layer_input[ind];
 
             // remove the liquid input from the potential and move to the next unsaturated layer
             qgroundwater_perch -= layer_input[ind];

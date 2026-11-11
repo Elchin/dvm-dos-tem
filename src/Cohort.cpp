@@ -1015,6 +1015,41 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
 
     getEd4land_daily();  // integrating 'veg' and 'ground' into 'land'
 
+    // wetland (phase 3) diagnostic, output only: model_settings.wetland.diag = 1, wetland cohorts
+    if (md->wetland_diag == 1 && cd.is_wetland) {
+      static long wdg_day = 0;
+      std::ofstream wf((md->output_dir + "wetland_daily.csv").c_str(), std::ios::app);
+      const double zt[5] = {0.1, 0.2, 0.5, 1.0, 2.0};
+      if (wdg_day == 0) {
+        wf << "day,year,doy,rain,snow,runon,qgw,eet,qover,qdrain,qinfl,soilw,swe,puddle,watertab,"
+           << "liq30,ice30,t_top,t010,t020,t050,t100,t200\n";
+      }
+      double soilw = 0.0, liq30 = 0.0, ice30 = 0.0, tz[5] = {0, 0, 0, 0, 0};
+      double zprev = -1.0, tprev = 0.0; bool tz_set[5] = {false, false, false, false, false};
+      for (Layer* l = ground.fstsoill; l != NULL && l->isSoil; l = l->nextl) {
+        soilw += l->liq + l->ice;
+        const double ztop = l->z, zbot = l->z + l->dz, zmid = l->z + 0.5 * l->dz;
+        const double f30 = fmax(0.0, fmin(zbot, 0.3) - ztop) / l->dz;
+        liq30 += f30 * l->liq; ice30 += f30 * l->ice;
+        for (int k = 0; k < 5; k++) {
+          if (!tz_set[k] && zmid >= zt[k]) {
+            tz[k] = (zprev < 0.0) ? l->tem : tprev + (l->tem - tprev) * (zt[k] - zprev) / (zmid - zprev);
+            tz_set[k] = true;
+          }
+        }
+        zprev = zmid; tprev = l->tem;
+      }
+      wf.precision(10);
+      wf << wdg_day << "," << cd.year << "," << doy << "," << edall->d_a2l.rnfl << "," << edall->d_a2l.snfl << ","
+         << soilenv.runon_in_mm << "," << soilenv.richards.qgw_mm << "," << edall->d_l2a.eet << ","
+         << edall->d_soi2l.qover << "," << edall->d_soi2l.qdrain << "," << edall->d_soi2l.qinfl << ","
+         << soilw << "," << edall->d_snws.swesum << "," << edall->d_soi2l.magic_puddle << ","
+         << edall->d_sois.watertab << "," << liq30 << "," << ice30 << "," << ground.fstsoill->tem;
+      for (int k = 0; k < 5; k++) { if (tz_set[k]) { wf << "," << tz[k]; } else { wf << ","; } }
+      wf << "\n";
+      wdg_day++;
+    }
+
     //update Snow structure at daily timestep (for soil structure
     //  at yearly timestep in ::updateMonthly_DIMgrd)
     ground.retrieveSnowDimension(&cd.d_snow);

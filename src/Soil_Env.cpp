@@ -803,11 +803,15 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   ground->expelled_water_mm = 0.0;
   //Update water table for runoff calculation
   ed->d_sois.watertab = getWaterTable(lstsoill);
+  // wetland (phase 3): run-on (cd->runon_status, CMT-gated per cohort) adds an inflow equal to
+  // the cell's own would-be runoff (upstream regional_wetland_deepc design) and sets local
+  // runoff to 0; the inflow is booked in runon_in_mm for the water balance. runon_status
+  // false is the pre-merge path.
+  runon_in_mm = 0.0;
+  richards.qgw_mm = 0.0;   // diagnostic only (Richards may not run today)
   if( (rnth + melt) > 0 ) {
     if(cd->runon_status){
-      if (cd->cmttype == 6 || cd->cmttype == 31 || cd->cmttype == 32 || cd->cmttype == 55 || cd->cmttype == 61 || cd->cmttype == 75 || cd->cmttype == 92 || cd->cmttype == 93){
-        ed->d_soi2l.qover = 0.0;
-      }
+      ed->d_soi2l.qover = 0.0;
     }else{
       ed->d_soi2l.qover = getRunoff(fstsoill, drainl, rnth, melt);
     }
@@ -818,9 +822,8 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   //Calculate infiltration (mm/day)
   double infil = 0.0;
   if(cd->runon_status){
-    if (cd->cmttype == 6 || cd->cmttype == 31 || cd->cmttype == 32 || cd->cmttype == 55 || cd->cmttype == 61 || cd->cmttype == 75 || cd->cmttype == 92 || cd->cmttype == 93){
-      infil = rnth + melt + getRunoff(fstsoill, drainl, rnth, melt);
-    }
+    runon_in_mm = getRunoff(fstsoill, drainl, rnth, melt);
+    infil = rnth + melt + runon_in_mm;
   }else{
     infil = rnth + melt - ed->d_soi2l.qover;
   }
@@ -959,9 +962,9 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
       add_to_puddle = fmin(space_in_puddle, infil);
       ed->d_soi2l.magic_puddle += add_to_puddle;
       infil -= add_to_puddle;
-      if(!cd->runon_status){
-        ed->d_soi2l.qover += infil;
-      }
+      // wetland (phase 3) run-on water-loss fix: upstream skipped this when run-on was on
+      // (water deleted); the excess always leaves as surface runoff (pre-merge behaviour).
+      ed->d_soi2l.qover += infil;
       ed->d_soi2l.qinfl = 0;
     }
     if(frozen_infil_eice >= 0.0){
@@ -1424,9 +1427,7 @@ void Soil_Env::checkSoilLiquidWaterValidity(Layer *topsoill, int topind){
       double to_puddle = fmin(sink_liq, space_in_puddle);
       ed->d_soi2l.magic_puddle += to_puddle;
       sink_liq -= to_puddle;
-      if(!cd->runon_status){
-        ed->d_soi2l.qover += sink_liq;
-      }
+      ed->d_soi2l.qover += sink_liq; // wetland (phase 3) run-on water-loss fix (see updateDailySM)
     }
     currl = currl->prevl;
   }
