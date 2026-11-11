@@ -1228,6 +1228,25 @@ void Soil_Bgc::CH4FluxConserve(const int mind, const int id) {
           oxid = 0.0;
         }
 
+        // Positivity limiter (explicit sinks). Michaelis-Menten oxidation
+        // (Vmax/km ~ 17 hr^-1 x Q10) and plant transport are explicit, and in
+        // wet layers alpha (hence nsub) can be small, so sink*dt could exceed
+        // the pool and drive ch4 < 0 (C0c/C0d). Scale oxidation, plant
+        // transport and ebullition efflux together so they remove at most the
+        // CH4 present at the start of the substep; the remainder stays in the
+        // layer, so mass and the booked fluxes stay consistent.
+        {
+          const double sink = (oxid + plant + ebul_efflux) * dt; // oxid already holds 0.5*transport
+          const double avail = fmax(currl->ch4, 0.0);
+          if (sink > avail && sink > 0.0) {
+            const double f = avail / sink;
+            oxid *= f; plant *= f; ebul_efflux *= f;
+            plant_gm2hr *= f;
+            ebul_efflux_gm2hr = ebul_efflux * convert_umolL_to_gm2;
+            for (int ip = 0; ip < NUM_PFT; ip++) { bd->d_soi2a.ch4_transport[il][ip] *= f; }
+          }
+        }
+
         // unit conversion
         oxid_gm2hr = oxid * convert_umolL_to_gm2;
 
