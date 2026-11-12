@@ -875,6 +875,9 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   ed->d_soi2l.magic_puddle += add_to_puddle;
   //Subtracting surface water storage from runoff
   ed->d_soi2l.qover -= add_to_puddle;
+  // keep_expelled_water: expelled water that fit neither the soil nor the puddle (qover is reset
+  // by the runoff step above, so it is booked here)
+  if (kept_qover_mm > 0.0) { ed->d_soi2l.qover += kept_qover_mm; }
 
   // runon_energy_mode 1: freeze/thaw the puddle at Tair before any puddle water infiltrates
   // (frozen ponding stays as ice and cannot enter the soil). Gated on runon_status.
@@ -1828,7 +1831,8 @@ void Soil_Env::expelLayerIce(Layer* l, double mass_mm) {
 // pore space or squeezed out of a shrinking organic layer stays in the cell instead of leaving as
 // qdrain. It goes into the soil layers that are not fully frozen (frozen != 1), nearest to the
 // mass-weighted source depth first, each up to min(free pore space, maxliq (1 - frozenfrac) - liq);
-// what does not fit goes to the puddle (up to its capacity) and then to qover.
+// what does not fit goes to the puddle (up to its capacity) and then to qover (booked after the
+// runoff step of updateDailySM, which resets qover).
 // Energy: with thermal_solver 1 every source already left the water as 0 C liquid and paid the
 // difference in the source layer (expelLayerIce; Ground organic shrink with
 // pay_expelled_enthalpy), so the water enters the enthRemapWater window as an inflow at h = 0 and
@@ -1861,7 +1865,8 @@ void Soil_Env::keepExpelledWater() {
     const double to_p = fmin(M, space_in_puddle_mm());
     ed->d_soi2l.magic_puddle += to_p; kept_puddle_mm += to_p; M -= to_p;
   }
-  if (M > 0.0) { ed->d_soi2l.qover += M; kept_qover_mm += M; }
+  // the qover part is added to qover in updateDailySM after the runoff step (which resets qover)
+  if (M > 0.0) { kept_qover_mm += M; }
 }
 
 void Soil_Env::settleExpelledWater() {

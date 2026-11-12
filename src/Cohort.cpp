@@ -1038,7 +1038,7 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
       if (wdg_day == 0) {
         wf << "day,year,doy,rain,snow,runon,qgw,eet,qover,qdrain,qinfl,soilw,swe,puddle,watertab,"
            << "liq30,ice30,t_top,t010,t020,t050,t100,t200,puddle_ice"
-           << (md->keep_expelled_water == 1 ? ",kept_soil,kept_puddle,kept_qover" : "") << "\n";
+           << (md->keep_expelled_water == 1 ? ",kept_soil,kept_puddle,kept_qover,expelled_pool" : "") << "\n";
       }
       double soilw = 0.0, liq30 = 0.0, ice30 = 0.0, tz[5] = {0, 0, 0, 0, 0};
       double zprev = -1.0, tprev = 0.0; bool tz_set[5] = {false, false, false, false, false};
@@ -1064,7 +1064,10 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
       for (int k = 0; k < 5; k++) { if (tz_set[k]) { wf << "," << tz[k]; } else { wf << ","; } }
       wf << "," << soilenv.puddle_ice_mm;
       if (md->keep_expelled_water == 1) {   // appended only when the switch is on (legacy file unchanged)
-        wf << "," << soilenv.kept_soil_mm << "," << soilenv.kept_puddle_mm << "," << soilenv.kept_qover_mm;
+        // expelled_pool: water expelled after today's soil-water step (e.g. by the next thermal
+        // step or the organic-layer update), kept on the next day; a storage term for the budget
+        wf << "," << soilenv.kept_soil_mm << "," << soilenv.kept_puddle_mm << "," << soilenv.kept_qover_mm
+           << "," << ground.expelled_water_mm;
       }
       wf << "\n";
       wdg_day++;

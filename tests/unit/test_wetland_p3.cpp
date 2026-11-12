@@ -527,7 +527,20 @@ TEST_CASE("keep_expelled_water 1: frozen layers are skipped; saturated column ->
     s.se.keepExpelledWater();
     CHECK(s.se.kept_soil_mm == 0.0); CHECK(s.c.total_water() == w0);
     CHECK(s.se.kept_puddle_mm == doctest::Approx(sp)); CHECK(s.ed.d_soi2l.magic_puddle == doctest::Approx(sp));
-    CHECK(s.se.kept_qover_mm == doctest::Approx(7.0)); CHECK(s.ed.d_soi2l.qover == doctest::Approx(7.0)); }
+    CHECK(s.se.kept_qover_mm == doctest::Approx(7.0)); }
+  { // whole day (rain 0 and rain 5): the qover part survives the runoff step (it resets qover)
+    for (double rain : {0.0, 5.0}) {
+      CAPTURE(rain);
+      SM s(1.0); s.se.keep_expelled_water = 1; s.cd.drainage_type = 1;
+      const double sp = s.se.space_in_puddle_mm();
+      s.c.g.expelled_water_mm = sp + 7.0; s.c.g.expelled_zm_mm = (sp + 7.0) * 0.05;
+      const double err = s.day(rain);
+      CHECK(fabs(err - (sp + 7.0)) < 1e-8);   // pool counted as input; nothing lost
+      CHECK(s.se.kept_qover_mm == doctest::Approx(7.0));
+      CHECK(s.ed.d_soi2l.qover >= 7.0 - 1e-9);
+      CHECK(s.ed.d_soi2l.qdrain < 1e-9);
+    }
+  }
 }
 
 TEST_CASE("keep_expelled_water 1: expelLayerIce sends everything to the pool and pays Lf at the source") {
