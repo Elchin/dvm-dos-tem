@@ -228,7 +228,7 @@ public:
   int reco_ch4ox_output;
   // keep_expelled_water (Elchin 2026-11-11, default 0 = legacy: water expelled by freeze expansion /
   //   organic-layer shrinkage leaves the column as qdrain). 1 = in poorly drained cells
-  //   (drainage_type 1) it is put back into the nearest non-frozen soil layer with space, else the
+  //   wetland cohorts (drainage_type 1 and a wetland CMT) it is put back into the nearest non-frozen soil layer with space, else the
   //   puddle, else qover; solver 1 pays its Lf in the source layer. See Soil_Env::keepExpelledWater.
   int keep_expelled_water;
   bool is_wetland_cmt(int cmt) const;

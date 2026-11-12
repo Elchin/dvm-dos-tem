@@ -482,6 +482,7 @@ TEST_CASE("keep_expelled_water 0 (and 1 in a drained cell): expelled water is bo
     CAPTURE(keep);
     SM s(0.5); s.se.keep_expelled_water = keep;
     s.cd.drainage_type = (keep == 0) ? 1 : 0;   // keep 1 only acts in poorly drained cells
+    s.cd.is_wetland = true;
     s.c.g.expelled_water_mm = 30.0; s.c.g.expelled_zm_mm = 30.0 * 0.55;
     const double err = s.day(0.0);
     CHECK(err == doctest::Approx(30.0).epsilon(1e-10));   // the 30 mm left as qdrain
@@ -492,7 +493,7 @@ TEST_CASE("keep_expelled_water 0 (and 1 in a drained cell): expelled water is bo
 }
 
 TEST_CASE("keep_expelled_water 1, poorly drained: water goes back to the nearest layer with space") {
-  SM s(0.5); s.se.keep_expelled_water = 1; s.cd.drainage_type = 1;
+  SM s(0.5); s.se.keep_expelled_water = 1; s.cd.drainage_type = 1; s.cd.is_wetland = true;
   std::vector<double> l0; for (auto l : s.c.L) l0.push_back(l->liq);
   s.c.g.expelled_water_mm = 30.0; s.c.g.expelled_zm_mm = 30.0 * 0.55;   // source: layer 5 (0.5-0.6 m)
   s.se.keepExpelledWater();
@@ -504,7 +505,7 @@ TEST_CASE("keep_expelled_water 1, poorly drained: water goes back to the nearest
 }
 
 TEST_CASE("keep_expelled_water 1, poorly drained: whole day closes and nothing leaves as qdrain") {
-  SM s(0.5); s.se.keep_expelled_water = 1; s.cd.drainage_type = 1;
+  SM s(0.5); s.se.keep_expelled_water = 1; s.cd.drainage_type = 1; s.cd.is_wetland = true;
   s.c.g.expelled_water_mm = 30.0; s.c.g.expelled_zm_mm = 30.0 * 0.55;
   const double err = s.day(5.0);
   // closure counts the 30 mm pool as an input: soil + puddle + qover + qdrain - w0 - rain = 30
@@ -514,13 +515,13 @@ TEST_CASE("keep_expelled_water 1, poorly drained: whole day closes and nothing l
 }
 
 TEST_CASE("keep_expelled_water 1: frozen layers are skipped; saturated column -> puddle, then qover") {
-  { SM s(0.5, true); s.se.keep_expelled_water = 1; s.cd.drainage_type = 1;
+  { SM s(0.5, true); s.se.keep_expelled_water = 1; s.cd.drainage_type = 1; s.cd.is_wetland = true;
     const double i0 = s.c.L[0]->ice, q0 = s.c.L[0]->liq, l1 = s.c.L[1]->liq;
     s.c.g.expelled_water_mm = 10.0; s.c.g.expelled_zm_mm = 10.0 * 0.05;   // source: frozen top layer
     s.se.keepExpelledWater();
     CHECK(s.c.L[0]->ice == i0); CHECK(s.c.L[0]->liq == q0);
     CHECK(s.c.L[1]->liq - l1 == doctest::Approx(10.0)); }
-  { SM s(1.0); s.se.keep_expelled_water = 1; s.cd.drainage_type = 1;
+  { SM s(1.0); s.se.keep_expelled_water = 1; s.cd.drainage_type = 1; s.cd.is_wetland = true;
     const double sp = s.se.space_in_puddle_mm();
     s.c.g.expelled_water_mm = sp + 7.0; s.c.g.expelled_zm_mm = (sp + 7.0) * 0.05;
     const double w0 = s.c.total_water();
@@ -531,7 +532,7 @@ TEST_CASE("keep_expelled_water 1: frozen layers are skipped; saturated column ->
   { // whole day (rain 0 and rain 5): the qover part survives the runoff step (it resets qover)
     for (double rain : {0.0, 5.0}) {
       CAPTURE(rain);
-      SM s(1.0); s.se.keep_expelled_water = 1; s.cd.drainage_type = 1;
+      SM s(1.0); s.se.keep_expelled_water = 1; s.cd.drainage_type = 1; s.cd.is_wetland = true;
       const double sp = s.se.space_in_puddle_mm();
       s.c.g.expelled_water_mm = sp + 7.0; s.c.g.expelled_zm_mm = (sp + 7.0) * 0.05;
       const double err = s.day(rain);
@@ -545,7 +546,7 @@ TEST_CASE("keep_expelled_water 1: frozen layers are skipped; saturated column ->
 
 TEST_CASE("keep_expelled_water 1: expelLayerIce sends everything to the pool and pays Lf at the source") {
   SM s(0.5); s.se.runon_energy_mode = 1; s.runon(true); s.se.ponding_max_mm = 20.0;
-  s.se.keep_expelled_water = 1; s.cd.drainage_type = 1; s.se.thermal_solver = 1;
+  s.se.keep_expelled_water = 1; s.cd.drainage_type = 1; s.cd.is_wetland = true; s.se.thermal_solver = 1;
   Layer* l = s.c.L[0]; l->ice = 80.0; l->liq = 0.0; l->tem = -2.0;
   const double H0 = Soil_Env::enthLayerH(l);
   s.se.expelLayerIce(l, 30.0);
@@ -556,7 +557,7 @@ TEST_CASE("keep_expelled_water 1: expelLayerIce sends everything to the pool and
 }
 
 TEST_CASE("keep_expelled_water 1, solver 1: kept water enters the remap at h = 0 (column H unchanged)") {
-  SM s(0.5); s.se.keep_expelled_water = 1; s.cd.drainage_type = 1; s.se.thermal_solver = 1;
+  SM s(0.5); s.se.keep_expelled_water = 1; s.cd.drainage_type = 1; s.cd.is_wetland = true; s.se.thermal_solver = 1;
   for (size_t i = 0; i < s.c.L.size(); ++i) s.c.L[i]->tem = 3.0 - 0.5 * i;   // 3 C .. -1.5 C (all thawed)
   double H0 = 0.0; for (auto l : s.c.L) H0 += Soil_Env::enthLayerH(l);
   Soil_Env::EnthSnap snap; s.se.enthSnap(snap);
@@ -567,6 +568,30 @@ TEST_CASE("keep_expelled_water 1, solver 1: kept water enters the remap at h = 0
   double H1 = 0.0; for (auto l : s.c.L) H1 += Soil_Env::enthLayerH(l);
   CHECK(fabs(H1 - H0) < 1e-6 * fabs(H0) + 1e-3);
   CHECK(s.c.L[2]->tem < 2.0);   // the 0 C water cooled the receiving layer (was 2 C)
+}
+
+TEST_CASE("keep_expelled_water 1: upland (non-wetland) poorly drained cohorts are unaffected") {
+  // drainage_type 1 but cd.is_wetland false (not a wetland CMT, or wetland.enabled false)
+  { SM s(0.5); s.se.keep_expelled_water = 1; s.cd.drainage_type = 1; s.cd.is_wetland = false;
+    CHECK_FALSE(s.se.keep_expelled_active());
+    std::vector<double> l0; for (auto l : s.c.L) l0.push_back(l->liq);
+    s.c.g.expelled_water_mm = 30.0; s.c.g.expelled_zm_mm = 30.0 * 0.55;
+    SM r(0.5); r.se.keep_expelled_water = 0; r.cd.drainage_type = 1; r.cd.is_wetland = false;
+    r.c.g.expelled_water_mm = 30.0; r.c.g.expelled_zm_mm = 30.0 * 0.55;
+    const double e1 = s.day(0.0), e0 = r.day(0.0);
+    CHECK(e1 == e0); CHECK(s.ed.d_soi2l.qdrain == r.ed.d_soi2l.qdrain);   // identical to the legacy path
+    CHECK(s.ed.d_soi2l.qdrain >= 30.0 - 1e-9);
+    for (size_t i = 0; i < s.c.L.size(); ++i) { CAPTURE(i); CHECK(s.c.L[i]->liq == r.c.L[i]->liq); }
+    CHECK(s.se.kept_soil_mm == 0.0); CHECK(s.se.kept_puddle_mm == 0.0); CHECK(s.se.kept_qover_mm == 0.0); }
+  { // expelLayerIce keeps the legacy puddle-first routing in an upland cohort
+    SM s(0.5); s.se.runon_energy_mode = 1; s.runon(true); s.se.ponding_max_mm = 20.0;
+    s.se.keep_expelled_water = 1; s.cd.drainage_type = 1; s.cd.is_wetland = false; s.se.thermal_solver = 1;
+    Layer* l = s.c.L[0]; l->ice = 80.0; l->liq = 0.0; l->tem = -2.0;
+    s.se.expelLayerIce(l, 30.0);
+    CHECK(s.ed.d_soi2l.magic_puddle == doctest::Approx(20.0));
+    CHECK(s.c.g.expelled_water_mm == doctest::Approx(10.0)); }
+  { SM s(0.5); s.se.keep_expelled_water = 1; s.cd.drainage_type = 1; s.cd.is_wetland = true;
+    CHECK(s.se.keep_expelled_active()); }
 }
 
 } // TEST_SUITE

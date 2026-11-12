@@ -1826,7 +1826,8 @@ void Soil_Env::expelLayerIce(Layer* l, double mass_mm) {
   }
 }
 
-// wetland.keep_expelled_water = 1 (Elchin 2026-11-11), poorly drained cells only (drainage_type 1,
+// wetland.keep_expelled_water = 1 (Elchin 2026-11-11), poorly drained wetland cohorts only (cd->is_wetland,
+// i.e. wetland.enabled and a wetland CMT, since 2026-11-12; drainage_type 1,
 // where Richards lateral drainage is already off). Water expelled by freeze expansion beyond the
 // pore space or squeezed out of a shrinking organic layer stays in the cell instead of leaving as
 // qdrain. It goes into the soil layers that are not fully frozen (frozen != 1), nearest to the
@@ -1839,7 +1840,8 @@ void Soil_Env::expelLayerIce(Layer* l, double mass_mm) {
 // column enthalpy is conserved. Solver 0: the mass is added with no energy, as solver-0
 // infiltration.
 bool Soil_Env::keep_expelled_active() const {
-  return keep_expelled_water == 1 && cd != NULL && cd->drainage_type == 1;
+  // wetland cohorts only (wetland CMT, wetland.enabled), poorly drained (Elchin 2026-11-12)
+  return keep_expelled_water == 1 && cd != NULL && cd->is_wetland && cd->drainage_type == 1;
 }
 
 void Soil_Env::keepExpelledWater() {

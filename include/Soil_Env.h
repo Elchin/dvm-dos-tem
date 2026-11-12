@@ -100,7 +100,7 @@ public:
   // (into the puddle if there is space, else drainage). Mode 0 unchanged.
   void expelLayerIce(Layer* l, double mass_mm);
   // wetland.keep_expelled_water (default 0 = legacy: expelled water leaves as qdrain).
-  // 1 = poorly drained cells (drainage_type 1) keep it: soil (nearest non-frozen layer with
+  // 1 = poorly drained (drainage_type 1) wetland cohorts (cd->is_wetland) keep it: soil (nearest non-frozen layer with
   // space), then puddle, then qover. See Soil_Env::keepExpelledWater.
   int keep_expelled_water = 0;
   bool keep_expelled_active() const;

@@ -364,7 +364,7 @@ void Cohort::initialize_state_parameters() {
   soilenv.richards.dt_fix = md->richards_dt_fix;       // bug R1 (default 0 = legacy)
   soilenv.runon_energy_mode = md->runon_energy_mode;   // phase 3 v2 (0 = legacy)
   soilenv.keep_expelled_water = md->keep_expelled_water; // 0 = legacy (expelled water -> qdrain)
-  ground.pay_expelled_enthalpy = (md->keep_expelled_water == 1 && cd.drainage_type == 1 && md->thermal_solver == 1);
+  ground.pay_expelled_enthalpy = (md->keep_expelled_water == 1 && cd.is_wetland && cd.drainage_type == 1 && md->thermal_solver == 1);
   soilbgc.ch4_conserve = md->ch4_conserve;             // phase 3 v2 (0 = legacy)
   soilbgc.ch4_daily = md->ch4_daily;                   // phase 3 v2 (0 = monthly snapshot)
   bdall->reco_ch4ox_output = md->reco_ch4ox_output;   // output only (0 = legacy)
