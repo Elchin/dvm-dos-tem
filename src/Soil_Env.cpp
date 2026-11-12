@@ -807,8 +807,14 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   // drained remainder in expelled_water_mm. Solver 0: Stefan already booked
   // pce_f; do not pay again or move the mass into the surface puddle (that
   // stripped deep ice and created a talik on E0s).
-  ed->d_soi2l.qdrain += ground->expelled_water_mm;
+  kept_soil_mm = 0.0; kept_puddle_mm = 0.0; kept_qover_mm = 0.0;
+  if (keep_expelled_active()) {
+    keepExpelledWater();   // wetland.keep_expelled_water: poorly drained cells keep it (see below)
+  } else {
+    ed->d_soi2l.qdrain += ground->expelled_water_mm;
+  }
   ground->expelled_water_mm = 0.0;
+  ground->expelled_zm_mm = 0.0;
   //Update water table for runoff calculation
   ed->d_sois.watertab = getWaterTable(lstsoill);
   // wetland (phase 3): run-on (cd->runon_status, CMT-gated per cohort) adds an inflow equal to
@@ -1806,10 +1812,56 @@ void Soil_Env::expelLayerIce(Layer* l, double mass_mm) {
     const double cap = l->getHeatCapacity() * l->dz;
     if (cap > 0.0) { l->tem -= mass_mm * (LHFUS - SHCICE * T) / cap; }
   }
-  const double to_p = fmin(mass_mm, space_in_puddle_mm());
+  // keep_expelled_water: everything goes to the expelled pool; keepExpelledWater puts it into the
+  // soil first, then the puddle, then qover.
+  const double to_p = keep_expelled_active() ? 0.0 : fmin(mass_mm, space_in_puddle_mm());
   if (ed != NULL) { ed->d_soi2l.magic_puddle += to_p; }
   const double remain = mass_mm - to_p;
-  if (remain > 0.0) { ground->expelled_water_mm += remain; }
+  if (remain > 0.0) {
+    ground->expelled_water_mm += remain;
+    ground->expelled_zm_mm += remain * (l->z + 0.5 * l->dz);   // keep_expelled_water only
+  }
+}
+
+// wetland.keep_expelled_water = 1 (Elchin 2026-11-11), poorly drained cells only (drainage_type 1,
+// where Richards lateral drainage is already off). Water expelled by freeze expansion beyond the
+// pore space or squeezed out of a shrinking organic layer stays in the cell instead of leaving as
+// qdrain. It goes into the soil layers that are not fully frozen (frozen != 1), nearest to the
+// mass-weighted source depth first, each up to min(free pore space, maxliq (1 - frozenfrac) - liq);
+// what does not fit goes to the puddle (up to its capacity) and then to qover.
+// Energy: with thermal_solver 1 every source already left the water as 0 C liquid and paid the
+// difference in the source layer (expelLayerIce; Ground organic shrink with
+// pay_expelled_enthalpy), so the water enters the enthRemapWater window as an inflow at h = 0 and
+// column enthalpy is conserved. Solver 0: the mass is added with no energy, as solver-0
+// infiltration.
+bool Soil_Env::keep_expelled_active() const {
+  return keep_expelled_water == 1 && cd != NULL && cd->drainage_type == 1;
+}
+
+void Soil_Env::keepExpelledWater() {
+  double M = fmax(ground->expelled_water_mm, 0.0);
+  if (M <= 0.0) { return; }
+  const double zsrc = ground->expelled_zm_mm / M;
+  std::vector<std::pair<double, Layer*> > cand;
+  for (Layer* l = ground->fstshlwl; l != NULL && l->isSoil; l = l->nextl) {
+    if (l->isRock || l->frozen == 1) { continue; }
+    cand.push_back(std::make_pair(fabs(l->z + 0.5 * l->dz - zsrc), l));
+  }
+  std::stable_sort(cand.begin(), cand.end(),
+                   [](const std::pair<double, Layer*>& a, const std::pair<double, Layer*>& b) { return a.first < b.first; });
+  for (size_t i = 0; i < cand.size() && M > 0.0; ++i) {
+    Layer* l = cand[i].second;
+    const double ice = fmax(l->ice, 0.0), liq = fmax(l->liq, 0.0);
+    const double pore = fmax(l->poro * DENLIQ * l->dz - liq - ice * DENLIQ / DENICE, 0.0);
+    const double cap = fmax(l->maxliq * (1.0 - l->frozenfrac) - liq, 0.0);
+    const double add = fmin(M, fmin(pore, cap));
+    if (add > 0.0) { l->liq += add; M -= add; kept_soil_mm += add; }
+  }
+  if (M > 0.0) {
+    const double to_p = fmin(M, space_in_puddle_mm());
+    ed->d_soi2l.magic_puddle += to_p; kept_puddle_mm += to_p; M -= to_p;
+  }
+  if (M > 0.0) { ed->d_soi2l.qover += M; kept_qover_mm += M; }
 }
 
 void Soil_Env::settleExpelledWater() {

@@ -363,6 +363,8 @@ void Cohort::initialize_state_parameters() {
   soilenv.richards_infil_fix = md->richards_infil_fix; // Fix B2 (v5k)
   soilenv.richards.dt_fix = md->richards_dt_fix;       // bug R1 (default 0 = legacy)
   soilenv.runon_energy_mode = md->runon_energy_mode;   // phase 3 v2 (0 = legacy)
+  soilenv.keep_expelled_water = md->keep_expelled_water; // 0 = legacy (expelled water -> qdrain)
+  ground.pay_expelled_enthalpy = (md->keep_expelled_water == 1 && cd.drainage_type == 1 && md->thermal_solver == 1);
   soilbgc.ch4_conserve = md->ch4_conserve;             // phase 3 v2 (0 = legacy)
   soilbgc.ch4_daily = md->ch4_daily;                   // phase 3 v2 (0 = monthly snapshot)
   bdall->reco_ch4ox_output = md->reco_ch4ox_output;   // output only (0 = legacy)
@@ -1035,7 +1037,8 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
       const double zt[5] = {0.1, 0.2, 0.5, 1.0, 2.0};
       if (wdg_day == 0) {
         wf << "day,year,doy,rain,snow,runon,qgw,eet,qover,qdrain,qinfl,soilw,swe,puddle,watertab,"
-           << "liq30,ice30,t_top,t010,t020,t050,t100,t200,puddle_ice\n";
+           << "liq30,ice30,t_top,t010,t020,t050,t100,t200,puddle_ice"
+           << (md->keep_expelled_water == 1 ? ",kept_soil,kept_puddle,kept_qover" : "") << "\n";
       }
       double soilw = 0.0, liq30 = 0.0, ice30 = 0.0, tz[5] = {0, 0, 0, 0, 0};
       double zprev = -1.0, tprev = 0.0; bool tz_set[5] = {false, false, false, false, false};
@@ -1059,7 +1062,11 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
          << soilw << "," << edall->d_snws.swesum << "," << edall->d_soi2l.magic_puddle << ","
          << edall->d_sois.watertab << "," << liq30 << "," << ice30 << "," << ground.fstsoill->tem;
       for (int k = 0; k < 5; k++) { if (tz_set[k]) { wf << "," << tz[k]; } else { wf << ","; } }
-      wf << "," << soilenv.puddle_ice_mm << "\n";
+      wf << "," << soilenv.puddle_ice_mm;
+      if (md->keep_expelled_water == 1) {   // appended only when the switch is on (legacy file unchanged)
+        wf << "," << soilenv.kept_soil_mm << "," << soilenv.kept_puddle_mm << "," << soilenv.kept_qover_mm;
+      }
+      wf << "\n";
       wdg_day++;
     }
 

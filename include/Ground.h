@@ -113,6 +113,13 @@ public :
   // shrinkage). Booked as subsurface drainage on the next Soil_Env::updateDailySM
   // instead of being deleted (mm).
   double expelled_water_mm = 0.0;
+  // keep_expelled_water (wetland, default 0): set by Cohort when the switch is 1, the cell is
+  // poorly drained (drainage_type 1) and thermal_solver = 1. Then water squeezed out of a
+  // shrinking organic layer leaves it as 0 C liquid and the layer keeps the difference (pays Lf
+  // for ice), as Soil_Env::expelLayerIce. expelled_zm_mm = sum of mass x source mid depth (mm m),
+  // used to put the water back near its source. Neither changes the legacy path.
+  bool pay_expelled_enthalpy = false;
+  double expelled_zm_mm = 0.0;
 
   double draindepth; //the subsurface drainage depth (m), which much
                      //  be in somewhere of 'drainl'

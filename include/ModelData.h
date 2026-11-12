@@ -226,6 +226,11 @@ public:
   //   1 = oxidation CO2 added to RH/RECO/NEE/nep outputs (and RHSOM_DS/RECO_DS/NEE_DS);
   //   2 = also CH4 efflux (total ecosystem C loss). Only CH4 cells (cd.ch4_on).
   int reco_ch4ox_output;
+  // keep_expelled_water (Elchin 2026-11-11, default 0 = legacy: water expelled by freeze expansion /
+  //   organic-layer shrinkage leaves the column as qdrain). 1 = in poorly drained cells
+  //   (drainage_type 1) it is put back into the nearest non-frozen soil layer with space, else the
+  //   puddle, else qover; solver 1 pays its Lf in the source layer. See Soil_Env::keepExpelledWater.
+  int keep_expelled_water;
   bool is_wetland_cmt(int cmt) const;
   // Refs: at each declaration named above (Climate.h, Soil_Env.h, Stefan.h, Snow_Env.h) and in docs/daily-mode-REFERENCES.md.
   // Fix C1 (v5k), OFF by default (0 = legacy): soil integrator NMIN error

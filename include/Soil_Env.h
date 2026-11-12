@@ -99,6 +99,13 @@ public:
   // runon_energy_mode 1: excess ice pays Lf in THIS layer; the mass leaves as liquid
   // (into the puddle if there is space, else drainage). Mode 0 unchanged.
   void expelLayerIce(Layer* l, double mass_mm);
+  // wetland.keep_expelled_water (default 0 = legacy: expelled water leaves as qdrain).
+  // 1 = poorly drained cells (drainage_type 1) keep it: soil (nearest non-frozen layer with
+  // space), then puddle, then qover. See Soil_Env::keepExpelledWater.
+  int keep_expelled_water = 0;
+  bool keep_expelled_active() const;
+  double kept_soil_mm = 0.0, kept_puddle_mm = 0.0, kept_qover_mm = 0.0; // today (diagnostic)
+  void keepExpelledWater();
   void settleExpelledWater();     // leftover API; solver 0 expulsion stays on the legacy qdrain path
   // DRAFT (daily-structural): see ModelData::frozen_infil_eice (<0 = off)
   double frozen_infil_eice;
@@ -168,7 +175,8 @@ public:
   void enthSnap(EnthSnap& s) const;
   // soil water window: mass moved between cells carries its enthalpy (pool mixing), infiltration
   // enters at h_in (J/kg), the excess leaves at the pool enthalpy; T set from H at fixed liq/ice
-  void enthRemapWaterCore(const EnthSnap& s, double infil_kg, double h_in);
+  void enthRemapWaterCore(const EnthSnap& s, double infil_kg, double h_in,
+                          double extra_kg = 0.0); // extra_kg: keep_expelled_water inflow at h = 0
   void enthRemapWater(const EnthSnap& s);                  // reads ed (qinfl, rain/melt, Tair)
   // snow window: physical boundary terms, correction spread over the snow cells by heat capacity
   void enthRemapSnowCore(const EnthSnap& s, double tsurface, double sublim_kg, double melt_kg);

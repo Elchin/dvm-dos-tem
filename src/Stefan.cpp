@@ -861,7 +861,10 @@ void Stefan::updateWaterAfterFront(Layer* toplayer) {
       // more pore volume than exists (ice is ~9% less dense than water). The excess
       // used to be deleted ("what to do about the 'extra' water???"). The layer state
       // is unchanged, but the water is now booked as expelled -> subsurface drainage.
-      if (currl->isSoil) ground->expelled_water_mm += currl->ice - icecap;
+      if (currl->isSoil) {
+        ground->expelled_water_mm += currl->ice - icecap;
+        ground->expelled_zm_mm += (currl->ice - icecap) * (currl->z + 0.5 * currl->dz); // keep_expelled_water only
+      }
       currl->ice = icecap;
     }
 

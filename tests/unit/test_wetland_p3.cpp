@@ -7,6 +7,7 @@
 //  - eq_co2_mode, interception_scheme defaults; parameter block lengths (18/35/41, 33/34)
 //  - CH4 bookkeeping: daily accumulators start at 0; layer CH4 concentration kept on split/combine
 // Phase 3 v2: runon_energy_mode, ch4_conserve, ch4_daily (all default 0)
+// keep_expelled_water (default 0): expelled water kept in poorly drained cells
 #include "doctest.h"
 #include "test_helpers.h"
 #include <json/value.h>
@@ -463,6 +464,96 @@ TEST_CASE("reco_ch4ox_output: rhsom (RH/RECO/NEE) and nep, monthly and yearly; c
   // CH4 off: every mode is bit-identical to mode 0
   const RecoMonth n0 = reco_month(0, false, 12), n2 = reco_month(2, false, 12);
   CHECK(n0.y_rhsom == y0.y_rhsom); CHECK(n2.y_rhsom == n0.y_rhsom); CHECK(n2.y_nep == n0.y_nep);
+}
+
+// ---- keep_expelled_water (Elchin 2026-11-11, default 0) -------------------------------------
+TEST_CASE("keep_expelled_water: default 0, parsed 0..1, other values FATAL") {
+  ModelData m0; CHECK(m0.keep_expelled_water == 0);
+  CHECK(ModelData(ms(wl(false))).keep_expelled_water == 0);
+  { Json::Value w = wl(true); w["ch4"] = false; w["keep_expelled_water"] = 1; CHECK(ModelData(ms(w)).keep_expelled_water == 1); }
+  auto st = [](Json::Value c) { return ut::exit_status_of([c] { ModelData m(c); }); };
+  { Json::Value w = wl(false); w["keep_expelled_water"] = 2; CHECK(st(ms(w)) == EXIT_FAILURE); }
+  { Json::Value w = wl(false); w["keep_expelled_water"] = -1; CHECK(st(ms(w)) == EXIT_FAILURE); }
+  { Json::Value w = wl(false); w["keep_expelled_water"] = "1"; CHECK(st(ms(w)) == EXIT_FAILURE); }
+}
+
+TEST_CASE("keep_expelled_water 0 (and 1 in a drained cell): expelled water is booked as qdrain") {
+  for (int keep : {0, 1}) {
+    CAPTURE(keep);
+    SM s(0.5); s.se.keep_expelled_water = keep;
+    s.cd.drainage_type = (keep == 0) ? 1 : 0;   // keep 1 only acts in poorly drained cells
+    s.c.g.expelled_water_mm = 30.0; s.c.g.expelled_zm_mm = 30.0 * 0.55;
+    const double err = s.day(0.0);
+    CHECK(err == doctest::Approx(30.0).epsilon(1e-10));   // the 30 mm left as qdrain
+    CHECK(s.ed.d_soi2l.qdrain >= 30.0 - 1e-9);
+    CHECK(s.se.kept_soil_mm == 0.0); CHECK(s.se.kept_puddle_mm == 0.0); CHECK(s.se.kept_qover_mm == 0.0);
+    CHECK(s.c.g.expelled_water_mm == 0.0); CHECK(s.c.g.expelled_zm_mm == 0.0);
+  }
+}
+
+TEST_CASE("keep_expelled_water 1, poorly drained: water goes back to the nearest layer with space") {
+  SM s(0.5); s.se.keep_expelled_water = 1; s.cd.drainage_type = 1;
+  std::vector<double> l0; for (auto l : s.c.L) l0.push_back(l->liq);
+  s.c.g.expelled_water_mm = 30.0; s.c.g.expelled_zm_mm = 30.0 * 0.55;   // source: layer 5 (0.5-0.6 m)
+  s.se.keepExpelledWater();
+  CHECK(s.se.kept_soil_mm == doctest::Approx(30.0));
+  CHECK(s.c.L[5]->liq - l0[5] == doctest::Approx(20.0));   // 20 mm of free pore space
+  CHECK(s.c.L[4]->liq - l0[4] + s.c.L[6]->liq - l0[6] == doctest::Approx(10.0));
+  for (int i : {0, 1, 2, 3, 7, 8, 9}) { CAPTURE(i); CHECK(s.c.L[i]->liq == l0[i]); }
+  CHECK(s.ed.d_soi2l.magic_puddle == 0.0); CHECK(s.ed.d_soi2l.qover == 0.0);
+}
+
+TEST_CASE("keep_expelled_water 1, poorly drained: whole day closes and nothing leaves as qdrain") {
+  SM s(0.5); s.se.keep_expelled_water = 1; s.cd.drainage_type = 1;
+  s.c.g.expelled_water_mm = 30.0; s.c.g.expelled_zm_mm = 30.0 * 0.55;
+  const double err = s.day(5.0);
+  // closure counts the 30 mm pool as an input: soil + puddle + qover + qdrain - w0 - rain = 30
+  CHECK(fabs(err - 30.0) < 1e-8);
+  CHECK(s.se.kept_soil_mm == doctest::Approx(30.0));
+  CHECK(s.ed.d_soi2l.qdrain < 1e-9);   // drainage_type 1: no lateral drainage, no expelled qdrain
+}
+
+TEST_CASE("keep_expelled_water 1: frozen layers are skipped; saturated column -> puddle, then qover") {
+  { SM s(0.5, true); s.se.keep_expelled_water = 1; s.cd.drainage_type = 1;
+    const double i0 = s.c.L[0]->ice, q0 = s.c.L[0]->liq, l1 = s.c.L[1]->liq;
+    s.c.g.expelled_water_mm = 10.0; s.c.g.expelled_zm_mm = 10.0 * 0.05;   // source: frozen top layer
+    s.se.keepExpelledWater();
+    CHECK(s.c.L[0]->ice == i0); CHECK(s.c.L[0]->liq == q0);
+    CHECK(s.c.L[1]->liq - l1 == doctest::Approx(10.0)); }
+  { SM s(1.0); s.se.keep_expelled_water = 1; s.cd.drainage_type = 1;
+    const double sp = s.se.space_in_puddle_mm();
+    s.c.g.expelled_water_mm = sp + 7.0; s.c.g.expelled_zm_mm = (sp + 7.0) * 0.05;
+    const double w0 = s.c.total_water();
+    s.se.keepExpelledWater();
+    CHECK(s.se.kept_soil_mm == 0.0); CHECK(s.c.total_water() == w0);
+    CHECK(s.se.kept_puddle_mm == doctest::Approx(sp)); CHECK(s.ed.d_soi2l.magic_puddle == doctest::Approx(sp));
+    CHECK(s.se.kept_qover_mm == doctest::Approx(7.0)); CHECK(s.ed.d_soi2l.qover == doctest::Approx(7.0)); }
+}
+
+TEST_CASE("keep_expelled_water 1: expelLayerIce sends everything to the pool and pays Lf at the source") {
+  SM s(0.5); s.se.runon_energy_mode = 1; s.runon(true); s.se.ponding_max_mm = 20.0;
+  s.se.keep_expelled_water = 1; s.cd.drainage_type = 1; s.se.thermal_solver = 1;
+  Layer* l = s.c.L[0]; l->ice = 80.0; l->liq = 0.0; l->tem = -2.0;
+  const double H0 = Soil_Env::enthLayerH(l);
+  s.se.expelLayerIce(l, 30.0);
+  CHECK(s.ed.d_soi2l.magic_puddle == 0.0);
+  CHECK(s.c.g.expelled_water_mm == doctest::Approx(30.0));
+  CHECK(s.c.g.expelled_zm_mm == doctest::Approx(30.0 * 0.05));
+  CHECK(Soil_Env::enthLayerH(l) == doctest::Approx(H0).epsilon(1e-12));   // the water left at h = 0
+}
+
+TEST_CASE("keep_expelled_water 1, solver 1: kept water enters the remap at h = 0 (column H unchanged)") {
+  SM s(0.5); s.se.keep_expelled_water = 1; s.cd.drainage_type = 1; s.se.thermal_solver = 1;
+  for (size_t i = 0; i < s.c.L.size(); ++i) s.c.L[i]->tem = 3.0 - 0.5 * i;   // 3 C .. -1.5 C (all thawed)
+  double H0 = 0.0; for (auto l : s.c.L) H0 += Soil_Env::enthLayerH(l);
+  Soil_Env::EnthSnap snap; s.se.enthSnap(snap);
+  s.c.g.expelled_water_mm = 12.0; s.c.g.expelled_zm_mm = 12.0 * 0.25;
+  s.se.keepExpelledWater();
+  REQUIRE(s.se.kept_soil_mm == doctest::Approx(12.0));
+  s.se.enthRemapWaterCore(snap, 0.0, 0.0, s.se.kept_soil_mm);
+  double H1 = 0.0; for (auto l : s.c.L) H1 += Soil_Env::enthLayerH(l);
+  CHECK(fabs(H1 - H0) < 1e-6 * fabs(H0) + 1e-3);
+  CHECK(s.c.L[2]->tem < 2.0);   // the 0 C water cooled the receiving layer (was 2 C)
 }
 
 } // TEST_SUITE

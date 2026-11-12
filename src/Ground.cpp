@@ -2453,11 +2453,21 @@ void Ground::getOslThickness5Carbon(SoilLayer* sl, const double &plctop,
                                          //  porosity changes
   f = fmin(f, f2);
   double wat_before = sl->liq + sl->ice;
+  const double liq_before = sl->liq, ice_before = sl->ice;
   sl->liq *=fmax(0., f);
   sl->ice *=fmax(0., f);
   // Water-leak fix 3/3 (v5f): water squeezed out of a shrinking organic
   // layer used to be deleted; layer state unchanged, water now booked as expelled.
   expelled_water_mm += wat_before - (sl->liq + sl->ice);
+  expelled_zm_mm += (wat_before - (sl->liq + sl->ice)) * (sl->z + 0.5 * sl->dz); // keep_expelled_water only
+  if (pay_expelled_enthalpy) {
+    // keep_expelled_water (solver 1): the removed water leaves as 0 C liquid; the layer keeps its
+    // enthalpy (liquid at T > 0 leaves its sensible heat, ice pays Lf - c_i T): T += h_w / C.
+    const double dl = liq_before - sl->liq, di = ice_before - sl->ice;
+    const double hw = dl * SHCLIQ * sl->tem + di * (SHCICE * sl->tem - LHFUS);
+    const double C = sl->vhcsolid * (1.0 - sl->poro) * sl->dz + fmax(sl->liq, 0.0) * SHCLIQ + fmax(sl->ice, 0.0) * SHCICE;
+    if (C > 0.0 && (dl != 0.0 || di != 0.0)) { sl->tem += hw / C; }
+  }
   // above soil temperature and frozen status not modified
 };
 

@@ -147,7 +147,8 @@
       "runon_energy_mode": 0,                 // 0 = legacy (recycle own runoff, puddle has no heat). 1 = no self-recycle; run-on/puddle carry energy at max(Tair, 0 C) only when runon_status is true; puddle ice is in the water budget and the restart
       "ch4_conserve": 0,                      // 0 = legacy CH4 bookkeeping. 1 = full-day dt, FV-CN diffusion, positivity limiter, fluxes scaled
       "ch4_daily": 0,                         // 0 = CH4Flux in the monthly loop (end-of-month state every day). 1 = daily env loop
-      "reco_ch4ox_output": 0                  // output only. 0 = legacy (CH4 oxidation CO2 not in RH/RECO/NEE). 1 = add oxidation CO2. 2 = also add CH4 efflux
+      "reco_ch4ox_output": 0,                 // output only. 0 = legacy (CH4 oxidation CO2 not in RH/RECO/NEE). 1 = add oxidation CO2. 2 = also add CH4 efflux
+      "keep_expelled_water": 0                // 0 = legacy (freeze-expansion / organic-shrink water leaves as qdrain). 1 = poorly drained cells keep it (soil, else puddle, else qover)
     },
     // thermal_solver defaults to 0 (legacy Stefan/CN). With thermal_solver = 1,
     // thermal_substeps defaults to 4 (Elchin, 2026-11-10); allowed 1, 2, 4, 8, 12, 24 or 48.

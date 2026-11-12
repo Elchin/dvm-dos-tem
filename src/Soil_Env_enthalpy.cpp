@@ -250,8 +250,8 @@ void Soil_Env::enthalpyThermalStep(const double tsurface, const double qmelt_Wm2
       const double icecap = fmax(0., l->maxice - icebylwc);
       if (l->ice > icecap) {
         const double m = l->ice - icecap;
-        if (puddle_energy_on()) {
-          expelLayerIce(l, m);
+        if (puddle_energy_on() || keep_expelled_active()) {
+          expelLayerIce(l, m);   // pays Lf here; keep_expelled_water: all of it to the expelled pool
         } else {
           ground->expelled_water_mm += m;
           l->ice = icecap;
@@ -363,7 +363,7 @@ double Soil_Env::columnWaterE() const {
   return w;
 }
 
-void Soil_Env::enthRemapWaterCore(const EnthSnap& s, double infil_kg, double h_in) {
+void Soil_Env::enthRemapWaterCore(const EnthSnap& s, double infil_kg, double h_in, double extra_kg) {
   const double hfix = columnEnthalpyE();
   std::vector<Layer*> now;
   for (Layer* l = ground->toplayer; l != NULL; l = l->nextl) { now.push_back(l); }
@@ -373,6 +373,9 @@ void Soil_Env::enthRemapWaterCore(const EnthSnap& s, double infil_kg, double h_i
   const int n = (int)now.size();
   std::vector<double> lossE(n, 0.0), gain(n, 0.0);
   double I = fmax(infil_kg, 0.0), P = I, E = I * h_in, G = 0.0;
+  // keep_expelled_water: water put back into the soil today as 0 C liquid (h = 0; Lf already paid
+  // in the source layer). It is an inflow of mass with no enthalpy.
+  if (extra_kg > 0.0) { I += extra_kg; P = I; }
   for (int i = 0; i < n; ++i) {
     Layer* l = now[i];
     if (l->isRock) { continue; }
@@ -406,7 +409,11 @@ void Soil_Env::enthRemapWater(const EnthSnap& s) {
     // Phase 3 v2: all liquid inflow (rain, run-on, ponded water) at its booked specific enthalpy.
     h_in = infil_h_spec;
   }
-  enthRemapWaterCore(s, ed->d_soi2l.qinfl, h_in);
+  if (kept_soil_mm > 0.0) {
+    enthRemapWaterCore(s, ed->d_soi2l.qinfl, h_in, kept_soil_mm);
+  } else {
+    enthRemapWaterCore(s, ed->d_soi2l.qinfl, h_in);
+  }
   if (puddle_energy_on() && puddle_heat_Jm2 != 0.0 && ground != NULL && ground->fstsoill != NULL) {
     // Spread Lf over the near-surface soil (see applyHeatToNearSurfaceSoil).
     applyHeatToNearSurfaceSoil(puddle_heat_Jm2);
