@@ -8,6 +8,7 @@
 //  - CH4 bookkeeping: daily accumulators start at 0; layer CH4 concentration kept on split/combine
 // Phase 3 v2: runon_energy_mode, ch4_conserve, ch4_daily (all default 0)
 // keep_expelled_water (default 0): expelled water kept in poorly drained cells
+// frozen_layer_liq_cap (default 0): liquid in partly frozen layers limited by the ice volume
 #include "doctest.h"
 #include "test_helpers.h"
 #include <json/value.h>
@@ -592,6 +593,73 @@ TEST_CASE("keep_expelled_water 1: upland (non-wetland) poorly drained cohorts ar
     CHECK(s.c.g.expelled_water_mm == doctest::Approx(10.0)); }
   { SM s(0.5); s.se.keep_expelled_water = 1; s.cd.drainage_type = 1; s.cd.is_wetland = true;
     CHECK(s.se.keep_expelled_active()); }
+}
+
+// ---- frozen_layer_liq_cap (Elchin 2026-11-12, default 0) ------------------------------------
+TEST_CASE("frozen_layer_liq_cap: default 0, parsed 0..1, other values FATAL") {
+  ModelData m0; CHECK(m0.frozen_layer_liq_cap == 0);
+  Json::Value c0; c0["model_settings"]["svp_ice_fix"] = 0; CHECK(ModelData(c0).frozen_layer_liq_cap == 0);
+  Json::Value c1; c1["model_settings"]["frozen_layer_liq_cap"] = 1; CHECK(ModelData(c1).frozen_layer_liq_cap == 1);
+  auto st = [](Json::Value c) { return ut::exit_status_of([c] { ModelData m(c); }); };
+  for (Json::Value bad : {Json::Value(2), Json::Value(-1), Json::Value("1")}) {
+    Json::Value c; c["model_settings"]["frozen_layer_liq_cap"] = bad; CHECK(st(c) == EXIT_FAILURE);
+  }
+}
+
+namespace {
+// layer 5 of the SM column partly frozen at the frost table: by mass half ice, half liquid, pores full by mass
+void frost_table(SM& s) {
+  for (int i = 6; i < 10; ++i) { Layer* l = s.c.L[i]; l->frozen = 1; l->frozenfrac = 1.0; l->tem = -1.0; l->ice = 40.0; l->liq = 0.0; }
+  Layer* f = s.c.L[5]; f->frozen = 0; f->frozenfrac = 0.5; f->tem = 0.0; f->ice = 20.0; f->liq = 20.0;
+}
+}
+
+TEST_CASE("frozen_layer_liq_cap: liqCapByIce = (poro dz - ice/rho_i) rho_w") {
+  SM s(0.5); frost_table(s);
+  CHECK(Soil_Env::liqCapByIce(s.c.L[5]) == doctest::Approx(40.0 - 20.0 * DENLIQ / DENICE));
+  CHECK(Soil_Env::liqCapByIce(s.c.L[6]) == doctest::Approx(fmax(0.0, 40.0 - 40.0 * DENLIQ / DENICE)));
+  CHECK(Soil_Env::liqCapByIce(s.c.L[0]) == doctest::Approx(40.0));   // no ice: the whole pore
+}
+
+TEST_CASE("frozen_layer_liq_cap: 0 lets liquid + ice overfill the frost-table layer; 1 moves the excess up, mass conserved") {
+  for (int solver : {0, 1}) {
+    for (int cap : {0, 1}) {
+      CAPTURE(solver); CAPTURE(cap);
+      SM s(0.5); frost_table(s); s.se.thermal_solver = solver; s.se.frozen_liq_cap = cap;
+      std::vector<double> l0; for (auto l : s.c.L) l0.push_back(l->liq);
+      const double w0 = s.c.total_water();
+      s.se.checkSoilLiquidWaterValidity(s.c.L[0], s.c.L[0]->solind);
+      CHECK(s.c.total_water() + s.ed.d_soi2l.magic_puddle + s.ed.d_soi2l.qover == doctest::Approx(w0).epsilon(1e-13));
+      const double over = 20.0 - (40.0 - 20.0 * DENLIQ / DENICE);   // 1.81 mm
+      if (cap == 0) {
+        CHECK(s.c.L[5]->liq == l0[5]);   // legacy: liq/rho_w + ice/rho_i > poro dz is allowed
+        CHECK(s.c.L[5]->liq / DENLIQ + s.c.L[5]->ice / DENICE > s.c.L[5]->poro * s.c.L[5]->dz);
+      } else {
+        CHECK(s.c.L[5]->liq == doctest::Approx(l0[5] - over));
+        CHECK(s.c.L[4]->liq == doctest::Approx(l0[4] + over));   // first layer above with space
+        CHECK(s.c.L[5]->liq / DENLIQ + s.c.L[5]->ice / DENICE <= s.c.L[5]->poro * s.c.L[5]->dz * (1.0 + 1e-12));
+      }
+      for (int i = 6; i < 10; ++i) { CAPTURE(i); CHECK(s.c.L[i]->liq == l0[i]); }   // frozen layers untouched
+    }
+  }
+}
+
+TEST_CASE("frozen_layer_liq_cap 1: saturated layers above -> puddle, then qover; mass conserved") {
+  SM s(1.0); frost_table(s); s.se.frozen_liq_cap = 1; s.se.thermal_solver = 1;
+  s.se.ponding_max_mm = 1.0;
+  const double w0 = s.c.total_water();
+  s.se.checkSoilLiquidWaterValidity(s.c.L[0], s.c.L[0]->solind);
+  const double over = 20.0 - (40.0 - 20.0 * DENLIQ / DENICE);
+  CHECK(s.ed.d_soi2l.magic_puddle + s.ed.d_soi2l.qover == doctest::Approx(over));
+  CHECK(s.c.total_water() + s.ed.d_soi2l.magic_puddle + s.ed.d_soi2l.qover == doctest::Approx(w0).epsilon(1e-13));
+}
+
+TEST_CASE("frozen_layer_liq_cap 1: no effect on layers without ice (thawed column, whole day)") {
+  SM a(0.6), b(0.6); b.se.frozen_liq_cap = 1;
+  const double ea = a.day(8.0), eb = b.day(8.0);
+  CHECK(ea == eb);
+  for (size_t i = 0; i < a.c.L.size(); ++i) { CAPTURE(i); CHECK(a.c.L[i]->liq == b.c.L[i]->liq); }
+  CHECK(a.ed.d_soi2l.qover == b.ed.d_soi2l.qover); CHECK(a.ed.d_soi2l.qdrain == b.ed.d_soi2l.qdrain);
 }
 
 } // TEST_SUITE

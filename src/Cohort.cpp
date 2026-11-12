@@ -362,6 +362,8 @@ void Cohort::initialize_state_parameters() {
   }
   soilenv.richards_infil_fix = md->richards_infil_fix; // Fix B2 (v5k)
   soilenv.richards.dt_fix = md->richards_dt_fix;       // bug R1 (default 0 = legacy)
+  soilenv.frozen_liq_cap = md->frozen_layer_liq_cap;   // 0 = legacy
+  soilenv.richards.frozen_liq_cap = md->frozen_layer_liq_cap;
   soilenv.runon_energy_mode = md->runon_energy_mode;   // phase 3 v2 (0 = legacy)
   soilenv.keep_expelled_water = md->keep_expelled_water; // 0 = legacy (expelled water -> qdrain)
   ground.pay_expelled_enthalpy = (md->keep_expelled_water == 1 && cd.is_wetland && cd.drainage_type == 1 && md->thermal_solver == 1);

@@ -61,6 +61,7 @@ public :
   double layer_drain[MAX_RICH_IND];
   double percolation[MAX_RICH_IND];
   double layer_input[MAX_RICH_IND];
+  int frozen_liq_cap = 0;  // model_settings.frozen_layer_liq_cap (0 = legacy): groundwater input limited by ice volume
   double qgw_mm = 0.0;   // wetland (phase 3) diagnostic: groundwater recharge added in the last update (mm)   // groundwater input by Richards index (mm/day)
 
   void update(Layer *fstsoill, Layer* bdrainl, const double & bdraindepth,

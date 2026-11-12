@@ -179,6 +179,12 @@ public:
   // richards_dt_fix, OFF by default (0 = legacy): recompute dt_dz when a Richards trial
   // substep is rejected and halved (bug R1, see Richards.h dt_fix). Applies to both thermal solvers.
   int richards_dt_fix;
+  // frozen_layer_liq_cap (Elchin 2026-11-12), OFF by default (0 = legacy). 1 = liquid water in a
+  //   partly frozen soil layer is limited to the pore space left by its ice,
+  //   (poro dz - ice/rho_i) rho_w, in the soil-water validity check (effmaxliq) and in the Richards
+  //   groundwater input, so the hydrology cannot overfill a frost-table layer that the pore-ice cap
+  //   then empties by expelling ice. Excess liquid goes to the layers above / puddle / qover.
+  int frozen_layer_liq_cap;
   // snow_scheme, default 0 = legacy dvmdostem snow (bit-identical). 1 = Sturm et al. (1995) snow classes
   // as in SiBCASA (Schaefer et al. 2009, doi:10.1029/2008JF001125), see SnowClass.h / Ground.h.
   //   snow_class_file: JSON with the class table and the CMT -> class map (default

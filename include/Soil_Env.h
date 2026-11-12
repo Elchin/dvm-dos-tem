@@ -103,6 +103,10 @@ public:
   // 1 = poorly drained (drainage_type 1) wetland cohorts (cd->is_wetland) keep it: soil (nearest non-frozen layer with
   // space), then puddle, then qover. See Soil_Env::keepExpelledWater.
   int keep_expelled_water = 0;
+  // model_settings.frozen_layer_liq_cap (default 0 = legacy): 1 = effmaxliq of a partly frozen layer
+  // in checkSoilLiquidWaterValidity is also limited to (poro dz - ice/rho_i) rho_w.
+  int frozen_liq_cap = 0;
+  static double liqCapByIce(const Layer* l);   // (poro dz - ice/rho_i) rho_w, >= 0 (kg m-2)
   bool keep_expelled_active() const;
   double kept_soil_mm = 0.0, kept_puddle_mm = 0.0, kept_qover_mm = 0.0; // today (diagnostic)
   void keepExpelledWater();

@@ -169,6 +169,14 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     richards_dt_fix = v.asInt();
   }
   {
+    Json::Value v = controldata["model_settings"].get("frozen_layer_liq_cap", 0);
+    if (!bnf::valid_int(v, 0, 1)) {
+      std::cerr << "FATAL: model_settings.frozen_layer_liq_cap must be 0 (legacy, default) or 1 (liquid in partly frozen layers limited to the pore space left by ice)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    frozen_layer_liq_cap = v.asInt();
+  }
+  {
     Json::Value v = controldata["model_settings"].get("snow_scheme", 0);
     if (!bnf::valid_int(v, 0, 1)) {
       std::cerr << "FATAL: model_settings.snow_scheme must be 0 (legacy, default) or 1 (Schaefer et al. 2009 snow classes)" << std::endl;
@@ -624,6 +632,7 @@ void ModelData::update(ArgHandler const * arghandler) {
 
 ModelData::ModelData():force_cmt(-1) {
   richards_dt_fix = 0; // bug R1 fix (off)
+  frozen_layer_liq_cap = 0; // off (legacy)
   snow_scheme = 0; snow_class_wind = -1.0; snow_diag = 0; // Schaefer 2009 snow classes (off)
   snow_empty_cleanup = 0; // emptied snow layer removal (off)
   wetland_enabled = false; wetland_ch4 = true; wetland_runon = false; wetland_groundwater = false; // phase 3 (off)

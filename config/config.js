@@ -161,6 +161,8 @@
     // "thermal_sfcc": 1,
     // "thermal_substeps": 4,
     // "richards_dt_fix": 1
+    // frozen_layer_liq_cap (default 0 = legacy): 1 = liquid in partly frozen layers limited to the
+    // pore space left by ice (validity check + Richards groundwater input)
     // snow_empty_cleanup defaults to 0 (legacy, bit-identical): 1 removes emptied snow layers
     // (no ice/liquid, zero thickness) at the end of each day's snow update, both solvers.
 //    //"dynamic_climate": 0,

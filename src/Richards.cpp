@@ -369,6 +369,11 @@ void Richards::update(Layer *fstsoill, Layer* bdrainl,
 
             // maximum available space for liquid water to enter 
             double layer_max_input = (currl->poro * DENLIQ * currl->dz) - currl->liq - effminliq[ind];
+            if (frozen_liq_cap == 1 && currl->ice > 0.0) {
+              // frozen_layer_liq_cap: the pore space taken by ice is not available
+              layer_max_input = fmax(0.0, fmin(layer_max_input,
+                  (currl->poro * currl->dz - currl->ice / DENICE) * DENLIQ - currl->liq));
+            }
             // calculating liquid water entering based on scaler, slope, hydraulic conductivity, 
             // and layer thickness.
             double layer_calc_input = qgroundwater_perch * SEC_IN_DAY * hk[ind] * dzmm[ind] / 1.e3;

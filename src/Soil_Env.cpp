@@ -1394,6 +1394,10 @@ double Soil_Env::getSoilTransFactor(double r_e_ij[MAX_SOI_LAY],
   return betaT;
 }
 
+double Soil_Env::liqCapByIce(const Layer* l) {
+  return fmax(0.0, (l->poro * l->dz - fmax(l->ice, 0.0) / DENICE) * DENLIQ);
+}
+
 void Soil_Env::checkSoilLiquidWaterValidity(Layer *topsoill, int topind){
   //Following logic from CLM 4.5 pg 176
   //First determine lowest active layer and fill needed arrays
@@ -1439,6 +1443,11 @@ void Soil_Env::checkSoilLiquidWaterValidity(Layer *topsoill, int topind){
       }
       effminliq[ind] = currl->minliq * (1-currl->frozenfrac);
       effmaxliq[ind] = currl->maxliq * (1-currl->frozenfrac);
+      if (frozen_liq_cap == 1 && currl->ice > 0.0) {
+        // frozen_layer_liq_cap: liquid cannot exceed the pore space left by the ice volume
+        effmaxliq[ind] = fmin(effmaxliq[ind], liqCapByIce(currl));
+        effminliq[ind] = fmin(effminliq[ind], effmaxliq[ind]);
+      }
       currl = currl->nextl;
     }
   }
