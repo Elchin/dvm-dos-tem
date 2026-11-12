@@ -1,0 +1,23 @@
+--- /dev/fd/63	2026-11-12 23:45:01.456344206 +0000
++++ /dev/fd/62	2026-11-12 23:45:01.456344206 +0000
+@@ -6,7 +6,7 @@
+         }
+     },
+     "IO": {
+-        "parameter_dir": "/home/ejafarov/tem-dev/wet-work/cmt31_nup/runs/N0_ctrl/params/",
++        "parameter_dir": "/home/ejafarov/tem-dev/wet-work/cmt31_nup/runs/N2_B2_mb005/params/",
+         "hist_climate_file": "/home/ejafarov/tem-dev/usbzb/archive/zenodo_archive/workflows/ch4_manuscript_files/input_forcings/baseline/historic-climate.nc",
+         "proj_climate_file": "/home/ejafarov/tem-dev/usbzb/archive/zenodo_archive/workflows/ch4_manuscript_files/input_forcings/baseline/projected-climate_ssp1_2_6_access_cm2.nc",
+         "veg_class_file": "/home/ejafarov/tem-dev/usbzb/archive/zenodo_archive/workflows/ch4_manuscript_files/input_forcings/baseline/vegetation.nc",
+@@ -21,9 +21,9 @@
+         "fri_fire_file": "/home/ejafarov/tem-dev/usbzb/archive/zenodo_archive/workflows/ch4_manuscript_files/input_forcings/baseline/fri-fire.nc",
+         "hist_exp_fire_file": "/home/ejafarov/tem-dev/usbzb/archive/zenodo_archive/workflows/ch4_manuscript_files/input_forcings/baseline/historic-explicit-fire.nc",
+         "proj_exp_fire_file": "/home/ejafarov/tem-dev/usbzb/archive/zenodo_archive/workflows/ch4_manuscript_files/input_forcings/baseline/projected-explicit-fire.nc",
+-        "output_dir": "/home/ejafarov/tem-dev/wet-work/cmt31_nup/runs/N0_ctrl/output/",
++        "output_dir": "/home/ejafarov/tem-dev/wet-work/cmt31_nup/runs/N2_B2_mb005/output/",
+         "restart_from": "",
+-        "output_spec_file": "/home/ejafarov/tem-dev/wet-work/cmt31_nup/specs/usbzb_spec_Nup.csv",
++        "output_spec_file": "/home/ejafarov/tem-dev/wet-work/cmt31_nup/specs/usbzb_spec_Nup_m.csv",
+         "output_monthly": 1,
+         "output_nc_eq": 1,
+         "output_nc_sp": 0,

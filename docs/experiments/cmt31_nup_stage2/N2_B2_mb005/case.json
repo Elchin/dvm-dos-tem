@@ -1,0 +1,103 @@
+{
+ "name": "N2_B2_mb005",
+ "stage": "S2",
+ "why": "Stage 2 B2: phi 0.50 all parts + micbnup 0.295 -> 0.05",
+ "site": "usbzb",
+ "params": {
+  "summermaxponding": 13.92645,
+  "inflowfactor": 38.34396
+ },
+ "envground": {},
+ "wet": {
+  "enabled": true,
+  "ch4": true,
+  "run_on": true,
+  "groundwater": true,
+  "cmts": [
+   6,
+   31,
+   32,
+   55,
+   61,
+   75,
+   92,
+   93
+  ],
+  "interception_scheme": 0,
+  "diag": 1,
+  "runon_energy_mode": 1,
+  "ch4_conserve": 1,
+  "ch4_daily": 0,
+  "keep_expelled_water": 1
+ },
+ "ms": {
+  "cell_timelimit": 0,
+  "dynamic_lai": 1,
+  "n_rootless_fix": 2,
+  "n_som_move_fix": 1,
+  "deep_carbon": 0,
+  "n_nonvasc_extract": 1,
+  "daily_c_split": 0,
+  "baseline_start": 1901,
+  "baseline_end": 1931,
+  "energy_diag": 1,
+  "eq_co2_mode": 1,
+  "thermal_solver": 1,
+  "thermal_substeps": 4,
+  "richards_dt_fix": 1,
+  "thermal_sfcc": 1,
+  "snow_empty_cleanup": 1,
+  "frozen_layer_liq_cap": 1,
+  "nonvasc_trans_withdraw": 1,
+  "n_safetynet_conserve": 1,
+  "bnf_scheme": 2,
+  "n_leach_fix": 1
+ },
+ "stages": "--force-cmt 31 -p 100 -e 2000 -s 250 -t 123 -n 0",
+ "spec": "/home/ejafarov/tem-dev/wet-work/cmt31_nup/specs/usbzb_spec_Nup_m.csv",
+ "mask": "/home/ejafarov/tem-dev/usbzb/runs/Q1/run-mask.nc",
+ "binary": "/home/ejafarov/tem-dev/wet-work/bin/dvmdostem_flcap",
+ "binary_md5": "d0b3f6cb138263b88002e5003607d45f",
+ "est_coreh": 0.34,
+ "edits": [
+  {
+   "type": "scalar",
+   "file": "cmt_bgcsoil.txt",
+   "key": "fnloss",
+   "value": 0.02
+  },
+  {
+   "type": "phi",
+   "parts": {
+    "sphag": [
+     0,
+     1,
+     2
+    ],
+    "eshrub": [
+     0,
+     1,
+     2
+    ],
+    "sedge": [
+     0,
+     1,
+     2
+    ],
+    "dshrub": [
+     0,
+     1,
+     2
+    ]
+   },
+   "phi": 0.5
+  },
+  {
+   "type": "scalar",
+   "file": "cmt_calparbgc.txt",
+   "key": "micbnup",
+   "value": 0.05
+  }
+ ],
+ "approval": "Elchin 3:29 PM ET Nov 12 2026 (verbatim): \"I approve Option B: 3 runs at litter-N share 0.50 with micbnup 0.15 / 0.05 (one also bnf_aet_a 0.0016), ~1.0 core-h, hard stop 4.0 total, report back before anything else\""
+}

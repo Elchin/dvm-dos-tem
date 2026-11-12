@@ -1,0 +1,16 @@
+// CMT31 // Boreal Bog // 
+250.000000   // snwdenmax: 
+50.000000    // snwdennew: 
+0.000000     // initsnwthick: 
+0.000000     // initsnwdense: 
+0.400000     // maxmossthick: 
+0.210000     // initdmossthick: 
+1.000000     // mosstype: 
+0.469375     // initfibthick: 
+0.420625     // inithumthick: 
+0.011090     // coefshlwa: 
+1.141000     // coefshlwb: 
+0.031270     // coefdeepa: 
+1.121200     // coefdeepb: 
+0.061540     // coefminea: 
+1.000000     // coefmineb: 
