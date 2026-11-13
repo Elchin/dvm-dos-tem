@@ -1,6 +1,10 @@
+"""Fire C/N balance gaps (fire_n_redep_fix, fire_c_bookkeep_fix) from the smoke runs RUNS/{F1c,F1c_N,F1c_C,F1c_on,F1c_L,F1c_onL,F1p_c,F1p_on,F1p_L,F1p_onL,F0g}.
+Writes FIGDIR/{fire_balance_summary.json,c_balance_gap.png,n_balance_gap.png,pools_on_off.png}. Options: see common.py."""
+import sys; from pathlib import Path; sys.path.insert(0, str(Path(__file__).resolve().parent)); import common
+_a = common.finish(common.parser(__doc__, "fire_balance").parse_args())
 import netCDF4 as nc, numpy as np, os, json
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
-R=os.path.expanduser("~/tem-dev/wet-work/rbsmoke/runs/"); FIG=os.path.expanduser("~/tem-dev/rb/docs/figures/fire_balance/"); os.makedirs(FIG,exist_ok=True)
+R=str(_a.runs)+"/"; FIG=str(_a.figdir)+"/"
 def rd(o,v,kind):
     x=np.ma.filled(nc.Dataset(o+f"{v}_{kind}_sc.nc")[v][:].astype(float),0.0); return x.reshape(x.shape[0],-1).sum(1)
 def yr_flux(o,v): return rd(o,v,"monthly").reshape(-1,12).sum(1)

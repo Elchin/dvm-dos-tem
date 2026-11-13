@@ -1,8 +1,12 @@
+"""N leak fixes (dwd_n_leak_fix, deadroot_n_route_fix): N/C balance gaps before/after from RUNS/{F1c_onL,F1c_onLK,F1c_onLD,F1c_onLR,F1p_onL,F1p_onLK,E1on,E1onL}_fb4.
+Writes FIGDIR/{n_leak_summary.json,n_leak_gaps.png}. Options: see common.py."""
+import sys; from pathlib import Path; sys.path.insert(0, str(Path(__file__).resolve().parent)); import common
+_a = common.finish(common.parser(__doc__, "fire_balance").parse_args())
 # N leak fixes (dwd_n_leak_fix, deadroot_n_route_fix): N and C balance gaps before/after, from the
 # rbsmoke runs (dvmdostem_fb4). Balance definitions as analyze_fire_balance.py.
 import netCDF4 as nc, numpy as np, os, json
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
-R=os.path.expanduser("~/tem-dev/wet-work/rbsmoke/runs/"); FIG=os.path.expanduser("~/tem-dev/rb/docs/figures/fire_balance/")
+R=str(_a.runs)+"/"; FIG=str(_a.figdir)+"/"
 def rd(o,v,kind):
     x=np.ma.filled(nc.Dataset(o+f"{v}_{kind}_sc.nc")[v][:].astype(float),0.0); return x.reshape(x.shape[0],-1).sum(1)
 def has(o,v,kind): return os.path.exists(o+f"{v}_{kind}_sc.nc")

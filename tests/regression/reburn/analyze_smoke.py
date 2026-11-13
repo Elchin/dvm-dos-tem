@@ -1,6 +1,10 @@
+"""Reburn smoke (fire 0 / classic / process) from RUNS/{F0g,F1c,F1p_c}: fire events, C/N residuals.
+Writes FIGDIR/{smoke_summary.json,fire_events.png,c_pools_on_off.png,c_balance_residual.png} (FIGDIR default docs/figures/reburn)."""
+import sys; from pathlib import Path; sys.path.insert(0, str(Path(__file__).resolve().parent)); import common
+_a = common.finish(common.parser(__doc__, "reburn").parse_args())
 import netCDF4 as nc, numpy as np, os, json, sys
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
-R=os.path.expanduser("~/tem-dev/wet-work/rbsmoke/runs/"); FIG=os.path.expanduser("~/tem-dev/rb/docs/figures/reburn/"); os.makedirs(FIG,exist_ok=True)
+R=str(_a.runs)+"/"; FIG=str(_a.figdir)+"/"
 CASES=[("F0g","fire 0 (stage asks for fire)","k"),("F1c","fire 1, classic","tab:orange"),("F1p_c","fire 1, process (Reburn)","tab:red")]
 def rd(o,v,kind):
     f=o+f"{v}_{kind}_sc.nc"; x=np.ma.filled(nc.Dataset(f)[v][:].astype(float),0.0); x=x.reshape(x.shape[0],-1).sum(1)  # sum pft/layer dims
@@ -38,7 +42,7 @@ for (c,st),d in res.items():
         N_resid_fire_yrs=[round(float(d["rN"][y-1]),4) for y in fy], N_resid_nonfire_maxabs=round(float(np.max(np.abs(d["rN"][[y-1 for y in nf]]))),4),
         C_end=round(float(d["C"][-1]),1), VEGC_end=round(float(d["VEGC"][-1]),1), SOC_end=round(float(d["SOC"][-1]),1), N_end=round(float(d["N"][-1]),2))
 print(json.dumps(summ,indent=1))
-json.dump(summ,open(FIG+"../../../tests/regression/reburn_smoke_summary.json" if False else "/tmp/rb_smoke_summary.json","w"),indent=1)
+json.dump(summ,open(FIG+"smoke_summary.json","w"),indent=1)
 # Fig 1: burn emissions per year (spin + main concatenated)
 f,a=plt.subplots(figsize=(6.4,3.4),dpi=100)
 for i,(c,l,k) in enumerate(CASES):

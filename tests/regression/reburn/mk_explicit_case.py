@@ -1,7 +1,11 @@
+# usage: mk_explicit_case.py [--regcases DIR] [--cases OUTDIR]
+#   E1: explicit classic fire at sc years 15/30/45/60 (jday 196, severity 3) from REGCASES/leg/TVC_Warming_nfeed
 import json, shutil, sys
 from pathlib import Path
 import netCDF4 as nc
-SRC=Path.home()/"tem-dev/srd-work/cs/leg/TVC_Warming_nfeed"; d=Path.home()/"tem-dev/wet-work/rbsmoke/cs/E1"
+sys.path.insert(0, str(Path(__file__).resolve().parent)); import common
+_a = common.finish(common.parser("Build the E1 explicit-fire smoke case.").parse_args())
+SRC=_a.regcases/"leg/TVC_Warming_nfeed"; _a.cases.mkdir(parents=True, exist_ok=True); d=_a.cases/"E1"
 assert not d.exists(); shutil.copytree(SRC,d)
 cj=json.loads((d/"case.json").read_text())
 BURN=["BURNAIR2SOILN","BURNSOIL2AIRC","BURNSOIL2AIRN","BURNTHICK","BURNVEG2AIRC","BURNVEG2AIRN","BURNVEG2DEADC","BURNVEG2DEADN","BURNVEG2SOILABVC","BURNVEG2SOILABVN","BURNVEG2SOILBLWC","BURNVEG2SOILBLWN"]

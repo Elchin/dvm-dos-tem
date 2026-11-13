@@ -1,9 +1,9 @@
-"""split.py BIN CASEDIR CONTRUN OUTDIR S N : main stage split at year S: A = years 0..S-1 from the spin restart
+"""split_run.py BIN CASEDIR CONTRUN OUTDIR S N : main stage split at year S: A = years 0..S-1 from the spin restart
 of CONTRUN, B = years S..N-1 from A's restart-sc.nc with projected climate and explicit fire sliced by S years."""
 import json, shutil, subprocess, sys, os
 from pathlib import Path
 import netCDF4 as nc
-sys.path.insert(0, str(Path.home()/"tem-dev/sel/tests/regression")); import run_case as rc
+sys.path.insert(0, str(Path(__file__).resolve().parents[1])); import run_case as rc   # this repo's tests/regression/run_case.py
 b, case, cont, out, S, N = sys.argv[1], Path(sys.argv[2]).resolve(), Path(sys.argv[3]).resolve(), Path(sys.argv[4]).resolve(), int(sys.argv[5]), int(sys.argv[6])
 cm = json.loads((case/"case.json").read_text()); assert not out.exists(); out.mkdir(parents=True)
 rc.ENV["LD_LIBRARY_PATH"] = os.environ.get("REG_LD_LIBRARY_PATH", rc.ENV["LD_LIBRARY_PATH"])

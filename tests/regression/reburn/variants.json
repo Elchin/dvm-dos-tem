@@ -1,0 +1,25 @@
+{
+ "_doc": "Case variants for the regression and fire-balance tests (mk_variants.py). Each variant is a hard-linked copy of its base with model_settings overlaid on spinup/ and main/ config.js (and case.json), and optionally output_spec.csv variables switched to yearly+monthly. Bases: leg = the 8 calibrated regression cases (case data on calib-elchin only for now); F0g/F1c/F1p = mk_smoke_cases.py, E1 = mk_explicit_case.py, both from leg/TVC_Warming_nfeed.",
+ "casesets": {
+  "s4_f1": {"from": "leg", "label": "ts1 s4 prod_t125_s23 richards_dt_fix=1",
+            "model_settings": {"thermal_solver": 1, "thermal_sfcc": 1, "thermal_substeps": 4, "deep_carbon": 0, "energy_diag": 1, "richards_dt_fix": 1}}
+ },
+ "smoke": {
+  "F1c_N":     {"from": "F1c", "model_settings": {"fire_n_redep_fix": 1}},
+  "F1c_C":     {"from": "F1c", "model_settings": {"fire_c_bookkeep_fix": 1}},
+  "F1c_on":    {"from": "F1c", "model_settings": {"fire_n_redep_fix": 1, "fire_c_bookkeep_fix": 1}},
+  "F1c_L":     {"from": "F1c", "model_settings": {"layer_bookkeep_fix": 1}},
+  "F1c_onL":   {"from": "F1c", "model_settings": {"layer_bookkeep_fix": 1, "fire_n_redep_fix": 1, "fire_c_bookkeep_fix": 1}},
+  "F1c_onLK":  {"from": "F1c", "model_settings": {"layer_bookkeep_fix": 1, "fire_n_redep_fix": 1, "fire_c_bookkeep_fix": 1, "dwd_n_leak_fix": 1, "deadroot_n_route_fix": 1}},
+  "F1c_onLD":  {"from": "F1c", "model_settings": {"layer_bookkeep_fix": 1, "fire_n_redep_fix": 1, "fire_c_bookkeep_fix": 1, "dwd_n_leak_fix": 1, "deadroot_n_route_fix": 0}},
+  "F1c_onLR":  {"from": "F1c", "model_settings": {"layer_bookkeep_fix": 1, "fire_n_redep_fix": 1, "fire_c_bookkeep_fix": 1, "dwd_n_leak_fix": 0, "deadroot_n_route_fix": 1}},
+  "F1cdbg":    {"from": "F1c", "model_settings": {}, "output_ym": ["DEADC", "DEADN", "DWDC", "DWDN", "VEGC", "YSD"]},
+  "F1cdbg_on": {"from": "F1cdbg", "model_settings": {"fire_n_redep_fix": 1, "fire_c_bookkeep_fix": 1}},
+  "F1p_L":     {"from": "F1p", "model_settings": {"layer_bookkeep_fix": 1}},
+  "F1p_on":    {"from": "F1p", "model_settings": {"fire_n_redep_fix": 1, "fire_c_bookkeep_fix": 1}},
+  "F1p_onL":   {"from": "F1p", "model_settings": {"layer_bookkeep_fix": 1, "fire_n_redep_fix": 1, "fire_c_bookkeep_fix": 1}},
+  "F1p_onLK":  {"from": "F1p", "model_settings": {"layer_bookkeep_fix": 1, "fire_n_redep_fix": 1, "fire_c_bookkeep_fix": 1, "dwd_n_leak_fix": 1, "deadroot_n_route_fix": 1}},
+  "E1on":      {"from": "E1", "model_settings": {"fire_n_redep_fix": 1, "fire_c_bookkeep_fix": 1}},
+  "E1onL":     {"from": "E1", "model_settings": {"fire_n_redep_fix": 1, "fire_c_bookkeep_fix": 1, "dwd_n_leak_fix": 1, "deadroot_n_route_fix": 1}}
+ }
+}

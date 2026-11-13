@@ -1,12 +1,20 @@
 # Build fire smoke-test case copies of the TVC_Warming_nfeed regression case (originals untouched).
+# usage: mk_smoke_cases.py [--regcases DIR] [--cases OUTDIR] [--fireweed DIR] [--only F0g,F1c,F1p]
+#   source case: REGCASES/leg/TVC_Warming_nfeed (calib-elchin only for now); writes CASES/{F0g,F1c,F1p}
+#   (variants of these: mk_variants.py with variants.json)
 import json, re, shutil, sys
 from pathlib import Path
 import netCDF4 as nc
-SRC=Path.home()/"tem-dev/srd-work/cs/leg/TVC_Warming_nfeed"
-OUT=Path.home()/"tem-dev/wet-work/rbsmoke/cs"; OUT.mkdir(parents=True, exist_ok=True)
-FW=Path.home()/"tem-dev/rb/external/Fireweed/Input_Files"
+sys.path.insert(0, str(Path(__file__).resolve().parent)); import common
+_p = common.parser("Build the F0g/F1c/F1p fire smoke cases.")
+_p.add_argument("--fireweed", type=Path, default=common.REPO/"external/Fireweed/Input_Files")
+_p.add_argument("--only", default="")
+_a = common.finish(_p.parse_args())
+SRC=_a.regcases/"leg/TVC_Warming_nfeed"
+OUT=_a.cases; OUT.mkdir(parents=True, exist_ok=True)
+FW=_a.fireweed.resolve()
 BURN=["BURNAIR2SOILN","BURNSOIL2AIRC","BURNSOIL2AIRN","BURNTHICK","BURNVEG2AIRC","BURNVEG2AIRN","BURNVEG2DEADC","BURNVEG2DEADN","BURNVEG2SOILABVC","BURNVEG2SOILABVN","BURNVEG2SOILBLWC","BURNVEG2SOILBLWN"]
-REBURN_CMT51=["123    //cmt2fm:// Reburn ce80b344 parameters/cmt_firepar.txt CMT51 (FM GS3 / 123)",
+REBURN_CMT51=["123    //cmt2fm:// from Reburn ce80b344 cmt_firepar.txt, FM GS3 (123)",
               "-1.0   //cbd://",
               "-1.0   //cbh://"]
 CASES={
@@ -16,6 +24,7 @@ CASES={
 }
 def strip_js(t): return re.sub(r"(?m)^\s*//.*$|(?<=[,{\[\s])//[^\n\"]*$","",t)
 for name,o in CASES.items():
+    if _a.only and name not in _a.only.split(","): continue
     d=OUT/name
     if d.exists(): sys.exit(f"{d} exists")
     shutil.copytree(SRC,d)

@@ -1,6 +1,10 @@
+"""Restart continuity: RUNS/<run>_split/B (restarted at year 35) vs the continuous RUNS/<run>/main for E1on_fb3, E1on_fb2, E1_fb3.
+Writes FIGDIR/split_summary.json. Options: see common.py."""
+import sys; from pathlib import Path; sys.path.insert(0, str(Path(__file__).resolve().parent)); import common
+_a = common.finish(common.parser(__doc__, "fire_balance").parse_args())
 import sys, numpy as np, netCDF4 as nc, json
 from pathlib import Path
-R=Path.home()/"tem-dev/wet-work/rbsmoke/runs"; S=35
+R=_a.runs; S=35
 KEY=["DEADC","DEADN","DWDC","DWDN","BURNAIR2SOILN","ORGN","AVLN","VEGC","SOC","NPP","RHSOM","GPP","TLAYER","SNOWTHICK","LAI"]
 def get(o,v):
     for k,m in (("monthly",12),("yearly",1)):
@@ -34,4 +38,4 @@ for c in ("E1on_fb3","E1on_fb2","E1_fb3"):
     d["restart_end_vars_identical"]=f"{same}/{n}"
     out[c]=d
 print(json.dumps(out,indent=1))
-json.dump(out,open("/tmp/split_summary.json","w"),indent=1)
+json.dump(out,open(_a.figdir/"split_summary.json","w"),indent=1)

@@ -1,7 +1,10 @@
+"""Figure FIGDIR/restart_continuity.png from the split runs and WORK/overshoot_series.json (run redep_overshoot.py first)."""
+import sys; from pathlib import Path; sys.path.insert(0, str(Path(__file__).resolve().parent)); import common
+_a = common.finish(common.parser(__doc__, "fire_balance").parse_args())
 import netCDF4 as nc, numpy as np, json, os
 import matplotlib; matplotlib.use("Agg"); import matplotlib.pyplot as plt
 from pathlib import Path
-R=Path.home()/"tem-dev/wet-work/rbsmoke/runs"; FIG=Path.home()/"tem-dev/rb/docs/figures/fire_balance"; S=35
+R=_a.runs; FIG=_a.figdir; S=35
 def get(o,v):
     for k,m in (("monthly",12),("yearly",1)):
         f=o/f"{v}_{k}_sc.nc"
@@ -14,7 +17,7 @@ for c,lab,col in (("E1on_fb2","old (19af750f)","tab:orange"),("E1on_fb3","new (f
     a.plot(t,y,color=col,lw=2.6 if col!="k" else 1.0,label=lab+": continuous"); a.plot(tb,yb,color=col,ls="--",lw=1.4,label=lab+": restarted at 1985")
 a.axvline(1950+S,color="gray",ls=":"); a.set_xlim(1975,2002); a.set_ylim(-1,30); a.set_ylabel("DEADC (g C m$^{-2}$)"); a.set_xlabel("year")
 a.set_title("Standing dead after the 1980 fire, restart in 1985\n(TVC explicit fire, both fire fixes on)",fontsize=9); a.legend(fontsize=7); a.grid(alpha=.3)
-o=json.load(open("/tmp/overshoot.json")); a=ax[1]
+o=json.load(open(_a.work/"overshoot_series.json")); a=ax[1]
 for c,lab,col in (("F1c_on_fb3","new","k"),("F1c_on","old (19af750f)","tab:orange")):
     s=np.array(o[c]["series"]); fm=15*12+6; nxt=20*12+15*12+6
     dep=np.zeros_like(s); dep[1:]=s[:-1]; cum=np.cumsum(dep[fm+1:nxt+1]); t=(np.arange(fm+1,nxt+1))/12-20

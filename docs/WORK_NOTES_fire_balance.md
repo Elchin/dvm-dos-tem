@@ -277,3 +277,41 @@ Decisions for Elchin:
    list). Fixing it is a separate change in the Reburn soil-burn accounting.
 3. The E1 C gap in fire years (+3.8 g C in the first fire) remains because `E1on` runs without
    `layer_n_remap_fix`/`layer_bookkeep_fix` (see "Use with the layer fixes" above), not because of these switches.
+
+## Reproducing the tests: scripts and tools in the repo (2026-11-13, follow-up; local, not pushed)
+
+The test scripts and tools are now all in the repo; the case data stays on calib-elchin for now
+(`~/tem-dev/srd-work/cs/leg`, the 8 calibrated regression cases, 144 MB; everything else is generated from it).
+
+- `tests/regression/`: `identdir.py` (two output directories), `ident.py` (pairs of run directories, spin000 +
+  main, JSON report) and `launch4.sh` (job list in parallel, `run_case.py` of this repo by default) — previously
+  only in `~/tem-dev/wet-work/scripts`.
+- `tests/regression/reburn/variants.json` + `mk_variants.py`: the `model_settings` overlay of every variant
+  (`s4_f1` from `leg`; `F1c_*`, `F1cdbg*`, `F1p_*`, `E1on*` from the smoke bases), so no case is made by hand.
+- All scripts take `--cases/--runs/--regcases/--figdir/--work` (or `TEM_WORK`, default `~/tem-dev`) instead of
+  hard-coded `~/tem-dev` and `/tmp` paths; `split_run.py` imports this repo's `tests/regression/run_case.py`.
+- `run_all.sh`: builds `19af750f`/`06c41688`/`f94fceaf` in `git worktree`s (with `scripts/get_external.sh`),
+  makes the cases, runs the identity and balance sets and compares with the committed summary JSONs
+  (`compare_summaries.py`). Expected: 88/88 stage folders identical and PASS for every summary; about
+  1.5 core-h. Details in `tests/regression/reburn/README.md`.
+- New: `docs/figures/fire_balance/identity_summary.json` (`ident.py` on the existing runs: fb2 vs fb3 42/42,
+  fb3 vs fb4 46/46, 7266 files) and `test_summary.png` (`plot_test_summary.py`).
+
+Validation (≈ 0.11 core-h, all in a new scratch directory `~/tem-dev/wet-work/rbval`; existing case and run
+directories only read):
+
+| check | result |
+|---|---|
+| `mk_variants.py --verify-against`: rebuilt s4_f1 (8 cases) and all 16 smoke variants vs the hand-made ones | **all identical**: parsed and byte-level config.js (paths normalised) and every other file by md5 (39–41 files per case) |
+| `mk_smoke_cases.py` + `mk_explicit_case.py` rebuilt F0g/F1c/F1p/E1 | **identical** (configs, `fri-fire.nc` and explicit-fire NetCDF edits, `cmt_firepar.txt`, output specs) |
+| analysis scripts with the new options on the existing runs (outputs to scratch) | `compare_summaries.py` **PASS** for all 5 summary JSONs; regenerated `restart_continuity.png`, `n_leak_gaps.png`, `c_balance_gap.png` byte-identical to the committed ones |
+| `run_all.sh --dry-run` (all sets) | plan of 3 builds, 67 identity + 23 balance jobs (16 new, the rest reused), 3 splits |
+| `run_all.sh --bins ... --sets cases,identity,check` on leg/TVC_Warming_nfeed + F0g (6 runs) | **8/8** stage folders identical (fb2 vs fb3, fb3 vs fb4); the fresh runs from the regenerated cases are also identical to the existing runs (6/6, including F0g from the pre-fix Reburn binary vs fb2) |
+
+The build step (worktrees, `get_external.sh`, `make`) was checked in dry-run only, so as not to add worktrees to
+the shared repository here.
+
+![test summary](figures/fire_balance/test_summary.png)
+
+`test_summary.png`: bit identity per comparison; N balance gap sums with the fixes off and on; spin-up → main
+re-deposition ratio; restart continuity (max |restarted − continuous|) — all from the committed JSONs.
