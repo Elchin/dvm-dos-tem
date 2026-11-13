@@ -1,0 +1,361 @@
+{
+ "F1c": {
+  "label": "classic, fixes off",
+  "fire_years": [
+   15,
+   30,
+   45,
+   60
+  ],
+  "C_resid_fire_yrs": [
+   3.804,
+   6.13,
+   2.385,
+   1.687
+  ],
+  "C_resid_maxabs_all": 72.003,
+  "C_resid_nonfire_maxabs": 72.003,
+  "C_resid_sum": 23.15,
+  "N_resid_fire_yrs": [
+   -1.0956,
+   -0.1633,
+   -1.1114,
+   -1.3289
+  ],
+  "N_resid_maxabs_all": 15.3475,
+  "N_resid_sum": -208.67,
+  "N_redep_due_sum": 203.22,
+  "C_end": 42513.6,
+  "VEGC_end": 18.8,
+  "DEADC_end": 0.0,
+  "DWDC_end": 14.3,
+  "SOC_end": 42480.6,
+  "N_end": 2585.82,
+  "ORGN_end": 2582.36
+ },
+ "F1c_N": {
+  "label": "classic, N fix only",
+  "fire_years": [
+   15,
+   30,
+   45,
+   60
+  ],
+  "C_resid_fire_yrs": [
+   3.804,
+   6.189,
+   2.569,
+   1.945
+  ],
+  "C_resid_maxabs_all": 72.003,
+  "C_resid_nonfire_maxabs": 72.003,
+  "C_resid_sum": 26.47,
+  "N_resid_fire_yrs": [
+   -0.0637,
+   0.1007,
+   0.0311,
+   0.0282
+  ],
+  "N_resid_maxabs_all": 3.9922,
+  "N_resid_sum": -5.44,
+  "N_redep_due_sum": 936.43,
+  "C_end": 42523.1,
+  "VEGC_end": 22.6,
+  "DEADC_end": 0.0,
+  "DWDC_end": 16.3,
+  "SOC_end": 42484.2,
+  "N_end": 2843.31,
+  "ORGN_end": 2839.42
+ },
+ "F1c_C": {
+  "label": "classic, C fix only",
+  "fire_years": [
+   15,
+   30,
+   45,
+   60
+  ],
+  "C_resid_fire_yrs": [
+   3.804,
+   1.157,
+   0.732,
+   0.536
+  ],
+  "C_resid_maxabs_all": 3.804,
+  "C_resid_nonfire_maxabs": 0.005,
+  "C_resid_sum": 6.22,
+  "N_resid_fire_yrs": [
+   -1.2377,
+   -0.3557,
+   -1.0568,
+   -1.3256
+  ],
+  "N_resid_maxabs_all": 11.7125,
+  "N_resid_sum": -209.02,
+  "N_redep_due_sum": 201.47,
+  "C_end": 42506.3,
+  "VEGC_end": 18.8,
+  "DEADC_end": 0.0,
+  "DWDC_end": 7.0,
+  "SOC_end": 42480.6,
+  "N_end": 2585.47,
+  "ORGN_end": 2582.36
+ },
+ "F1c_on": {
+  "label": "classic, both fixes",
+  "fire_years": [
+   15,
+   30,
+   45,
+   60
+  ],
+  "C_resid_fire_yrs": [
+   3.804,
+   1.217,
+   0.861,
+   0.685
+  ],
+  "C_resid_maxabs_all": 3.804,
+  "C_resid_nonfire_maxabs": 0.005,
+  "C_resid_sum": 6.56,
+  "N_resid_fire_yrs": [
+   -0.1561,
+   -0.0877,
+   -0.0282,
+   -0.0172
+  ],
+  "N_resid_maxabs_all": 0.3572,
+  "N_resid_sum": -7.71,
+  "N_redep_due_sum": 934.32,
+  "C_end": 42514.5,
+  "VEGC_end": 22.6,
+  "DEADC_end": 0.0,
+  "DWDC_end": 8.0,
+  "SOC_end": 42483.9,
+  "N_end": 2841.1,
+  "ORGN_end": 2837.63
+ },
+ "F1c_L": {
+  "label": "classic, layer fixes only",
+  "fire_years": [
+   15,
+   30,
+   45,
+   60
+  ],
+  "C_resid_fire_yrs": [
+   0.007,
+   4.821,
+   1.271,
+   0.635
+  ],
+  "C_resid_maxabs_all": 72.004,
+  "C_resid_nonfire_maxabs": 72.004,
+  "C_resid_sum": 1.44,
+  "N_resid_fire_yrs": [
+   -1.0992,
+   -0.1728,
+   -1.1039,
+   -1.3139
+  ],
+  "N_resid_maxabs_all": 15.3484,
+  "N_resid_sum": -208.17,
+  "N_redep_due_sum": 202.59,
+  "C_end": 42411.7,
+  "VEGC_end": 7.3,
+  "DEADC_end": 0.0,
+  "DWDC_end": 6.8,
+  "SOC_end": 42397.6,
+  "N_end": 2586.31,
+  "ORGN_end": 2583.56
+ },
+ "F1c_onL": {
+  "label": "classic, both fixes + layer fixes",
+  "fire_years": [
+   15,
+   30,
+   45,
+   60
+  ],
+  "C_resid_fire_yrs": [
+   0.007,
+   0.002,
+   0.001,
+   0.0
+  ],
+  "C_resid_maxabs_all": 0.007,
+  "C_resid_nonfire_maxabs": 0.006,
+  "C_resid_sum": -0.01,
+  "N_resid_fire_yrs": [
+   -0.156,
+   -0.087,
+   -0.0239,
+   -0.015
+  ],
+  "N_resid_maxabs_all": 0.3608,
+  "N_resid_sum": -7.46,
+  "N_redep_due_sum": 934.14,
+  "C_end": 42423.7,
+  "VEGC_end": 10.6,
+  "DEADC_end": 0.0,
+  "DWDC_end": 4.4,
+  "SOC_end": 42408.7,
+  "N_end": 2841.33,
+  "ORGN_end": 2838.53
+ },
+ "F1p_c": {
+  "label": "process, fixes off",
+  "fire_years": [
+   15,
+   30,
+   45,
+   60
+  ],
+  "C_resid_fire_yrs": [
+   5.176,
+   5.129,
+   5.042,
+   5.038
+  ],
+  "C_resid_maxabs_all": 5.176,
+  "C_resid_nonfire_maxabs": 0.01,
+  "C_resid_sum": 20.35,
+  "N_resid_fire_yrs": [
+   -0.0488,
+   -0.323,
+   -0.4252,
+   -0.2494
+  ],
+  "N_resid_maxabs_all": 0.6858,
+  "N_resid_sum": -23.0,
+  "N_redep_due_sum": 22.94,
+  "C_end": 54230.5,
+  "VEGC_end": 103.8,
+  "DEADC_end": 0.0,
+  "DWDC_end": 0.0,
+  "SOC_end": 54126.7,
+  "N_end": 2782.93,
+  "ORGN_end": 2771.73
+ },
+ "F1p_on": {
+  "label": "process, both fixes",
+  "fire_years": [
+   15,
+   30,
+   45,
+   60
+  ],
+  "C_resid_fire_yrs": [
+   5.176,
+   5.129,
+   5.042,
+   5.038
+  ],
+  "C_resid_maxabs_all": 5.176,
+  "C_resid_nonfire_maxabs": 0.01,
+  "C_resid_sum": 20.34,
+  "N_resid_fire_yrs": [
+   -6.1674,
+   -0.5091,
+   -9.2461,
+   -1.5075
+  ],
+  "N_resid_maxabs_all": 9.2461,
+  "N_resid_sum": -17.43,
+  "N_redep_due_sum": 23.86,
+  "C_end": 54230.5,
+  "VEGC_end": 103.8,
+  "DEADC_end": 0.0,
+  "DWDC_end": 0.0,
+  "SOC_end": 54126.8,
+  "N_end": 2790.21,
+  "ORGN_end": 2779.0
+ },
+ "F1p_L": {
+  "label": "process, layer fixes only",
+  "fire_years": [
+   15,
+   30,
+   45,
+   60
+  ],
+  "C_resid_fire_yrs": [
+   -0.001,
+   0.009,
+   -0.0,
+   0.009
+  ],
+  "C_resid_maxabs_all": 0.01,
+  "C_resid_nonfire_maxabs": 0.01,
+  "C_resid_sum": -0.01,
+  "N_resid_fire_yrs": [
+   -0.0458,
+   -0.3112,
+   -0.4099,
+   -0.2355
+  ],
+  "N_resid_maxabs_all": 0.6684,
+  "N_resid_sum": -22.22,
+  "N_redep_due_sum": 22.16,
+  "C_end": 54143.6,
+  "VEGC_end": 100.0,
+  "DEADC_end": 0.0,
+  "DWDC_end": 0.0,
+  "SOC_end": 54043.6,
+  "N_end": 2783.37,
+  "ORGN_end": 2771.5
+ },
+ "F1p_onL": {
+  "label": "process, both fixes + layer fixes",
+  "fire_years": [
+   15,
+   30,
+   45,
+   60
+  ],
+  "C_resid_fire_yrs": [
+   -0.001,
+   0.009,
+   -0.0,
+   0.009
+  ],
+  "C_resid_maxabs_all": 0.01,
+  "C_resid_nonfire_maxabs": 0.01,
+  "C_resid_sum": -0.01,
+  "N_resid_fire_yrs": [
+   -6.1672,
+   -0.4054,
+   -9.0079,
+   -1.27
+  ],
+  "N_resid_maxabs_all": 9.0079,
+  "N_resid_sum": -16.85,
+  "N_redep_due_sum": 23.06,
+  "C_end": 54143.7,
+  "VEGC_end": 100.0,
+  "DEADC_end": 0.0,
+  "DWDC_end": 0.0,
+  "SOC_end": 54043.7,
+  "N_end": 2790.45,
+  "ORGN_end": 2778.58
+ },
+ "F0g": {
+  "label": "fire off",
+  "fire_years": [],
+  "C_resid_fire_yrs": [],
+  "C_resid_maxabs_all": 0.005,
+  "C_resid_nonfire_maxabs": 0.005,
+  "C_resid_sum": 0.01,
+  "N_resid_fire_yrs": [],
+  "N_resid_maxabs_all": 0.0004,
+  "N_resid_sum": -0.0,
+  "N_redep_due_sum": 0.0,
+  "C_end": 55170.6,
+  "VEGC_end": 173.0,
+  "DEADC_end": 0.0,
+  "DWDC_end": 0.0,
+  "SOC_end": 54997.6,
+  "N_end": 2803.86,
+  "ORGN_end": 2780.42
+ }
+}

@@ -120,3 +120,7 @@ Residual = ΔC − (NPP − RHSOM − RHDWD − fire C). C pools are VEGC + DEAD
 *Annual ecosystem C-balance residual (main stage; dotted lines = fire years). Fire off closes to ≤ 0.005 g; process fire leaves about 5 g in fire years; classic shows the pre-existing post-fire gaps.*
 
 Reproduce: `tests/regression/reburn/` (case builder and analysis scripts; calib-elchin paths). Smoke summary numbers: `docs/figures/reburn/smoke_summary.json`.
+
+## 5. Follow-up: fire C/N balance fixes
+
+The classic-fire balance gaps of section 4 (N re-deposition never applied, standing-dead C created/deleted) are fixed behind two default-off switches, `model_settings.fire_n_redep_fix` and `model_settings.fire_c_bookkeep_fix` (0 = this merge, bit-identical). See docs/WORK_NOTES_fire_balance.md.
