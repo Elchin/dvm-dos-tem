@@ -42,6 +42,8 @@ public:
 //   set, in particular non-vascular PFTs (Sphagnum, lichen) and CMT51 sedges, has NO published source
 //   of its own (calibration choice, step22 / GPP_RECO_OPTIONS.md). DOIs checked on Crossref 2026-11-02.
   int gpp_fleaf_mode = 0;
+  // fire_c_bookkeep_fix (model_settings, 0 = legacy): see ModelData.h.
+  int fire_c_bookkeep_fix = 0;
   static double gppFleafScale(int mode, int ifwoody, double fleaf);
   // Refs (N3): no published source for the scheme; restores N mass conservation; bryophyte N uptake from the moss/peat layer: Turetsky 2003, doi:10.1639/05.
   ~Vegetation_Bgc();

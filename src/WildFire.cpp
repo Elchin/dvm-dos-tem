@@ -426,6 +426,12 @@ void WildFire::burn(const int year, const int midx) {
     //fd->fire_v2dead.strN = veg_2_dead_N;
     fd->fire_v2a.orgc =  comb_vegc - reta_vegc;
     fd->fire_v2a.orgn =  comb_vegn - reta_vegn;
+    if (md.fire_c_bookkeep_fix == 1) {
+      // fire_c_bookkeep_fix: the old standing dead burned in burnVegetation() (all of it, see there)
+      // is in the retained share but was missing from the emissions, so its unretained part vanished.
+      fd->fire_v2a.orgc += comb_deadc_last;
+      fd->fire_v2a.orgn += comb_deadn_last;
+    }
     fd->fire_v2soi.abvc = reta_vegc;
     fd->fire_v2soi.abvn = reta_vegn;
     fd->fire_v2soi.blwc = dead_bg_vegc;
@@ -1056,4 +1062,6 @@ void WildFire::burnVegetation(const int year, const double r_burn2bg_cn[NUM_PFT]
   //The C and N from combustion retained on site:
   reta_vegc = (comb_vegc + comb_deadc) * firpar.r_retain_c;
   reta_vegn = (comb_vegn + comb_deadn) * firpar.r_retain_n;
+  comb_deadc_last = comb_deadc;   // fire_c_bookkeep_fix (used only when 1)
+  comb_deadn_last = comb_deadn;
 }

@@ -98,6 +98,9 @@ private:
   // 10 pixels each of which also uses a 10km^2 area of burn.
 
   int fri;
+  // fire_c_bookkeep_fix: old standing dead C/N burned in the last burnVegetation() call (g/m2).
+  double comb_deadc_last = 0.0;
+  double comb_deadn_last = 0.0;
   int fri_jday_of_burn;
   int fri_area_of_burn;
   int fri_severity;

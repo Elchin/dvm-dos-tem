@@ -476,6 +476,20 @@ public:
   //       module_settings.dsb.fire.fire_process_wildfire = true (process-based Reburn model).
   // Integers 0/1 only (FATAL otherwise).
   int fire;
+  // fire-balance fixes (Elchin 2026-11-12), both OFF by default (0 = legacy, bit-identical to 5d86bad8).
+  // Integers 0/1 only (FATAL otherwise). See docs/WORK_NOTES_fire_balance.md.
+  //   fire_n_redep_fix 1: the fire-emitted N re-deposition FirData.fire_a2soi.orgn (annual rate,
+  //     = emitted N / FRI, output BURNAIR2SOILN) really enters the soil: 1/12 of it per month goes to
+  //     the organic N (ORGN) of the top soil layer. Legacy gated it on CohortData.fri, which is never
+  //     set, so the N was reported but never added.
+  //   fire_c_bookkeep_fix 1: standing-dead C/N bookkeeping: (i) the monthly standing-dead fall to
+  //     woody debris is zeroed when nothing falls (legacy kept the last month's value, creating C/N
+  //     in DWD every month after the 9-yr fall window); (ii) at the end of the window the remaining
+  //     standing dead falls to DWD instead of being deleted; (iii) when deadc0 is unknown (restart)
+  //     the remainder falls linearly over the rest of the window; (iv) standing dead burned in a
+  //     later fire is counted in the fire emissions (BURNVEG2AIRC/N) instead of vanishing.
+  int fire_n_redep_fix;
+  int fire_c_bookkeep_fix;
 
   // FW_MOD_START:
   // Switches to turn fire off for each run stage.  Fire in never on the pre-run stage:

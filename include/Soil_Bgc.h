@@ -341,6 +341,9 @@ public:
   //   doi:10.1002/hyp.6920; Khosh et al. 2017, doi:10.1002/2016jg003377). The fix itself:
   //   no published source (code defect, see Soil_Bgc.h).
   int n_leach_curn_fix = 0;
+  // fire_n_redep_fix (model_settings, 0 = legacy): see ModelData.h.
+  int fire_n_redep_fix = 0;
+  void setFireNRedepInput();
   // pure helper (unit-tested): sum over the drainage zone of max(0, avln[i])*fdz[i], zone and fdz
   // exactly as prepareIntegration() builds totdzavln.
   static double drainZoneAvln(const int n, const double z[], const double dz[], const double avln[],

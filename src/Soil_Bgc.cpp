@@ -1731,9 +1731,7 @@ void Soil_Bgc::prepareIntegration(const bool &mdnfeedback,
       }
     }
 
-    if(cd->yrsdist < cd->fri) {
-      bd->m_a2soi.orgninput = fd->fire_a2soi.orgn/12.;
-    }
+    setFireNRedepInput();
   }
   // v5q: biological N fixation into AVLN (bnf_scheme > 0 only). Refs: see Bnf.h.
   bd->m_a2soi.bnf = 0.0;      // output only (BNF = 0 when off); no model state reads it
@@ -1751,6 +1749,18 @@ void Soil_Bgc::prepareIntegration(const bool &mdnfeedback,
     d2wdebrisn = bd->m_v2soi.d2wdebrisn;
   }
 };
+
+// Fire-emitted N re-deposition input of this month (nfeed only; called from prepareIntegration).
+// fire_n_redep_fix 1: monthly share of the annual re-deposition rate FirData.fire_a2soi.orgn
+//   (0 once Cohort resets it one FRI after the fire); deltastate() adds it to ORGN of the top
+//   soil layer. 0 (legacy): gated on cd->fri, which is never set, so it is never applied.
+void Soil_Bgc::setFireNRedepInput() {
+  if (fire_n_redep_fix == 1) {
+    bd->m_a2soi.orgninput = fd->fire_a2soi.orgn/12.;
+  } else if(cd->yrsdist < cd->fri) {
+    bd->m_a2soi.orgninput = fd->fire_a2soi.orgn/12.;
+  }
+}
 
 void Soil_Bgc::afterIntegration() {
 

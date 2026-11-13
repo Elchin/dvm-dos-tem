@@ -286,7 +286,32 @@ void Vegetation_Bgc::prepareIntegration(const bool &nfeedback) {
 
   // dead standing C falling
   //if(cd->yrsdist < 10.0) {//cd->mthsdist<108
-  if(cd->mthsdist < 108) {
+  if (fire_c_bookkeep_fix == 1) {
+    // fire_c_bookkeep_fix: standing dead falls to woody debris linearly over 108 months after the
+    // fire (legacy rate deadc0/108); the fall is 0 when nothing is left, the remainder falls at the
+    // end of the window, and the remainder falls linearly over the rest of the window when deadc0
+    // is unknown (not in the restart file).
+    const int m = (cd->mthsdist < 0) ? 0 : cd->mthsdist;
+    double fc = 0.0, fn = 0.0;
+    if (bd->m_vegs.deadc > 0.) {
+      if (m >= 108) { fc = bd->m_vegs.deadc; }
+      else if (bd->m_vegs.deadc0 > 0.) { fc = bd->m_vegs.deadc0/9.0/12.0; }
+      else { fc = bd->m_vegs.deadc/(double)(108 - m); }
+      if (fc > bd->m_vegs.deadc) { fc = bd->m_vegs.deadc; }
+      bd->m_vegs.deadc -= fc;
+    }
+    bd->m_v2soi.d2wdebrisc = fc;
+    if (nfeed==1) {
+      if (bd->m_vegs.deadn > 0.) {
+        if (m >= 108) { fn = bd->m_vegs.deadn; }
+        else if (bd->m_vegs.deadn0 > 0.) { fn = bd->m_vegs.deadn0/9.0/12.0; }
+        else { fn = bd->m_vegs.deadn/(double)(108 - m); }
+        if (fn > bd->m_vegs.deadn) { fn = bd->m_vegs.deadn; }
+        bd->m_vegs.deadn -= fn;
+      }
+      bd->m_v2soi.d2wdebrisn = fn;
+    }
+  } else if(cd->mthsdist < 108) {
     if(bd->m_vegs.deadc0 > 0) {
       bd->m_v2soi.d2wdebrisc = bd->m_vegs.deadc0/9.0/12.0;
 

@@ -200,6 +200,9 @@
   "model_settings": {
     "fire": 0,                          // Reburn fire master switch: 0 (default) = no stage burns, whatever stage_settings
                                         //   X.fire/X.dsb say; 1 = burn in stages with X.fire true (X.dsb if no "fire" key).
+    "fire_n_redep_fix": 0,              // 0 (default) = legacy; 1 = fire-emitted N re-deposition (BURNAIR2SOILN/12 per month)
+                                        //   really enters top-layer soil ORGN. docs/WORK_NOTES_fire_balance.md
+    "fire_c_bookkeep_fix": 0,           // 0 (default) = legacy; 1 = standing-dead C/N fall/burn bookkeeping fixes (C, N close).
                                         //   See docs/WORK_NOTES_reburn.md.
     "cell_timelimit": 0, //Run time limit per cell in seconds. 0 for no limit.
     "dynamic_lai": 1,                   // from model (1) or from input (0)
