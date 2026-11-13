@@ -113,8 +113,8 @@ TEST_CASE("n_leach_curn_fix default 0: ModelData(), ModelData(Json) without the 
 TEST_CASE("n_leach_curn_fix validation: 0/1 integers only, 1 needs n_leach_fix 1, anything else FATAL") {
   CHECK(ModelData(lcm(0)).n_leach_curn_fix == 0);
   CHECK(ModelData(lcm(1)).n_leach_curn_fix == 1);
-  CHECK(ModelData(lcm(0, 0)).n_leach_curn_fix == 0);
-  CHECK(ut::exit_status_of([] { ModelData m(lcm(1, 0)); }) == EXIT_FAILURE);
+  CHECK(ModelData(lcm(Json::Value(0), 0)).n_leach_curn_fix == 0);
+  CHECK(ut::exit_status_of([] { ModelData m(lcm(Json::Value(1), 0)); }) == EXIT_FAILURE);
   CHECK(ut::exit_status_of([] { ModelData m(lcm(2)); }) == EXIT_FAILURE);
   CHECK(ut::exit_status_of([] { ModelData m(lcm(-1)); }) == EXIT_FAILURE);
   CHECK(ut::exit_status_of([] { ModelData m(lcm(0.5)); }) == EXIT_FAILURE);

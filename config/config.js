@@ -151,9 +151,10 @@
         //"severity_eq":
         // ...
 
-        //Turn on the process based wildfire model:
+        //Turn on the process based wildfire model (Reburn: Fireweed + Burnup; provisional parameters).
+        //Only read when model_settings.fire = 1. Fork default false = classic severity-class fire.
         //The fire settings that follow only pertain if this switch is set to true.
-        "fire_process_wildfire": true,
+        "fire_process_wildfire": false,
 
         //The maximum snow depth (cm) where a fire can start, i.e. the extinguishment limit.  Set to
         //a negative value to ignore snow presence:
@@ -197,6 +198,9 @@
   },
 
   "model_settings": {
+    "fire": 0,                          // Reburn fire master switch: 0 (default) = no stage burns, whatever stage_settings
+                                        //   X.fire/X.dsb say; 1 = burn in stages with X.fire true (X.dsb if no "fire" key).
+                                        //   See docs/WORK_NOTES_reburn.md.
     "cell_timelimit": 0, //Run time limit per cell in seconds. 0 for no limit.
     "dynamic_lai": 1,                   // from model (1) or from input (0)
     "n_rootless_fix": 2,                // N1 fix (v5o default 2; 0 = legacy: rootless-layer net mineralisation N lost)

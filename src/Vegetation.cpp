@@ -70,7 +70,7 @@ Vegetation::Vegetation(int cmtnum, const ModelData* mdp) {
   temutil::pfll2data_pft(l, vegdimpar.bleaf);
   temutil::pfll2data_pft(l, vegdimpar.cleaf);
   temutil::pfll2data_pft(l, vegdimpar.kfoliage);
-  l.front();
+  (void)l.front(); // C++20 [[nodiscard]] (fork, Reburn merge)
   temutil::pfll2data_pft(l, vegdimpar.cov);
   temutil::pfll2data_pft(l, vegdimpar.m1);
   temutil::pfll2data_pft(l, vegdimpar.m2);

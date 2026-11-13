@@ -587,9 +587,13 @@ void CohortLookup::assignBgc4Ground(string &dircmt) {
 void CohortLookup::assignFirePar(string &dircmt) {
 
   // get a list of data for the cmt number
-  std::list<std::string> datalist = temutil::parse_parameter_file(
-      dircmt + "cmt_firepar.txt", temutil::cmtcode2num(this->cmtcode), 21
+  // fork: 18 lines (legacy parameter sets, unchanged repo parameters/) or 21 lines (Reburn:
+  // + cmt2fm, cbd, cbh). With 18 lines the process-based model has no fuel model (cmt2fm = -1);
+  // WildFire stops with FATAL only if process wildfire is used without one.
+  std::list<std::string> datalist = temutil::parse_parameter_file_any(
+      dircmt + "cmt_firepar.txt", temutil::cmtcode2num(this->cmtcode), {18, 21}
   );
+  const size_t firepar_nlines = datalist.size();
 
   // pop each line off the front of the list
   // and assign to the right data member.
@@ -608,7 +612,10 @@ void CohortLookup::assignFirePar(string &dircmt) {
   temutil::pfll2data(datalist, vsmburn);
   temutil::pfll2data(datalist, r_retain_c);
   temutil::pfll2data(datalist, r_retain_n);
-  temutil::pfll2data(datalist, cmt2fm);//FW_MOD
-  temutil::pfll2data(datalist, cbd);//FW_MOD
-  temutil::pfll2data(datalist, cbh);//FW_MOD
+  cmt2fm = -1; cbd = 0.0; cbh = 0.0;
+  if (firepar_nlines >= 21) {
+    temutil::pfll2data(datalist, cmt2fm);//FW_MOD
+    temutil::pfll2data(datalist, cbd);//FW_MOD
+    temutil::pfll2data(datalist, cbh);//FW_MOD
+  }
 };

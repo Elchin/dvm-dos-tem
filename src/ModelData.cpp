@@ -602,28 +602,75 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
   //changeco2     = controldata["model_settings"]["varied_co2"].asInt();
   //useseverity   = controldata["model_settings"]["fire_severity_as_input"].asInt();
 
-  // FW_MOD_START:
-  fire_on_EQ        = controldata["stage_settings"]["eq"]["fire"].asBool();
-  fire_on_SP        = controldata["stage_settings"]["sp"]["fire"].asBool();
-  fire_on_TR        = controldata["stage_settings"]["tr"]["fire"].asBool();
-  fire_on_SC        = controldata["stage_settings"]["sc"]["fire"].asBool();
-  fire_ignition_tr  = controldata["module_settings"]["dsb"]["fire"]["ignition_tr"].asInt();
-  fire_ignition_sc  = controldata["module_settings"]["dsb"]["fire"]["ignition_sc"].asInt();
-  fire_process_wildfire    = controldata["module_settings"]["dsb"]["fire"]["fire_process_wildfire"].asBool();
-  fire_max_snow            = controldata["module_settings"]["dsb"]["fire"]["fire_max_snow"].asDouble();
-  fire_dynamic_fuel        = controldata["module_settings"]["dsb"]["fire"]["fire_dynamic_fuel"].asBool();
-  fire_moss_as_dead_fuel   = controldata["module_settings"]["dsb"]["fire"]["fire_moss_as_dead_fuel"].asBool();
-  fire_calculate_delta     = controldata["module_settings"]["dsb"]["fire"]["fire_calculate_delta"].asBool();
-  fire_heat_frac_to_soil   = controldata["module_settings"]["dsb"]["fire"]["fire_heat_frac_to_soil"].asDouble();
-  fire_gf_heat_loss_factor = controldata["module_settings"]["dsb"]["fire"]["fire_gf_heat_loss_factor"].asDouble();
-  fire_gf_surface_pd       = controldata["module_settings"]["dsb"]["fire"]["fire_gf_surface_pd"].asDouble();
-  fire_gf_smolder_pd       = controldata["module_settings"]["dsb"]["fire"]["fire_gf_smolder_pd"].asDouble();
-  fire_gf_layer_thickness  = controldata["module_settings"]["dsb"]["fire"]["fire_gf_layer_thickness"].asDouble();
-  fire_temp_fm             = controldata["module_settings"]["dsb"]["fire"]["fire_temp_fm"].asInt();
-  fire_windspeed           = controldata["module_settings"]["dsb"]["fire"]["fire_windspeed"].asDouble();
-  fire_tempair             = controldata["module_settings"]["dsb"]["fire"]["fire_tempair"].asDouble();
-  fire_rh_pct              = controldata["module_settings"]["dsb"]["fire"]["fire_rh_pct"].asDouble();
-  fire_dwd_combust_frac    = controldata["module_settings"]["dsb"]["fire"]["fire_dwd_combust_frac"].asDouble();
+  // FW_MOD_START (fork: master switch + .get() defaults, merge plan section 2.3 items 0-3):
+  {
+    Json::Value v = controldata["model_settings"].get("fire", 0);
+    if (!bnf::valid_int(v, 0, 1)) {
+      std::cerr << "FATAL: model_settings.fire must be 0 (default: fire off in every stage) or 1 (fire on in the stages that request it)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    fire = v.asInt();
+  }
+  {
+    const Json::Value& ss = controldata["stage_settings"];
+    // Stage request: "fire" if present (Reburn), else the legacy "dsb" flag (backward compatible).
+    auto stage_req = [&](const char* st, bool legacy_dsb) -> bool {
+      const Json::Value& x = ss[st];
+      if (x.isObject() && x.isMember("fire")) {
+        bool f = x["fire"].asBool();
+        if (x.isMember("dsb") && x["dsb"].asBool() != f) {
+          std::cerr << "WARNING: stage_settings." << st << ".fire (" << f << ") and ." << st
+                    << ".dsb (" << legacy_dsb << ") disagree; using fire" << std::endl;
+        }
+        return f;
+      }
+      return legacy_dsb;
+    };
+    const bool rq_pr = pr_dsb, rq_eq = stage_req("eq", eq_dsb), rq_sp = stage_req("sp", sp_dsb),
+               rq_tr = stage_req("tr", tr_dsb), rq_sc = stage_req("sc", sc_dsb);
+    fire_on_EQ = (fire == 1) && rq_eq;
+    fire_on_SP = (fire == 1) && rq_sp;
+    fire_on_TR = (fire == 1) && rq_tr;
+    fire_on_SC = (fire == 1) && rq_sc;
+    if (fire == 0) {
+      if (rq_pr || rq_eq || rq_sp || rq_tr || rq_sc) {
+        std::cerr << "WARNING: model_settings.fire = 0 (default): fire is OFF in every stage although "
+                  << "stage_settings requests it (pr/eq/sp/tr/sc = " << rq_pr << rq_eq << rq_sp << rq_tr << rq_sc
+                  << "). Set model_settings.fire = 1 to burn." << std::endl;
+      }
+      pr_dsb = false; eq_dsb = false; sp_dsb = false; tr_dsb = false; sc_dsb = false;
+    } else {
+      eq_dsb = fire_on_EQ; sp_dsb = fire_on_SP; tr_dsb = fire_on_TR; sc_dsb = fire_on_SC;
+    }
+  }
+  const Json::Value& fs = controldata["module_settings"]["dsb"]["fire"];
+  auto fget = [&](const char* k, const Json::Value& d) -> Json::Value {
+    return fs.isObject() ? fs.get(k, d) : d;
+  };
+  fire_ignition_tr         = fget("ignition_tr", 0).asInt();
+  fire_ignition_sc         = fget("ignition_sc", 0).asInt();
+  fire_process_wildfire    = fget("fire_process_wildfire", false).asBool(); // fork default: classic fire
+  fire_max_snow            = fget("fire_max_snow", 1.0).asDouble();
+  fire_dynamic_fuel        = fget("fire_dynamic_fuel", true).asBool();
+  fire_moss_as_dead_fuel   = fget("fire_moss_as_dead_fuel", true).asBool();
+  fire_calculate_delta     = fget("fire_calculate_delta", false).asBool();
+  fire_heat_frac_to_soil   = fget("fire_heat_frac_to_soil", 0.25).asDouble();
+  fire_gf_heat_loss_factor = fget("fire_gf_heat_loss_factor", 0.50).asDouble();
+  fire_gf_surface_pd       = fget("fire_gf_surface_pd", 1.0).asDouble();
+  fire_gf_smolder_pd       = fget("fire_gf_smolder_pd", 3.0).asDouble();
+  fire_gf_layer_thickness  = fget("fire_gf_layer_thickness", 0.1).asDouble();
+  fire_temp_fm             = fget("fire_temp_fm", -1).asInt();
+  fire_windspeed           = fget("fire_windspeed", -1.0).asDouble();
+  fire_tempair             = fget("fire_tempair", -300.0).asDouble();
+  fire_rh_pct              = fget("fire_rh_pct", -1.0).asDouble();
+  fire_dwd_combust_frac    = fget("fire_dwd_combust_frac", 1.0).asDouble();
+  if (fire_ignition_tr < 0 || fire_ignition_tr > 1 || fire_ignition_sc < 0 || fire_ignition_sc > 1) {
+    std::cerr << "FATAL: module_settings.dsb.fire.ignition_tr/ignition_sc must be 0 (explicit) or 1 (FRI)" << std::endl;
+    exit(EXIT_FAILURE);
+  }
+  if (fire == 1 && fire_process_wildfire) {
+    std::cerr << "WARNING: process-based wildfire (Reburn) is ON; its parameters are provisional (see docs/WORK_NOTES_reburn.md)" << std::endl;
+  }
   // FW_MOD_END.
 }
 
@@ -661,6 +708,8 @@ void ModelData::update(ArgHandler const * arghandler) {
 ModelData::ModelData():force_cmt(-1) {
   richards_dt_fix = 0; // bug R1 fix (off)
   frozen_layer_liq_cap = 0; // off (legacy)
+  fire = 0; fire_on_EQ = fire_on_SP = fire_on_TR = fire_on_SC = false; // Reburn master switch (off)
+  fire_ignition_tr = 0; fire_ignition_sc = 0; fire_process_wildfire = false; fire_temp_fm = -1;
   snow_scheme = 0; snow_class_wind = -1.0; snow_diag = 0; // Schaefer 2009 snow classes (off)
   snow_empty_cleanup = 0; // emptied snow layer removal (off)
   wetland_enabled = false; wetland_ch4 = true; wetland_runon = false; wetland_groundwater = false; // phase 3 (off)

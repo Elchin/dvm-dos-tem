@@ -710,8 +710,7 @@ void advance_model(const int rowidx, const int colidx,
     runner.cohort.md->set_nfeed(runner.cohort.md->eq_nfeed);
     runner.cohort.md->set_avlnflg(runner.cohort.md->eq_avln);
     runner.cohort.md->set_baseline(runner.cohort.md->eq_baseline);
-    //runner.cohort.md->set_dsbmodule(runner.cohort.md->eq_dsb);
-    runner.cohort.md->set_dsbmodule(runner.cohort.md->fire_on_EQ);// FW_MOD: Preceded runner.cohort.md->eq_dsb.
+    runner.cohort.md->set_dsbmodule(runner.cohort.md->eq_dsb); // = fire_on_EQ (model_settings.fire gate, ModelData)
     runner.cohort.md->set_dslmodule(runner.cohort.md->eq_dsl);
     runner.cohort.md->set_dynamic_lai_module(runner.cohort.md->eq_dyn_lai);
 
@@ -723,7 +722,10 @@ void advance_model(const int rowidx, const int colidx,
       // fire cycle (i.e. a year or two prior to the next fire).
       // To ensure this, re-set modeldata's EQ year count to an
       // even multiple of the FRI minus 2 (to be safe)
-      if (modeldata.eq_yrs < runner.cohort.fire.getFRI()) {
+      if (runner.cohort.fire.getFRI() <= 0) {
+        // fork: FRI <= 0 guard (merge plan 2.3 item 4): no FRI fire cycle, keep eq_yrs (was SIGFPE).
+        BOOST_LOG_SEV(glg, warn) << "FRI <= 0 for this cell: no FRI fire cycle in EQ; eq years not adjusted.";
+      } else if (modeldata.eq_yrs < runner.cohort.fire.getFRI()) {
         BOOST_LOG_SEV(glg, warn) << "The model will not run enough years to complete a disturbance cycle!";
       } else {
         int fri = runner.cohort.fire.getFRI();
@@ -776,8 +778,7 @@ void advance_model(const int rowidx, const int colidx,
     runner.cohort.md->set_nfeed(runner.cohort.md->sp_nfeed);
     runner.cohort.md->set_avlnflg(runner.cohort.md->sp_avln);
     runner.cohort.md->set_baseline(runner.cohort.md->sp_baseline);
-    //runner.cohort.md->set_dsbmodule(runner.cohort.md->sp_dsb);
-    runner.cohort.md->set_dsbmodule(runner.cohort.md->fire_on_SP);// FW_MOD: Preceded runner.cohort.md->sp_dsb.
+    runner.cohort.md->set_dsbmodule(runner.cohort.md->sp_dsb); // = fire_on_SP (model_settings.fire gate, ModelData)
     runner.cohort.md->set_dslmodule(runner.cohort.md->sp_dsl);
     runner.cohort.md->set_dynamic_lai_module(runner.cohort.md->sp_dyn_lai);
 
@@ -838,8 +839,7 @@ void advance_model(const int rowidx, const int colidx,
     runner.cohort.md->set_nfeed(runner.cohort.md->tr_nfeed);
     runner.cohort.md->set_avlnflg(runner.cohort.md->tr_avln);
     runner.cohort.md->set_baseline(runner.cohort.md->tr_baseline);
-    //runner.cohort.md->set_dsbmodule(runner.cohort.md->tr_dsb);
-    runner.cohort.md->set_dsbmodule(runner.cohort.md->fire_on_TR);// FW_MOD: Preceded runner.cohort.md->tr_dsb
+    runner.cohort.md->set_dsbmodule(runner.cohort.md->tr_dsb); // = fire_on_TR (model_settings.fire gate, ModelData)
     runner.cohort.md->set_dslmodule(runner.cohort.md->tr_dsl);
     runner.cohort.md->set_dynamic_lai_module(runner.cohort.md->tr_dyn_lai);
 
@@ -897,8 +897,7 @@ void advance_model(const int rowidx, const int colidx,
     runner.cohort.md->set_nfeed(runner.cohort.md->sc_nfeed);
     runner.cohort.md->set_avlnflg(runner.cohort.md->sc_avln);
     runner.cohort.md->set_baseline(runner.cohort.md->sc_baseline);
-    //runner.cohort.md->set_dsbmodule(runner.cohort.md->sc_dsb);
-    runner.cohort.md->set_dsbmodule(runner.cohort.md->fire_on_SC);// FW_MOD: Preceded runner.cohort.md->sc_dsb.
+    runner.cohort.md->set_dsbmodule(runner.cohort.md->sc_dsb); // = fire_on_SC (model_settings.fire gate, ModelData)
     runner.cohort.md->set_dslmodule(runner.cohort.md->sc_dsl);
     runner.cohort.md->set_dynamic_lai_module(runner.cohort.md->sc_dyn_lai);
 

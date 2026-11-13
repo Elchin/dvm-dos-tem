@@ -189,7 +189,7 @@ bool WildFire::should_ignite(const int year, const int midx, const std::string& 
   {
     int fire_ignition_mode;
 
-    if (stage.compare("tr-run"))
+    if (stage.compare("tr-run") == 0)// fork fix: compare() is 0 on a match (was inverted)
     {
       fire_ignition_mode = md.fire_ignition_tr;
     }
@@ -295,6 +295,12 @@ bool WildFire::isFireReturnDate(const int year, const int midx)
 void WildFire::burn(const int year, const int midx) {
   BOOST_LOG_NAMED_SCOPE("burning");
   BOOST_LOG_SEV(glg, info) << "HELP!! - WILD FIRE!! RUN FOR YOUR LIFE!";
+  // fork: the process-based model needs a fuel model (21-line cmt_firepar.txt or fire_temp_fm).
+  if (md.fire == 1 && md.fire_process_wildfire && firpar.cmt2fm < 0 && md.fire_temp_fm < 0) {
+    std::cerr << "FATAL: process-based wildfire needs a fuel model: cmt_firepar.txt has the legacy 18 lines "
+              << "(no cmt2fm/cbd/cbh) for CMT" << chtlu->cmtcode << " and fire_temp_fm is not set. Use a 21-line cmt_firepar.txt." << std::endl;
+    exit(EXIT_FAILURE);
+  }
 
   double burndepth = 0.0;
 

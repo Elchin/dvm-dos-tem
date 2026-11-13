@@ -468,6 +468,15 @@ public:
   bool dynamic_LAI; // True: calculate LAI as a function of vegc, False: use static_lai from CohortLookup 
   bool useseverity; // using fire severity inputs
 
+  // Reburn fire master switch (Elchin 2026-11-09), OFF by default. model_settings.fire:
+  //   0 (default) = no stage burns, whatever stage_settings.X.fire / X.dsb say (a WARNING is printed
+  //                 if a stage asks for fire); the WildFire and Fireweed/Burnup code is never called.
+  //   1 = fire on in the stages whose stage_settings.X.fire is true (falls back to X.dsb when the
+  //       "fire" key is absent). Classic (severity-class) fire unless
+  //       module_settings.dsb.fire.fire_process_wildfire = true (process-based Reburn model).
+  // Integers 0/1 only (FATAL otherwise).
+  int fire;
+
   // FW_MOD_START:
   // Switches to turn fire off for each run stage.  Fire in never on the pre-run stage:
   bool fire_on_EQ;

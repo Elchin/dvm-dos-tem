@@ -54,3 +54,7 @@ Debug/*
 bundle*
 
 .dvc/*
+
+# Reburn external modules (fetched by scripts/get_external.sh at pinned hashes)
+external/Fireweed/
+external/Burnup/

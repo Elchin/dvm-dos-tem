@@ -5,7 +5,7 @@
 #   make -C tests/unit CC=g++ INCLUDES=... LIBDIR=... run
 CC      ?= g++
 ROOT    := ../..
-TFLAGS  := -g -std=c++11 -fPIC -DBOOST_ALL_DYN_LINK -Wno-deprecated-declarations
+TFLAGS  := -g -std=c++20 -fPIC -DBOOST_ALL_DYN_LINK -Wno-deprecated-declarations
 LIBS    ?= -lnetcdf -lboost_system -lboost_filesystem -lboost_program_options \
            -lboost_thread -lboost_log -ljsoncpp -lpthread -lreadline -llapacke
 MODEL_OBJECTS ?= $(filter-out $(ROOT)/obj/TEM.o,$(wildcard $(ROOT)/obj/*.o))
@@ -17,7 +17,7 @@ all: $(BIN)
 
 obj/%.o: %.cpp test_access.h test_helpers.h nc_fixtures.h doctest.h $(wildcard $(ROOT)/include/*.h)
 	@mkdir -p obj
-	$(CC) -c $(TFLAGS) $(INCLUDES) -I$(ROOT)/include $< -o $@
+	$(CC) -c $(TFLAGS) $(INCLUDES) -I$(ROOT)/include -I$(ROOT)/external/Fireweed/C++ -I$(ROOT)/external/Burnup/C++ $< -o $@
 
 $(BIN): $(TEST_OBJS) $(MODEL_OBJECTS)
 	$(CC) -o $@ $(TEST_OBJS) $(MODEL_OBJECTS) $(LIBDIR) $(LIBS)
