@@ -140,8 +140,9 @@ on the VM (copy in `tests/regression/reburn/analyze_fire_balance.py`). About 0.7
 3. **Use with the layer fixes.** Classic fire C closes fully only with `layer_n_remap_fix = 1, layer_bookkeep_fix = 1`
    as well; the same layer switches also close the +5 g/fire C gap of process fire. Consider recommending the four
    together for fire runs.
-4. **Not fixed, separate items if you want them:** DWD N decomposed with no destination (≈ −7.5 g N / 75 yr here);
-   dead-root N added to `somcr` instead of `orgn` in `burnVegetation()` (≈0.006 g per fire); `BURNVEG2DEADC/N`
+4. **Not fixed, separate items if you want them:** DWD N decomposed with no destination (≈ −7.5 g N / 75 yr here)
+   and dead-root N added to `somcr` instead of `orgn` in `burnVegetation()` (≈0.006 g per fire) — both fixed behind
+   switches, see "N leak fixes" below; `BURNVEG2DEADC/N`
    output also counts PFTs with no cover (115 vs 77 g in 1965, output only); process fire soil N not burned/reported
    (`BURNSOIL2AIRN = 0`), which with the N fix shows up as −6 to −9 g N in process-fire years;
    `CohortData::fri` is read uninitialised in the legacy path (kept for bit identity).
@@ -220,3 +221,59 @@ are in `split_summary.json` and `overshoot.json`. Scripts are in `tests/regressi
 
 Decision for Elchin: with explicit fire the re-deposition rate is `emitted / fri` with `fri` from `fri-fire.nc`. In
 this test case `fri = 2000` yr, so only about 1 % of the emitted N comes back in 20 yr. That is unchanged here.
+
+## N leak fixes: `dwd_n_leak_fix`, `deadroot_n_route_fix` (2026-11-12, follow-up; local, not pushed)
+
+Two more `model_settings` switches, both **default 0 = legacy, bit-identical to 06c41688** (integers 0/1 only,
+anything else FATAL, parsed in `ModelData`, defaults in both constructors). Pure mass-bookkeeping fixes, no
+published source.
+
+| switch | legacy (0) | fix (1) | code |
+|---|---|---|---|
+| `dwd_n_leak_fix` | woody-debris decomposition removes `RHWDEB × WDEBRISN/WDEBRISC` from `WDEBRISN` with no destination: the N is lost every month DWD decomposes | the same N goes to the organic N (`ORGN`) of the top soil layer (where litter N and the fire re-deposition go; it is then mineralised by the normal SOM path) | `Soil_Bgc::deltastate()` (wood debris block) |
+| `deadroot_n_route_fix` | `WildFire::burnVegetation()` adds the N of roots killed (not burned) by fire to `m_sois.somcr`, a **C** pool: the N disappears and the same mass of C appears | the N goes to `m_sois.orgn` by root fraction (the C still goes to `somcr`) | `WildFire::deadRootNPool()` used in `burnVegetation()` |
+
+### Tests
+
+- **Bit identity, new switches 0** (`dvmdostem_fb4` = this commit vs `dvmdostem_fb3` = 06c41688, `scripts/identdir.py`, all
+  NetCDF outputs and restart files): **46/46 stage folders identical** — 16 regression cases (`FB4_{leg,s4_f1}` vs
+  `FB3_*`, spin + main = 32), the 5 classic fire cases `E1, F1c, F1p, F0g, F1cdbg` (10), and `F1c_on`, `E1on`
+  (fire fixes 1, leak fixes 0; 4).
+- **Unit tests** (suite `fire_balance`, now 11 cases, 190 assertions, all pass), three new cases: the switches are 0
+  by default and 0/1 only; one `Soil_Bgc::deltastate()` month with decomposing DWD, where the legacy soil + DWD N
+  balance is short by exactly `RHWDEB × N/C` and closes to round-off with the fix (the N lands in layer-0 ORGN,
+  other layers and AVLN unchanged, no DWD → no change); and the dead-root pool (`somcr` legacy, `orgn` fix) with the
+  N/C effect of distributing a dead-root N amount by root fraction. Full suite: 401/401 test cases pass (the 8
+  known may-fail assertions are unchanged).
+- **Balance gaps with the switches on** (TVC smoke cases, 20-yr spin + 75-yr main, annual
+  `ΔN − (NINPUT − NLOST − fire N + re-deposition)`, all other fixes as named; `analyze_n_leaks.py`,
+  `n_leak_summary.json`):
+
+| case (all with both fire fixes) | N gap sum before | after | max \|annual N gap\| before | after | fire-year N gaps before → after |
+|---|---|---|---|---|---|
+| classic FRI 15 + layer fixes (`F1c_onL` → `F1c_onLK`) | **−7.665 g N** | **0.000** | 0.420 | 0.0002 | −0.14/−0.09/−0.02/−0.01 → 0.000 |
+| explicit classic E1 (`E1on` → `E1onL`) | **−7.798** | **0.000** | 0.420 | 0.0002 | −0.14/−0.09/−0.03/−0.02 → 0.000 |
+| process (Reburn) + layer fixes (`F1p_onL` → `F1p_onLK`) | −15.43 | −15.41 | 9.01 | 9.01 | unchanged (−4.7/−0.4/−9.0/−1.3) |
+
+  One switch at a time (classic `F1c_onL`): `dwd_n_leak_fix` alone closes 7.658 of the 7.665 g (−0.007 left, all
+  in fire years); `deadroot_n_route_fix` alone closes 0.007 g N (0.0056 g in the first fire) and removes the same
+  spurious C from the fire-year C gap (0.0069 → 0.0011 g C in 1966). Effect on pools by 2024 (classic): total N
+  +8.2 g N/m² (2791.4 → 2799.5, in ORGN), SOC +0.4 g C, VEGC +0.1 g C, DWDN unchanged within 0.002.
+
+![N leak gaps](figures/fire_balance/n_leak_gaps.png)
+
+`n_leak_gaps.png`: annual N (left) and C (right) gap per year, leak fixes off vs on, classic, process and explicit
+fire. Runs (on the VM): `rbsmoke/runs/{F1c_onL,F1c_onLK,F1c_onLD,F1c_onLR,F1p_on,F1p_onL,F1p_onLK,E1on,E1onL,F1c_on}_fb4`,
+`runs/FB4_*`; cases `rbsmoke/cs/{F1c_onLK,F1c_onLD,F1c_onLR,F1p_onLK,E1onL}`. About 0.7 core-h (31 runs ≈ 0.5, builds and
+unit tests ≈ 0.2).
+
+Decisions for Elchin:
+
+1. Destination of the DWD N: top-layer ORGN (chosen: same place as litter N and the fire re-deposition, robust with
+   every `n_rootless_fix` setting). The alternative is top-layer AVLN (treat it as mineralised at once); it would
+   make the N available to plants and leaching a little sooner.
+2. The process-fire (Reburn) N gap of −15.4 g N over 75 yr, all in fire years, is not one of these two leaks: process
+   fire burns soil C with `BURNSOIL2AIRN = 0`, so the N of the burned soil is not booked (item 4 of the first decision
+   list). Fixing it is a separate change in the Reburn soil-burn accounting.
+3. The E1 C gap in fire years (+3.8 g C in the first fire) remains because `E1on` runs without
+   `layer_n_remap_fix`/`layer_bookkeep_fix` (see "Use with the layer fixes" above), not because of these switches.

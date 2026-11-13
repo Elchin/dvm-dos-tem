@@ -68,6 +68,9 @@ public:
 
   std::string report_fire_inputs();
 
+  // deadroot_n_route_fix (ModelData): pool for the N of fire-killed roots (orgn if 1, legacy somcr).
+  static double* deadRootNPool(BgcData* bdall, const int deadroot_n_route_fix);
+
 private:
 
   // There are two distinct types of fire "drivers":

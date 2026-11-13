@@ -628,6 +628,23 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     }
     fire_c_bookkeep_fix = v.asInt();
   }
+  // N leak fixes (0 = legacy, default). Refs: see ModelData.h.
+  {
+    Json::Value v = controldata["model_settings"].get("dwd_n_leak_fix", 0);
+    if (!bnf::valid_int(v, 0, 1)) {
+      std::cerr << "FATAL: model_settings.dwd_n_leak_fix must be 0 (legacy) or 1 (N released by woody-debris decomposition enters top-layer soil ORGN)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    dwd_n_leak_fix = v.asInt();
+  }
+  {
+    Json::Value v = controldata["model_settings"].get("deadroot_n_route_fix", 0);
+    if (!bnf::valid_int(v, 0, 1)) {
+      std::cerr << "FATAL: model_settings.deadroot_n_route_fix must be 0 (legacy) or 1 (fire-killed root N enters soil ORGN, not SOMCR)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    deadroot_n_route_fix = v.asInt();
+  }
   {
     const Json::Value& ss = controldata["stage_settings"];
     // Stage request: "fire" if present (Reburn), else the legacy "dsb" flag (backward compatible).
@@ -726,6 +743,7 @@ ModelData::ModelData():force_cmt(-1) {
   richards_dt_fix = 0; // bug R1 fix (off)
   frozen_layer_liq_cap = 0; // off (legacy)
   fire_n_redep_fix = 0; fire_c_bookkeep_fix = 0; // fire-balance fixes (off)
+  dwd_n_leak_fix = 0; deadroot_n_route_fix = 0;  // N leak fixes (off)
   fire = 0; fire_on_EQ = fire_on_SP = fire_on_TR = fire_on_SC = false; // Reburn master switch (off)
   fire_ignition_tr = 0; fire_ignition_sc = 0; fire_process_wildfire = false; fire_temp_fm = -1;
   snow_scheme = 0; snow_class_wind = -1.0; snow_diag = 0; // Schaefer 2009 snow classes (off)

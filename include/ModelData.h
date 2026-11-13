@@ -490,6 +490,15 @@ public:
   //     later fire is counted in the fire emissions (BURNVEG2AIRC/N) instead of vanishing.
   int fire_n_redep_fix;
   int fire_c_bookkeep_fix;
+  // N leak fixes (Elchin 2026-11-12), both OFF by default (0 = legacy, bit-identical to 06c41688).
+  // Integers 0/1 only (FATAL otherwise). See docs/WORK_NOTES_fire_balance.md.
+  //   dwd_n_leak_fix 1: the N released by woody-debris decomposition (RHWDEB * WDEBRISN/WDEBRISC)
+  //     goes to the organic N (ORGN) of the top soil layer. Legacy removed it from WDEBRISN with no
+  //     destination (N lost every month DWD decomposes).
+  //   deadroot_n_route_fix 1: the N of roots killed (not burned) by fire goes to soil ORGN by root
+  //     fraction. Legacy added it to the SOMCR carbon pool (N lost, the same mass of C created).
+  int dwd_n_leak_fix;
+  int deadroot_n_route_fix;
 
   // FW_MOD_START:
   // Switches to turn fire off for each run stage.  Fire in never on the pre-run stage:

@@ -917,6 +917,12 @@ int WildFire::getFRI(){
  * FW_NOTE: This code was extracted from burn() to make it more modular.  The interface is not ideal
  * due to the large number of return values.  These could be packed into a container object.
  */
+/** deadroot_n_route_fix: soil pool that receives the N of roots killed by fire. 1: soil organic N
+ *  (m_sois.orgn); 0 (legacy): the recalcitrant SOM carbon pool m_sois.somcr (N lost, C created). */
+double* WildFire::deadRootNPool(BgcData* bdall, const int deadroot_n_route_fix) {
+  return (deadroot_n_route_fix == 1) ? bdall->m_sois.orgn : bdall->m_sois.somcr;
+}
+
 void WildFire::burnVegetation(const int year, const double r_burn2bg_cn[NUM_PFT], double& comb_vegc,
                               double& comb_vegn, double& dead_bg_vegc, double& dead_bg_vegn,
                               double& reta_vegc, double& reta_vegn)//Name? vegMortAndCombustion()
@@ -1021,10 +1027,11 @@ void WildFire::burnVegetation(const int year, const double r_burn2bg_cn[NUM_PFT]
 
       // For the dead below-ground N caused by fire, they are put into original layer
       double deadn_tmp = bd[ip]->m_vegs.strn[I_root] * r_dead2bg_cn; //this is needed below
+      double* deadn_pool = deadRootNPool(bdall, md.deadroot_n_route_fix);   // legacy: somcr (see ModelData.h)
       for (int il =0; il <cd->m_soil.numsl; il++) {
         if (cd->m_soil.frootfrac[il][ip] > 0.0) {
           //for this, 'rootfrac' must be updated above
-          bdall->m_sois.somcr[il] += deadn_tmp * cd->m_soil.frootfrac[il][ip];
+          deadn_pool[il] += deadn_tmp * cd->m_soil.frootfrac[il][ip];
         }
       }
       dead_bg_vegn += deadn_tmp;

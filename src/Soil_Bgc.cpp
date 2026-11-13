@@ -2779,6 +2779,9 @@ void Soil_Bgc::deltastate() {
     if (tmp_sois.wdebrisc > 0.) {
       del_sois.wdebrisn = d2wdebrisn;
       del_sois.wdebrisn -=del_soi2a.rhwdeb*tmp_sois.wdebrisn/tmp_sois.wdebrisc;
+      if (dwd_n_leak_fix == 1) {   // N released with the DWD respiration -> top-layer ORGN (see ModelData.h)
+        del_sois.orgn[0] += del_soi2a.rhwdeb*tmp_sois.wdebrisn/tmp_sois.wdebrisc;
+      }
     }
   } // end of 'if (this->nfeed == 1)'
 };

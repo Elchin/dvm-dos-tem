@@ -384,6 +384,7 @@ void Cohort::initialize_state_parameters() {
   soilbgc.rh_frozen_mode = md->rh_frozen_mode;           // v5q-rh-frozen (0 = legacy)
   soilbgc.n_leach_curn_fix = md->n_leach_curn_fix;     // v5q-leach-curn (0 = legacy)
   soilbgc.fire_n_redep_fix = md->fire_n_redep_fix;     // fire-balance fix (0 = legacy)
+  soilbgc.dwd_n_leak_fix = md->dwd_n_leak_fix;         // N leak fix (0 = legacy)
   ground.layer_n_remap_fix = md->layer_n_remap_fix;    // v5q-layern-fix (0 = legacy)
   ground.layer_bookkeep_fix = md->layer_bookkeep_fix;  // v5q-layer-bookkeep (0 = legacy)
   ground.organic.humic_max_thick = md->humic_max_thick; // v5q-humic-stefan (0 = off)

@@ -343,6 +343,8 @@ public:
   int n_leach_curn_fix = 0;
   // fire_n_redep_fix (model_settings, 0 = legacy): see ModelData.h.
   int fire_n_redep_fix = 0;
+  // dwd_n_leak_fix (model_settings, 0 = legacy): see ModelData.h.
+  int dwd_n_leak_fix = 0;
   void setFireNRedepInput();
   // pure helper (unit-tested): sum over the drainage zone of max(0, avln[i])*fdz[i], zone and fdz
   // exactly as prepareIntegration() builds totdzavln.

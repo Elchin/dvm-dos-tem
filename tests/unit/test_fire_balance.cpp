@@ -224,3 +224,69 @@ TEST_CASE("restart continuity of the standing-dead fall: restored deadc0 + mthsd
 }
 
 }
+
+// ---- N leak fixes (dwd_n_leak_fix, deadroot_n_route_fix), both 0 (legacy) by default ----
+#include "../../include/WildFire.h"
+
+TEST_SUITE("fire_balance") {
+
+TEST_CASE("N leak switches: default 0 everywhere; integers 0/1 only, anything else FATAL") {
+  ModelData md; CHECK(md.dwd_n_leak_fix == 0); CHECK(md.deadroot_n_route_fix == 0);
+  ModelData mj(fbm("fire", 1)); CHECK(mj.dwd_n_leak_fix == 0); CHECK(mj.deadroot_n_route_fix == 0);
+  Soil_Bgc sb; CHECK(sb.dwd_n_leak_fix == 0);
+  for (const char* k : {"dwd_n_leak_fix", "deadroot_n_route_fix"}) {
+    CAPTURE(k);
+    CHECK(ut::exit_status_of([k] { ModelData m(fbm(k, 0)); }) == 0);
+    CHECK(ut::exit_status_of([k] { ModelData m(fbm(k, 1)); }) == 0);
+    CHECK(ut::exit_status_of([k] { ModelData m(fbm(k, 2)); }) == EXIT_FAILURE);
+    CHECK(ut::exit_status_of([k] { ModelData m(fbm(k, -1)); }) == EXIT_FAILURE);
+    CHECK(ut::exit_status_of([k] { ModelData m(fbm(k, 0.5)); }) == EXIT_FAILURE);
+    CHECK(ut::exit_status_of([k] { ModelData m(fbm(k, "1")); }) == EXIT_FAILURE);
+  }
+  CHECK(ModelData(fbm("dwd_n_leak_fix", 1)).dwd_n_leak_fix == 1);
+  CHECK(ModelData(fbm("deadroot_n_route_fix", 1)).deadroot_n_route_fix == 1);
+}
+
+TEST_CASE("DWD decomposition N: legacy loses RHWDEB*N/C every month, dwd_n_leak_fix 1 puts it in top-layer ORGN") {
+  const double wc = 400.0, wn = 2.0, rh = 0.8, fall_n = 0.004;   // g/m2, monthly
+  const double released = rh * wn / wc;                            // 0.004 g N/m2/month
+  FbSoil leg(3, 0), fix(3, 0);
+  fix.sb.dwd_n_leak_fix = 1;
+  for (FbSoil* s : {&leg, &fix}) {
+    s->sb.tmp_sois.wdebrisc = wc; s->sb.tmp_sois.wdebrisn = wn;
+    s->sb.del_soi2a.rhwdeb = rh; s->sb.d2wdebrisc = 0.2; s->sb.d2wdebrisn = fall_n;
+    s->sb.deltastate();
+  }
+  for (FbSoil* s : {&leg, &fix}) CHECK(s->sb.del_sois.wdebrisn == doctest::Approx(fall_n - released).epsilon(1e-14));
+  CHECK(fix.sb.del_sois.orgn[0] - leg.sb.del_sois.orgn[0] == doctest::Approx(released).epsilon(1e-12));
+  for (int i = 1; i < 3; ++i) CHECK(fix.sb.del_sois.orgn[i] == leg.sb.del_sois.orgn[i]);
+  for (int i = 0; i < 3; ++i) CHECK(fix.sb.del_sois.avln[i] == leg.sb.del_sois.avln[i]);
+  // N balance of soil + DWD with the DWD fall as the only external input
+  auto gap = [&](FbSoil& s) { return s.dN() + s.sb.del_sois.wdebrisn - s.internal() - fall_n; };
+  CHECK(gap(leg) == doctest::Approx(-released).epsilon(1e-12));   // legacy leak
+  CHECK(gap(fix) == doctest::Approx(0.0).epsilon(1e-12));
+  // no DWD: the fix adds nothing (no division by zero)
+  FbSoil empty(3, 0); empty.sb.dwd_n_leak_fix = 1; empty.sb.deltastate();
+  FbSoil empty0(3, 0); empty0.sb.deltastate();
+  CHECK(empty.sb.del_sois.orgn[0] == empty0.sb.del_sois.orgn[0]);
+}
+
+TEST_CASE("fire-killed root N: legacy goes to SOMCR (a C pool), deadroot_n_route_fix 1 to soil ORGN") {
+  BgcData bd;
+  for (int i = 0; i < MAX_SOI_LAY; ++i) { bd.m_sois.orgn[i] = 5.0; bd.m_sois.somcr[i] = 300.0; }
+  CHECK(WildFire::deadRootNPool(&bd, 0) == bd.m_sois.somcr);
+  CHECK(WildFire::deadRootNPool(&bd, 1) == bd.m_sois.orgn);
+  // burnVegetation distributes deadn by root fraction into the returned pool
+  const double deadn = 0.9, frac[3] = {0.5, 0.3, 0.2};
+  for (int fix : {0, 1}) {
+    BgcData b = bd; double* p = WildFire::deadRootNPool(&b, fix);
+    for (int il = 0; il < 3; ++il) p[il] += deadn * frac[il];
+    double dN = 0, dC = 0;
+    for (int il = 0; il < 3; ++il) { dN += b.m_sois.orgn[il] - 5.0; dC += b.m_sois.somcr[il] - 300.0; }
+    CAPTURE(fix);
+    CHECK(dN == doctest::Approx(fix ? deadn : 0.0).epsilon(1e-14));
+    CHECK(dC == doctest::Approx(fix ? 0.0 : deadn).epsilon(1e-11));   // legacy: N mass turned into C
+  }
+}
+
+}
