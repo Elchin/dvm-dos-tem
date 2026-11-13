@@ -1836,6 +1836,33 @@ void Cohort::getBd4allveg_monthly() {
 }
 
 
+/** fire-balance fixes (fire_c_bookkeep_fix or fire_n_redep_fix 1): months since the last fire and
+ * the post-fire standing-dead pools deadc0/deadn0 from the restart, so the re-deposition window and
+ * the standing-dead fall resume exactly. Old restarts without them: legacy behaviour plus a warning.
+ * Both switches 0: nothing is read or changed (bit-identical).
+ */
+void Cohort::set_fire_state_from_restartdata() {
+  if (md->fire_c_bookkeep_fix != 1 && md->fire_n_redep_fix != 1) { return; }
+  if (restartdata.has_fire_state) {
+    cd.mthsdist = restartdata.mthsdist;
+    for (int ip = 0; ip < NUM_PFT; ip++) {
+      if (cd.m_veg.vegcov[ip] > 0.0) {
+        if (restartdata.deadc0[ip] != MISSING_D) { bd[ip].m_vegs.deadc0 = restartdata.deadc0[ip]; }
+        if (restartdata.deadn0[ip] != MISSING_D) { bd[ip].m_vegs.deadn0 = restartdata.deadn0[ip]; }
+      }
+    }
+  } else {
+    static bool warned = false;
+    if (!warned) {
+      std::cerr << "WARNING: restart file has no fire state (fire_mthsdist, fire_deadc0, fire_deadn0; "
+                << "written by runs with fire_c_bookkeep_fix or fire_n_redep_fix = 1). Months since fire "
+                << "and the standing-dead fall start as before (legacy behaviour)." << std::endl;
+      warned = true;
+    }
+    BOOST_LOG_SEV(glg, warn) << "restart has no fire state; legacy months-since-fire / standing-dead fall.";
+  }
+}
+
 /** Synchronizes Cohort and CohortData's internal fields from the
  * RestartData object.
 */
@@ -1858,6 +1885,7 @@ void Cohort::set_state_from_restartdata() {
     vegbgc[ii].set_state_from_restartdata(this->restartdata);
     vegenv[ii].set_state_from_restartdata(this->restartdata);
   }
+  set_fire_state_from_restartdata();   // fire-balance fixes (no-op when both switches are 0)
 
   //  FIX: how to handle ground?? and snwstate_dim?? Looks like it is
   //  used for both m_snow and d_snow and y_snow??? which to update???
@@ -1890,6 +1918,10 @@ void Cohort::set_restartdata_from_state() {
 
   // vegetation
   restartdata.yrsdist     = cd.yrsdist;
+  if (md->fire_c_bookkeep_fix == 1 || md->fire_n_redep_fix == 1) {   // fire-balance fixes: fire state
+    restartdata.write_fire_state = true;
+    restartdata.mthsdist = cd.mthsdist;
+  }
 
   for (int ip = 0; ip < NUM_PFT; ip++) {
     if (cd.m_veg.vegcov[ip] > 0.0) {
@@ -1917,6 +1949,10 @@ void Cohort::set_restartdata_from_state() {
       restartdata.labn[ip]         = bd[ip].m_vegs.labn;
       restartdata.deadc[ip]        = bd[ip].m_vegs.deadc;
       restartdata.deadn[ip]        = bd[ip].m_vegs.deadn;
+      if (md->fire_c_bookkeep_fix == 1 || md->fire_n_redep_fix == 1) {   // fire-balance fixes
+        restartdata.deadc0[ip] = bd[ip].m_vegs.deadc0;
+        restartdata.deadn0[ip] = bd[ip].m_vegs.deadn0;
+      }
       restartdata.eetmx[ip]        = cd.m_vegd.eetmx[ip];
       restartdata.topt[ip]         = cd.m_vegd.topt[ip];
       restartdata.unnormleaf[ip]   = cd.m_vegd.unnormleaf[ip];

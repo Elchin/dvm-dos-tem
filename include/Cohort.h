@@ -111,6 +111,7 @@ public :
                      const int & dinmcurr, std::string stage);
   
   void set_state_from_restartdata();
+  void set_fire_state_from_restartdata();   // fire-balance fixes
   void set_restartdata_from_state();
 
   // Overwrites/fills climate containers with data from projected climate file

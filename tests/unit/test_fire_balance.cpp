@@ -151,3 +151,76 @@ TEST_CASE("DWD side: Soil_Bgc::deltastate adds the monthly fall to woody debris 
 }
 
 }
+
+// ---- restart round trip of the fire state (fire_mthsdist, fire_deadc0, fire_deadn0) ----
+#include "nc_fixtures.h"
+#include <unistd.h>
+namespace {
+// minimal restart-like file: dims Y, X, pft and the deadc (Y,X,pft) variable the writer takes its dims from
+std::string fb_restart_file(const char* tag, int ny = 2, int nx = 3) {
+  std::string fn = std::string("/tmp/ut_fire_restart_") + tag + "_" + std::to_string(getpid()) + ".nc";
+  int nc, dy, dx, dp, v;
+  ut::ncchk(nc_create(fn.c_str(), NC_CLOBBER | NC_NETCDF4, &nc));
+  ut::ncchk(nc_def_dim(nc, "Y", ny, &dy)); ut::ncchk(nc_def_dim(nc, "X", nx, &dx)); ut::ncchk(nc_def_dim(nc, "pft", NUM_PFT, &dp));
+  int d3[3] = {dy, dx, dp};
+  ut::ncchk(nc_def_var(nc, "deadc", NC_DOUBLE, 3, d3, &v));
+  ut::ncchk(nc_close(nc));
+  return fn;
+}
+}
+
+TEST_SUITE("fire_balance") {
+
+TEST_CASE("restart fire state: off by default, reinitValue clears it; written only when write_fire_state") {
+  RestartData r; r.reinitValue();
+  CHECK_FALSE(r.write_fire_state); CHECK_FALSE(r.has_fire_state);
+  CHECK(r.mthsdist == MISSING_I); CHECK(r.deadc0[0] == MISSING_D); CHECK(r.deadn0[NUM_PFT - 1] == MISSING_D);
+  // a file without the variables (old restart, or switches 0): read leaves has_fire_state false, values MISSING
+  std::string fn = fb_restart_file("old");
+  r.mthsdist = 5; r.deadc0[0] = 1.0;
+  r.read_px_fire_vars(fn, 1, 2);
+  CHECK_FALSE(r.has_fire_state); CHECK(r.mthsdist == MISSING_I); CHECK(r.deadc0[0] == MISSING_D);
+  int nc, nv; ut::ncchk(nc_open(fn.c_str(), NC_NOWRITE, &nc)); ut::ncchk(nc_inq_nvars(nc, &nv)); nc_close(nc);
+  CHECK(nv == 1);   // nothing added by reading
+  std::remove(fn.c_str());
+}
+
+TEST_CASE("restart fire state round trip: mthsdist, deadc0, deadn0 per pixel and PFT come back exactly") {
+  std::string fn = fb_restart_file("rt");
+  RestartData w; w.reinitValue();
+  w.mthsdist = 41;
+  for (int ip = 0; ip < NUM_PFT; ip++) { w.deadc0[ip] = 76.7231 + 0.1 * ip; w.deadn0[ip] = 0.153 / (ip + 1); }
+  w.write_px_fire_vars(fn, 1, 2);
+  RestartData w2; w2.reinitValue(); w2.mthsdist = 7;
+  for (int ip = 0; ip < NUM_PFT; ip++) { w2.deadc0[ip] = 3.0; w2.deadn0[ip] = 0.06; }
+  w2.write_px_fire_vars(fn, 0, 0);           // second pixel: variables already defined
+  RestartData r; r.reinitValue();
+  r.read_px_fire_vars(fn, 1, 2);
+  REQUIRE(r.has_fire_state);
+  CHECK(r.mthsdist == 41);
+  for (int ip = 0; ip < NUM_PFT; ip++) { CHECK(r.deadc0[ip] == w.deadc0[ip]); CHECK(r.deadn0[ip] == w.deadn0[ip]); }
+  RestartData r2; r2.reinitValue(); r2.read_px_fire_vars(fn, 0, 0);
+  CHECK(r2.mthsdist == 7); CHECK(r2.deadc0[NUM_PFT - 1] == 3.0);
+  RestartData r3; r3.reinitValue(); r3.read_px_fire_vars(fn, 0, 1);   // pixel never written: fill values
+  CHECK(r3.has_fire_state); CHECK(r3.mthsdist == MISSING_I); CHECK(r3.deadc0[0] == MISSING_D);
+  std::remove(fn.c_str());
+}
+
+TEST_CASE("restart continuity of the standing-dead fall: restored deadc0 + mthsdist resume the exact schedule") {
+  const double d0 = 72.0;
+  FbVeg cont(1, d0, d0, 0);
+  for (int m = 0; m < 50; ++m) cont.month();
+  // restart after 50 months: deadc from the restart, deadc0 and mthsdist restored (fix) vs lost (legacy restart)
+  FbVeg rest(1, cont.bd.m_vegs.deadc, cont.bd.m_vegs.deadc0, cont.cd.mthsdist);
+  FbVeg lost(1, cont.bd.m_vegs.deadc, 0.0, 0);
+  for (int m = 50; m < 120; ++m) {
+    CAPTURE(m);
+    const double fc = cont.month(), fr = rest.month(); lost.month();
+    CHECK(fr == fc);
+  }
+  CHECK(rest.bd.m_vegs.deadc == cont.bd.m_vegs.deadc);
+  CHECK(rest.bd.m_vegs.deadc == doctest::Approx(0.0).epsilon(1e-12));   // fall window over at month 108
+  CHECK(lost.bd.m_vegs.deadc > 1.0);   // legacy restart: a new 9-yr schedule starts at the restart
+}
+
+}

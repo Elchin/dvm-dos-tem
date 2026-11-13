@@ -1,0 +1,34 @@
+{
+ "F1c_on": {
+  "spin_fire_month": "spin yr 15 m6",
+  "emitted_N": 170.33,
+  "redeposited_N": 221.429,
+  "ratio": 1.3,
+  "months_depositing": 234,
+  "main_redep_total": 945.67
+ },
+ "F1c_on_fb3": {
+  "spin_fire_month": "spin yr 15 m6",
+  "emitted_N": 170.33,
+  "redeposited_N": 170.33,
+  "ratio": 1.0,
+  "months_depositing": 180,
+  "main_redep_total": 734.92
+ },
+ "E1on_fb2": {
+  "spin_fire_month": "spin yr 15 m6",
+  "emitted_N": 170.33,
+  "redeposited_N": 1.703,
+  "ratio": 0.01,
+  "months_depositing": 240,
+  "main_redep_total": 1.65
+ },
+ "E1on_fb3": {
+  "spin_fire_month": "spin yr 15 m6",
+  "emitted_N": 170.33,
+  "redeposited_N": 1.703,
+  "ratio": 0.01,
+  "months_depositing": 240,
+  "main_redep_total": 1.65
+ }
+}

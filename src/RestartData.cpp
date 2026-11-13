@@ -274,6 +274,8 @@ MPI_Datatype RestartData::register_mpi_datatype() {
 
 void RestartData::reinitValue() {
   d2m_ald_prevyr = MISSING_D;   // v5q-d2m-gate
+  write_fire_state = false; has_fire_state = false; mthsdist = MISSING_I;   // fire-balance fixes
+  for (int ip = 0; ip < NUM_PFT; ip++) { deadc0[ip] = MISSING_D; deadn0[ip] = MISSING_D; }
   // atmosphere
   dsr         = MISSING_I;
   firea2sorgn = MISSING_D;
@@ -427,6 +429,7 @@ void RestartData::update_from_ncfile(const std::string& fname, const int rowidx,
 
   read_px_d2m_vars(fname, rowidx, colidx);   // v5q-d2m-gate (optional variable)
   read_px_puddle_vars(fname, rowidx, colidx); // phase 3 v2 (optional puddle ice / liquid)
+  read_px_fire_vars(fname, rowidx, colidx);   // fire-balance fixes (optional fire state)
 
   BOOST_LOG_SEV(glg, debug) << "Done reading data from file into RestartData.";
 }
@@ -461,6 +464,7 @@ void RestartData::write_pixel_to_ncfile(const std::string& fname, const int rowi
 
   if (d2m_ald_prevyr >= 0.0) { write_px_d2m_vars(fname, rowidx, colidx); }   // v5q-d2m-gate
   if (write_puddle) { write_px_puddle_vars(fname, rowidx, colidx); }        // phase 3 v2
+  if (write_fire_state) { write_px_fire_vars(fname, rowidx, colidx); }      // fire-balance fixes
 
   BOOST_LOG_SEV(glg, debug) << "Done writing RestartData.";
 
@@ -495,6 +499,64 @@ void RestartData::write_px_d2m_vars(const std::string& fname, const int rowidx, 
   }
   size_t start[2] = {(size_t)rowidx, (size_t)colidx};
   temutil::nc( nc_put_var1_double(ncid, cv, start, &d2m_ald_prevyr) );
+  temutil::nc( nc_close(ncid) );
+#endif
+}
+
+/** fire-balance fixes: optional fire state fire_mthsdist (Y,X), fire_deadc0 / fire_deadn0 (Y,X,pft).
+ *  has_fire_state = all three present; otherwise the members stay MISSING (old restarts). */
+void RestartData::read_px_fire_vars(const std::string& fname, const int rowidx, const int colidx) {
+  has_fire_state = false;
+  mthsdist = MISSING_I;
+  for (int ip = 0; ip < NUM_PFT; ip++) { deadc0[ip] = MISSING_D; deadn0[ip] = MISSING_D; }
+  int ncid, vm, vc, vn;
+  temutil::nc( nc_open(fname.c_str(), NC_NOWRITE, &ncid), fname );
+  if (nc_inq_varid(ncid, "fire_mthsdist", &vm) == NC_NOERR && nc_inq_varid(ncid, "fire_deadc0", &vc) == NC_NOERR
+      && nc_inq_varid(ncid, "fire_deadn0", &vn) == NC_NOERR) {
+    size_t s2[2] = {(size_t)rowidx, (size_t)colidx};
+    size_t s3[3] = {(size_t)rowidx, (size_t)colidx, 0};
+    size_t c3[3] = {1, 1, NUM_PFT};
+    temutil::nc( nc_get_var1_int(ncid, vm, s2, &mthsdist) );
+    temutil::nc( nc_get_vara_double(ncid, vc, s3, c3, &deadc0[0]) );
+    temutil::nc( nc_get_vara_double(ncid, vn, s3, c3, &deadn0[0]) );
+    has_fire_state = true;
+  }
+  temutil::nc( nc_close(ncid) );
+}
+
+/** fire-balance fixes: define the fire-state variables if needed and write this pixel (serial builds). */
+void RestartData::write_px_fire_vars(const std::string& fname, const int rowidx, const int colidx) {
+#ifdef WITHMPI
+  BOOST_LOG_SEV(glg, warn) << "fire state (fire_mthsdist, fire_deadc0/n0) not written to the restart in MPI builds.";
+#else
+  int ncid, vm = -1, vc = -1, vn = -1;
+  temutil::nc( nc_open(fname.c_str(), NC_WRITE, &ncid), fname );
+  bool need = (nc_inq_varid(ncid, "fire_mthsdist", &vm) != NC_NOERR) || (nc_inq_varid(ncid, "fire_deadc0", &vc) != NC_NOERR)
+              || (nc_inq_varid(ncid, "fire_deadn0", &vn) != NC_NOERR);
+  if (need) {
+    int dv; temutil::nc( nc_inq_varid(ncid, "deadc", &dv) );   // (Y,X,pft), as the standing-dead pools
+    int d3[3]; temutil::nc( nc_inq_vardimid(ncid, dv, d3) );
+    temutil::nc( nc_redef(ncid) );
+    if (nc_inq_varid(ncid, "fire_mthsdist", &vm) != NC_NOERR) {
+      temutil::nc( nc_def_var(ncid, "fire_mthsdist", NC_INT, 2, d3, &vm) );
+      temutil::nc( nc_put_att_int(ncid, vm, "_FillValue", NC_INT, 1, &MISSING_I) );
+    }
+    if (nc_inq_varid(ncid, "fire_deadc0", &vc) != NC_NOERR) {
+      temutil::nc( nc_def_var(ncid, "fire_deadc0", NC_DOUBLE, 3, d3, &vc) );
+      temutil::nc( nc_put_att_double(ncid, vc, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
+    }
+    if (nc_inq_varid(ncid, "fire_deadn0", &vn) != NC_NOERR) {
+      temutil::nc( nc_def_var(ncid, "fire_deadn0", NC_DOUBLE, 3, d3, &vn) );
+      temutil::nc( nc_put_att_double(ncid, vn, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
+    }
+    temutil::nc( nc_enddef(ncid) );
+  }
+  size_t s2[2] = {(size_t)rowidx, (size_t)colidx};
+  size_t s3[3] = {(size_t)rowidx, (size_t)colidx, 0};
+  size_t c3[3] = {1, 1, NUM_PFT};
+  temutil::nc( nc_put_var1_int(ncid, vm, s2, &mthsdist) );
+  temutil::nc( nc_put_vara_double(ncid, vc, s3, c3, &deadc0[0]) );
+  temutil::nc( nc_put_vara_double(ncid, vn, s3, c3, &deadn0[0]) );
   temutil::nc( nc_close(ncid) );
 #endif
 }

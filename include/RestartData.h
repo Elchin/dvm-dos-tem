@@ -66,6 +66,18 @@ public :
   void read_px_puddle_vars(const std::string& fname, const int rowidx, const int colidx);
   void write_px_puddle_vars(const std::string& fname, const int rowidx, const int colidx);
   static int read_thermal_solver_attr(const std::string& fname);
+  // fire-balance fixes: optional fire state, written only when fire_c_bookkeep_fix or
+  // fire_n_redep_fix is 1 (write_fire_state, set by Cohort), so restart files of runs with both
+  // switches 0 are unchanged. NetCDF: fire_mthsdist (Y,X) int, fire_deadc0 / fire_deadn0
+  // (Y,X,pft) double. On read has_fire_state is true only if all three exist (old restarts: false).
+  // Serial builds only (not in the MPI datatype, like d2m_ald_prevyr).
+  bool write_fire_state = false;
+  bool has_fire_state = false;
+  int mthsdist;
+  double deadc0[NUM_PFT];
+  double deadn0[NUM_PFT];
+  void read_px_fire_vars(const std::string& fname, const int rowidx, const int colidx);
+  void write_px_fire_vars(const std::string& fname, const int rowidx, const int colidx);
 
   int chtid;
 

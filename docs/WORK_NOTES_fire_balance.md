@@ -129,7 +129,7 @@ on the VM (copy in `tests/regression/reburn/analyze_fire_balance.py`). About 0.7
 
 ## Decisions for Elchin
 
-1. **Restart and the re-deposition window.** `mthsdist` (and `deadc0/deadn0`) are not in the restart file;
+1. **Restart and the re-deposition window** (fixed, see "Fire state in the restart file" below). `mthsdist` (and `deadc0/deadn0`) are not in the restart file;
    `mthsdist` restarts at 0, so with `fire_n_redep_fix = 1` a fire late in the spin-up deposits for up to one more
    full FRI in the main stage (here 5 yr in spin + 15 yr in main of `emitted/FRI`, ≈ 1/3 too much). The balance
    still closes (the input is what `BURNAIR2SOILN` reports), but the "return all emitted N in one FRI" total does
@@ -145,3 +145,78 @@ on the VM (copy in `tests/regression/reburn/analyze_fire_balance.py`). About 0.7
    output also counts PFTs with no cover (115 vs 77 g in 1965, output only); process fire soil N not burned/reported
    (`BURNSOIL2AIRN = 0`), which with the N fix shows up as −6 to −9 g N in process-fire years;
    `CohortData::fri` is read uninitialised in the legacy path (kept for bit identity).
+
+## Fire state in the restart file (2026-11-12, follow-up)
+
+Elchin: "Add the fire state to the restart file behind the switch, test it, then push". This fixes the
+restart issue from decision 1 above.
+
+**What is written.** When `fire_c_bookkeep_fix = 1` or `fire_n_redep_fix = 1`, the restart file (`restart-*.nc`)
+gets three new variables. With both switches 0 nothing new is written or read, so the restart files are unchanged.
+
+| variable | dims | type | content |
+|---|---|---|---|
+| `fire_mthsdist` | (Y, X) | int, `_FillValue` −9999 | months since the last fire (`CohortData::mthsdist`): the 108-month standing-dead fall window and the FRI×12-month re-deposition window |
+| `fire_deadc0` | (Y, X, pft) | double, `_FillValue` −9999 | standing-dead C right after the last fire (sets the fall rate `deadc0/108`) |
+| `fire_deadn0` | (Y, X, pft) | double, `_FillValue` −9999 | standing-dead N right after the last fire |
+
+The rest of the fire state was already in the restart: `firea2sorgn` (re-deposition rate), `deadc`/`deadn`,
+`yrsdist`. `d2wdebrisc/n` are recomputed every month with `fire_c_bookkeep_fix = 1`. `comb_deadc` lives only inside one
+burn, so neither needs saving.
+Code: `RestartData::{read,write}_px_fire_vars` (optional variables, added to an existing file the same way as
+`d2m_ald_prevyr`; serial builds only), `Cohort::set_fire_state_from_restartdata()` (called last in
+`set_state_from_restartdata`) and the writes in `Cohort::set_restartdata_from_state`.
+
+**Old restart files** (no `fire_*` variables) still load. With a switch on, the model prints once
+`WARNING: restart file has no fire state (...). Months since fire and the standing-dead fall start as before (legacy
+behaviour).` and keeps the previous behaviour (the month counter starts at 0 and the fall uses `deadc/(108-m)`). The warning
+showed up in the spin-up of the test case, which starts from the case's old `restart0.nc`.
+
+**Tests**
+
+- Bit identity, both switches 0, this commit vs 19af750f (binary `dvmdostem_fb2`), all NetCDF outputs and restart
+  files: 16 regression cases (8 `leg` + 8 `s4_f1`, spin-up + main = 32 stage folders) and the fire cases E1
+  (classic explicit), F1c (classic FRI), F1p (process), F0g, F1cdbg (10 stage folders): **42/42 identical,
+  0 differences** (restart files have no new variables).
+- Restart continuity, both fixes on. Case: TVC explicit classic fire 1965/1980/1995/2010. The main stage was run in
+  one piece (75 yr) and again split at 1985, 5 yr after the 1980 fire (inside both the standing-dead window and the
+  re-deposition window). Part A covered 1950–1984. Part B covered 1985–2024 from A's `restart-sc.nc`, with the projected
+  climate and the explicit-fire file sliced by 35 yr (CO2 follows the calendar year of the climate file). Part B was
+  compared with 1985–2024 of the continuous run (`compare_split.py`):
+
+  | run, split vs continuous | DEADC max abs diff | DWDC | DEADN | BURNAIR2SOILN | DEADC in the first year after the split |
+  |---|---|---|---|---|---|
+  | new (fire state in restart) | **0.00057 g C** (3e-5 rel.) | 0.0018 | 4e-5 | 2e-8 | **0.0** |
+  | old, 19af750f, fixes on | 5.78 g C (34 %) | 4.81 | 0.33 | 3.5e-5 | 1.39 |
+  | fixes off (legacy) | 13.0 g C (77 %) | 20.4 | 0.67 | 5.5e-4 | 2.83 |
+
+  The remaining differences are not fire-related. They appear the same in all three split runs (for example soil
+  temperature up to 0.75 K in the first month, SOC 0.013 g, NPP 0.0013 g, ORGN 0.0019 g), because the dvmdostem
+  restart does not restore the full thermal and snow state. That is why the split is not bit-identical: 5 of 101 output variables are identical
+  in each split run, and 30–31 of 64–67 restart variables at the end. With the new restart, the fire pools follow
+  the continuous run to that same noise level. With the old one they jump: the standing dead restarts a new 9-yr fall.
+- Spin-up → main overshoot (classic FRI 15, spin-up fire in July of spin-up year 15, both fixes on), N re-deposited
+  from the spin-up fire until the next fire (`redep_overshoot.py`):
+
+  | binary | emitted N | re-deposited N | ratio | months depositing | all re-deposition in the main stage |
+  |---|---|---|---|---|---|
+  | 19af750f | 170.33 | 221.43 | **1.30** | 234 | 945.7 g N |
+  | new | 170.33 | 170.33 | **1.000** | 180 (= FRI × 12) | 734.9 g N |
+
+- Unit tests (suite `fire_balance`, now 8 cases, 154 assertions, all pass), with three new cases: the fire state is
+  off by default, `reinitValue()` clears it, and reading a file without the variables leaves them MISSING and adds
+  nothing; a round trip of `fire_mthsdist`, `fire_deadc0`, `fire_deadn0` for two pixels plus a never-written pixel
+  (fill values); and the standing-dead fall resuming after a restart month for month exactly with the restored state
+  (a legacy restart starts a new schedule). Full suite: 398/398 test cases pass (the 8 known may-fail assertions are
+  unchanged).
+
+![restart continuity](figures/fire_balance/restart_continuity.png)
+
+`restart_continuity.png`, left: standing-dead C after the 1980 fire, continuous vs restarted in 1985, new vs old
+restart. Right: cumulative N re-deposited from the spin-up fire, old (1.30 × emitted) vs new (1.00 × emitted). Numbers
+are in `split_summary.json` and `overshoot.json`. Scripts are in `tests/regression/reburn/` (`split_run.py`,
+`compare_split.py`, `redep_overshoot.py`, `plot_restart_continuity.py`). Runs (on the VM):
+`rbsmoke/runs/E1on_fb{2,3}{,_split}`, `E1_fb3{,_split}`, `F1c_on_fb3`, `runs/FB3_*`. About 0.55 core-h.
+
+Decision for Elchin: with explicit fire the re-deposition rate is `emitted / fri` with `fri` from `fri-fire.nc`. In
+this test case `fri = 2000` yr, so only about 1 % of the emitted N comes back in 20 yr. That is unchanged here.
