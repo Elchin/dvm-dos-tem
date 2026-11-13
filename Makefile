@@ -5,7 +5,7 @@
 # -DGNU_FPE for various Linux
 
 CC=g++
-CFLAGS=-c -ansi -g -gdwarf-2 -std=c++11 -fPIC -DBOOST_ALL_DYN_LINK -Werror # -W -Wall -Werror -Wno-system-headers
+CFLAGS=-c -ansi -g -gdwarf-2 -std=c++20 -fPIC -DBOOST_ALL_DYN_LINK -Werror # -W -Wall -Werror -Wno-system-headers
 # Optional extra optimization/debug tuning flags (e.g., OPTFLAGS='-O3 -DNDEBUG').
 OPTFLAGS ?=
 
@@ -59,7 +59,7 @@ $(shell mkdir -p obj)
 
 APPNAME=dvmdostem
 LIBDIR=$(SITE_SPECIFIC_LIBS)
-INCLUDES=$(SITE_SPECIFIC_INCLUDES)
+INCLUDES=$(SITE_SPECIFIC_INCLUDES) -I external/Fireweed/C++  -I external/Burnup/C++
 SOURCES= 	src/TEM.o \
 		src/TEMLogger.o \
 		src/CalController.o \
@@ -108,7 +108,24 @@ SOURCES= 	src/TEM.o \
 		src/ParentLayer.o \
 		src/SnowLayer.o \
 		src/SnowClass.o \
-		src/SoilLayer.o
+		src/SoilLayer.o \
+		src/FW_Interface.o \
+		src/GFProfile.o \
+		src/GroundFire.o \
+		external/Fireweed/C++/FireweedCrownFireScottReinhardt.o \
+		external/Fireweed/C++/FireweedDeadFuelMoistureFosberg.o \
+		external/Fireweed/C++/FireweedFuelModels.o \
+		external/Fireweed/C++/FireweedFuelTools.o \
+		external/Fireweed/C++/FireweedLiveFuelMoistureGSI.o \
+		external/Fireweed/C++/FireweedMessaging.o \
+		external/Fireweed/C++/FireweedMetUtils.o \
+		external/Fireweed/C++/FireweedRAFireSpread.o \
+		external/Fireweed/C++/FireweedStringUtils.o \
+		external/Fireweed/C++/FireweedUtils.o \
+		external/Fireweed/C++/FireweedUnits.o \
+		external/Burnup/C++/BurnupHistory.o \
+		external/Burnup/C++/BurnupCore.o \
+		external/Burnup/C++/BurnupFuelModelInterface.o
 
 OBJECTS =	ArgHandler.o \
 		TEMLogger.o \
@@ -157,7 +174,24 @@ OBJECTS =	ArgHandler.o \
 		SnowLayer.o \
 		SnowClass.o \
 		SoilLayer.o \
-		TemperatureUpdator.o
+		TemperatureUpdator.o \
+		FW_Interface.o \
+		GFProfile.o \
+		GroundFire.o \
+		FireweedCrownFireScottReinhardt.o \
+		FireweedDeadFuelMoistureFosberg.o \
+		FireweedFuelModels.o \
+		FireweedFuelTools.o \
+		FireweedLiveFuelMoistureGSI.o \
+		FireweedMessaging.o \
+		FireweedMetUtils.o \
+		FireweedRAFireSpread.o \
+		FireweedStringUtils.o \
+		FireweedUtils.o \
+		FireweedUnits.o \
+		BurnupHistory.o \
+		BurnupCore.o \
+		BurnupFuelModelInterface.o
 
 
 # Set if not set from environment or command line...

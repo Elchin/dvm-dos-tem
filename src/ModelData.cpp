@@ -108,6 +108,11 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
   ch4_file          = controldata["IO"]["ch4_file"].asString();
   proj_ch4_file     = controldata["IO"]["proj_ch4_file"].asString();
   runmask_file      = controldata["IO"]["runmask_file"].asString();
+  fire_fuel_model_file = controldata["IO"]["fire_fuel_model_file"].asString();//FW_MOD
+  fire_fosberg_a_file  = controldata["IO"]["fire_fosberg_a_file"].asString();//FW_MOD
+  fire_fosberg_b_file  = controldata["IO"]["fire_fosberg_b_file"].asString();//FW_MOD
+  fire_fosberg_c_file  = controldata["IO"]["fire_fosberg_c_file"].asString();//FW_MOD
+  fire_fosberg_d_file  = controldata["IO"]["fire_fosberg_d_file"].asString();//FW_MOD
   output_dir        = controldata["IO"]["output_dir"].asString();
   restart_from      = controldata["IO"]["restart_from"].asString();
   output_spec_file  = controldata["IO"]["output_spec_file"].asString();
@@ -597,6 +602,29 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
   //changeco2     = controldata["model_settings"]["varied_co2"].asInt();
   //useseverity   = controldata["model_settings"]["fire_severity_as_input"].asInt();
 
+  // FW_MOD_START:
+  fire_on_EQ        = controldata["stage_settings"]["eq"]["fire"].asBool();
+  fire_on_SP        = controldata["stage_settings"]["sp"]["fire"].asBool();
+  fire_on_TR        = controldata["stage_settings"]["tr"]["fire"].asBool();
+  fire_on_SC        = controldata["stage_settings"]["sc"]["fire"].asBool();
+  fire_ignition_tr  = controldata["module_settings"]["dsb"]["fire"]["ignition_tr"].asInt();
+  fire_ignition_sc  = controldata["module_settings"]["dsb"]["fire"]["ignition_sc"].asInt();
+  fire_process_wildfire    = controldata["module_settings"]["dsb"]["fire"]["fire_process_wildfire"].asBool();
+  fire_max_snow            = controldata["module_settings"]["dsb"]["fire"]["fire_max_snow"].asDouble();
+  fire_dynamic_fuel        = controldata["module_settings"]["dsb"]["fire"]["fire_dynamic_fuel"].asBool();
+  fire_moss_as_dead_fuel   = controldata["module_settings"]["dsb"]["fire"]["fire_moss_as_dead_fuel"].asBool();
+  fire_calculate_delta     = controldata["module_settings"]["dsb"]["fire"]["fire_calculate_delta"].asBool();
+  fire_heat_frac_to_soil   = controldata["module_settings"]["dsb"]["fire"]["fire_heat_frac_to_soil"].asDouble();
+  fire_gf_heat_loss_factor = controldata["module_settings"]["dsb"]["fire"]["fire_gf_heat_loss_factor"].asDouble();
+  fire_gf_surface_pd       = controldata["module_settings"]["dsb"]["fire"]["fire_gf_surface_pd"].asDouble();
+  fire_gf_smolder_pd       = controldata["module_settings"]["dsb"]["fire"]["fire_gf_smolder_pd"].asDouble();
+  fire_gf_layer_thickness  = controldata["module_settings"]["dsb"]["fire"]["fire_gf_layer_thickness"].asDouble();
+  fire_temp_fm             = controldata["module_settings"]["dsb"]["fire"]["fire_temp_fm"].asInt();
+  fire_windspeed           = controldata["module_settings"]["dsb"]["fire"]["fire_windspeed"].asDouble();
+  fire_tempair             = controldata["module_settings"]["dsb"]["fire"]["fire_tempair"].asDouble();
+  fire_rh_pct              = controldata["module_settings"]["dsb"]["fire"]["fire_rh_pct"].asDouble();
+  fire_dwd_combust_frac    = controldata["module_settings"]["dsb"]["fire"]["fire_dwd_combust_frac"].asDouble();
+  // FW_MOD_END.
 }
 
 /** Update all the appropriate fields in ModelData from an ArgHandler object.

@@ -292,6 +292,10 @@ public:
   double d2mf_sompr;
   double d2mf_somcr;
 
+  int cmt2fm;//The fuel model to use for the current CMT. FW_MOD
+  double cbd;//The crown fuel bulk density (CBD, for a typical mature forest stand, kg/m^3). FW_MOD
+  double cbh;//The crown base height (CBH, for a typical mature forest stand, m). FW_MOD
+
 private:
 
   void assignVegDimension(string & dir);

@@ -176,6 +176,14 @@ def cmdline_run(args):
   config['IO']['hist_exp_fire_file']   = os.path.join(input_data_path, 'historic-explicit-fire.nc')
   config['IO']['proj_exp_fire_file']   = os.path.join(input_data_path, 'projected-explicit-fire.nc')
 
+  # By default the process based fire model input files are in a repo nested inside the DVM-DOS-TEM
+  # repo.  The default paths are relative to the repo root.  This will make the paths absolute:
+  config['IO']['fire_fuel_model_file'] = os.path.join(ddt_dir, config['IO']['fire_fuel_model_file'])
+  config['IO']['fire_fosberg_a_file']  = os.path.join(ddt_dir, config['IO']['fire_fosberg_a_file'])
+  config['IO']['fire_fosberg_b_file']  = os.path.join(ddt_dir, config['IO']['fire_fosberg_b_file'])
+  config['IO']['fire_fosberg_c_file']  = os.path.join(ddt_dir, config['IO']['fire_fosberg_c_file'])
+  config['IO']['fire_fosberg_d_file']  = os.path.join(ddt_dir, config['IO']['fire_fosberg_d_file'])
+
   # Make sure calibration data ends up in a directory that is named the same
   # as your new working directory.
   # NOTE: Seems like when the user runs the calibration-viewer.py and specifies
@@ -201,7 +209,12 @@ def cmdline_run(args):
     "fri_fire_file",
     "hist_exp_fire_file",
     "proj_exp_fire_file",
-    "topo_file",
+    #"topo_file",
+    "fire_fuel_model_file",
+    "fire_fosberg_a_file",
+    "fire_fosberg_b_file",
+    "fire_fosberg_c_file",
+    "fire_fosberg_d_file",
     "runmask_file",
 
     "output_dir",

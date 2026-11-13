@@ -314,8 +314,13 @@ struct firepar_bgc {
 
   double r_retain_c;     //ratio of fire emitted C return
   double r_retain_n;     //ratio of fire emitted N return
+
+  int cmt2fm;//The fuel model to use for the current CMT. FW_MOD
+  double cbd;//The crown fuel bulk density (CBD, for a typical mature forest stand, kg/m^3). FW_MOD
+  double cbh;//The crown base height (CBH, for a typical mature forest stand, m). FW_MOD
   
-  firepar_bgc(): vsmburn(UIN_D), r_retain_c(UIN_D), r_retain_n(UIN_D) {
+  firepar_bgc(): vsmburn(UIN_D), r_retain_c(UIN_D), r_retain_n(UIN_D), cmt2fm(UIN_I), cbd(UIN_D),
+                 cbh(UIN_D) {
     for (int i = 0; i < NUM_FSEVR; ++i) {
       foslburn[i] = UIN_D;
     }

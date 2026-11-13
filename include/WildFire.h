@@ -6,10 +6,14 @@
 #include <vector>
 #include <algorithm>
 
+//#include "Cohort.h"//Wil this cause a header loop?
 #include "CohortData.h"
 #include "EnvData.h"
 #include "FireData.h"
 #include "BgcData.h"
+#include "ModelData.h"//FW_MOD: Added
+#include "Climate.h"//FW_MOD: Added
+#include "Ground.h"//FW_MOD: Added
 #include "RestartData.h"
 
 #include "errorcode.h"
@@ -17,6 +21,10 @@
 #include "parameters.h"
 
 #include "CohortLookup.h"
+
+#include "FireweedFuelModels.h"
+#include "BurnupFuelModelInterface.h"
+#include "GFProfile.h"
 
 using namespace std;
 
@@ -29,7 +37,8 @@ public:
            const double cell_slope,
            const double cell_aspect,
            const double cell_elevation,
-           const int y, const int x);
+           const int y, const int x,
+           const float cell_latitude, ModelData* modelDataPtr);//FW_MOD
   
   ~WildFire();
 
@@ -42,16 +51,20 @@ public:
   void setBgcData(BgcData* bdp, const int &ip);
   void setFirData(FirData* fdp);
   void setCohortLookup(CohortLookup* chtlup);
+  void setModelData(ModelData* modelDataPtr);// FW_MOD
+  void setClimate(Climate* climatePtr);// FW_MOD
+  void setGround(Ground* groundPtr);// FW_MOD
 
   void initializeParameter();
   void initializeState();
   void set_state_from_restartdata(const RestartData & rdata);
 
-  bool should_ignite(const int yr, const int midx, const std::string& stage);
+  bool should_ignite(const int year, const int midx, const std::string& stage);// FW_MOD
+  bool FireBurned();// FW_MOD
 
   // not used or fully implemented yet...
   //int lookup_severity(const int yr, const int midx, const std::string& stage);
-  void burn(int year);
+  void burn(const int year, const int midx);// FW_MOD
 
   std::string report_fire_inputs();
 
@@ -91,6 +104,7 @@ private:
   double slope;
   double asp;
   double elev;
+  float lat;//FW_MOD: Latitude is needed by the process based fire model.
 
   bool fri_derived;
 
@@ -115,9 +129,57 @@ private:
   EnvData * edall;
   BgcData * bd[NUM_PFT];
   BgcData * bdall;
+  ModelData md;// FW_MOD: The process based fire model has input file paths it needs.
+  Climate * climate;// FW_MOD: The process based fire model needs environmental conditions.
+  Ground * ground;// FW_MOD: The process based fire model needs access to the soil layer properties.
 
+  //FW_NOTE:
+  // The following thee objects are only used in the process based wildfire mode and will only be
+  // valid after ProcessWildfire() is called.  This is an initial implementation and we may find a
+  // different way to pass the simulation data to functions that need them.
+  FuelModel siteFM;// FW_MOD
+  BurnupSim siteBU;// FW_MOD
+  double CFB;// FW_MOD
+  double totalFireIntensity;// FW_MOD Only set during crown fire at this time.
+
+  bool isFireReturnDate(const int year, const int midx);// FW_MOD
   double getBurnOrgSoilthick(const int year);
   void getBurnAbgVegetation(const int ipft, const int year);
+  void getAbgVegetationBurntFractionsProcess(const int pftIndex);// FW_MOD
+  double GetLitterBurntFraction() const;// FW_MOD
+  void updateBurntOrgSoil(double burndepth, double& burnedsolc, double& burnedsoln,
+                          double r_burn2bg_cn[NUM_PFT]);// FW_MOD
+  void burnVegetation(const int year, const double r_burn2bg_cn[NUM_PFT], double& comb_vegc,
+                      double& comb_vegn, double& dead_bg_vegc, double& dead_bg_vegn,
+                      double& reta_vegc, double& reta_vegn);// FW_MOD
+
+  // FW_MOD_START: Functions for the process based wildfire implementation.
+  // FW_NOTE: These functions are defined in FW_Interface.cpp for now.
+  double ProcessWildfire(const int monthIndex);
+  int GetMatchingFuelModel(const int cmt) const;
+
+  void CohortStatesToFuelLoading(FuelModel& fm, const bool treatMossAsDead);
+  double GetLitterRawC() const;
+  double GetPFTBiomass(const int pftIndex) const;
+  double GetNonVascularBiomass() const;
+
+  int IsTree(const int cmtNumber, const int pftIdx) const;
+
+  double GetAirTemperature() const;
+  double GetMidflameWindSpeed() const;
+  double GetWindReductionFactor() const;
+  double GetRelativeHumidity(const int dayOfYearIndex) const;
+  std::vector <double> CalculateFuelMoisture(const FuelModel& fm, const int monthIndex) const;
+  double CalculateFoliarMoistureContent() const;
+  double GetCanopyBulkDensty() const;
+  double GetCrownBaseHeight() const;
+  double GetCanopyFuelLoad() const;
+
+  std::vector <double> SimulateCrownFire();
+
+  double SimulateGroundFire(const double fireHeatInput) const;
+  GFProfile GroundFireGetSoilProfile() const;
+  // FW_MOD_END.
 
   ////////
   // MAYBE get rid of all these???

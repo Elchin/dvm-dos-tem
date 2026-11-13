@@ -86,6 +86,11 @@ public:
   string output_dir;
   string restart_from;      // Restart from a previous run
   string output_spec_file;
+  string fire_fuel_model_file;//FW_MOD
+  string fire_fosberg_a_file;//FW_MOD
+  string fire_fosberg_b_file;//FW_MOD
+  string fire_fosberg_c_file;//FW_MOD
+  string fire_fosberg_d_file;//FW_MOD
   bool output_monthly;
   bool nc_eq; // NetCDF output flags for each stage
   bool nc_sp;
@@ -462,6 +467,35 @@ public:
   int changeco2; // 0: default (up to run stage); 1: dynamical; -1: static
   bool dynamic_LAI; // True: calculate LAI as a function of vegc, False: use static_lai from CohortLookup 
   bool useseverity; // using fire severity inputs
+
+  // FW_MOD_START:
+  // Switches to turn fire off for each run stage.  Fire in never on the pre-run stage:
+  bool fire_on_EQ;
+  bool fire_on_SP;
+  bool fire_on_TR;
+  bool fire_on_SC;
+  // Wildfire ignitions modes: 0: explicit for TR/SC. 1: Use fire return interval, 2+: Reserved for future use.
+  int fire_ignition_tr;
+  int fire_ignition_sc;
+  //Turn on the process based wildfire model:
+  //The fire settings that follow only pertain if this is switch is set to true.
+  bool fire_process_wildfire;
+  //The maximum snow depth (cm) where a fire can start, i.e. the extinguishment limit. A negative value means to ignore snow presence:
+  double fire_max_snow;
+  bool fire_dynamic_fuel;//Calculate dynamic fuel moisture for dynamic fuel models.
+  bool fire_moss_as_dead_fuel;//Should moss be treated as a dead fuel (true) or live fuel (false).
+  bool fire_calculate_delta;//Calculate the fuel bed depth, AKA delta, (true) or use a fixed depth (false).
+  double fire_heat_frac_to_soil;//The fraction of aboveground fire heat that enters the soil.
+  double fire_gf_heat_loss_factor;//The fraction of heat lost from the soil.
+  double fire_gf_surface_pd;//The maximum heat penetration depth for the soil surface heat transfer approximation (cm).
+  double fire_gf_smolder_pd;//The maximum heat penetration depth for the smoldering heat transfer approximation (cm).
+  double fire_gf_layer_thickness;//The soil layer thickness for the simulation (cm)
+  int fire_temp_fm;//A temporaty parameter to force fuel model choice.
+  double fire_windspeed;//A value to override the windspeed at the time of the fire (m/min).
+  double fire_tempair;//A value to override the air temperature at the time of the fire (C).
+  double fire_rh_pct;//A value to override the relative humidity at the time of the fire (%).
+  double fire_dwd_combust_frac;//The fraction of dead woody debris that is consumed with fire.
+  // FW_MOD_END.
 
   int cell_timelimit; //Time limit in seconds for cell computation time
   time_t cell_stime; //Start time per cell. Move to Runner?

@@ -117,8 +117,9 @@ Cohort::Cohort(int y, int x, ModelData* modeldatapointer):
   this->ground = Ground(mineral_info);
 
   BOOST_LOG_SEV(glg, debug) << "Setup the fire information, defaulting to HISTORIC explicit data.";
-  this->fire = WildFire(modeldatapointer->fri_fire_file, 
-    modeldatapointer->hist_exp_fire_file, this->cd.cell_slope, this->cd.cell_aspect, this->cd.cell_elevation, y, x);
+  this->fire = WildFire(modeldatapointer->fri_fire_file, modeldatapointer->hist_exp_fire_file,
+                        this->cd.cell_slope, this->cd.cell_aspect, this->cd.cell_elevation, y, x,
+                        this->lat, md);//FW_MOD
 
 
   this->soilenv = Soil_Env();
@@ -236,6 +237,8 @@ void Cohort::initialize_internal_pointers() {
   }
 
   fire.setFirData(fd);
+  fire.setClimate(&climate);// FW_MOD
+  fire.setGround(&ground);// FW_MOD
 
   //BGC states change integration module pointers
   for (int i=0; i<NUM_PFT; i++) {
@@ -1249,48 +1252,52 @@ void Cohort::updateMonthly_Fir(const int & year, const int & midx, std::string s
     // Fire!
     //  - Update C/N pools for each pft through 'bd', but not soil structure.
     //  - Soil root fraction also updated through 'cd'.
-    fire.burn(year);
+    fire.burn(year, midx);//FW_MOD
     
     BOOST_LOG_SEV(glg, debug) << "Right after fire.burn(..)  " << ground.layer_report_string();
 
-    BOOST_LOG_SEV(glg, debug) << "Collect burned veg C/N from individual pfts into bdall...";
-    for (int ip=0; ip<NUM_PFT; ip++) {
-      if (cd.m_veg.vegcov[ip]>0.) {
-        for (int i=0; i<NUM_PFT_PART; i++) {
-          bdall->m_vegs.c[i]    += bd[ip].m_vegs.c[i];
-          bdall->m_vegs.strn[i] += bd[ip].m_vegs.strn[i];
+    //If the fire didn't ignite skip the post-burn state adjustments:
+    if (fire.FireBurned())
+    {
+      BOOST_LOG_SEV(glg, debug) << "Collect burned veg C/N from individual pfts into bdall...";
+      for (int ip=0; ip<NUM_PFT; ip++) {
+        if (cd.m_veg.vegcov[ip]>0.) {
+          for (int i=0; i<NUM_PFT_PART; i++) {
+            bdall->m_vegs.c[i]    += bd[ip].m_vegs.c[i];
+            bdall->m_vegs.strn[i] += bd[ip].m_vegs.strn[i];
+          }
+          bdall->m_vegs.labn    += bd[ip].m_vegs.labn;
+          bdall->m_vegs.call    += bd[ip].m_vegs.call;
+          bdall->m_vegs.strnall += bd[ip].m_vegs.strnall;
+          bdall->m_vegs.nall    += bd[ip].m_vegs.nall;
+          bdall->m_vegs.deadc   += bd[ip].m_vegs.deadc;
+          bdall->m_vegs.deadn   += bd[ip].m_vegs.deadn;
         }
-        bdall->m_vegs.labn    += bd[ip].m_vegs.labn;
-        bdall->m_vegs.call    += bd[ip].m_vegs.call;
-        bdall->m_vegs.strnall += bd[ip].m_vegs.strnall;
-        bdall->m_vegs.nall    += bd[ip].m_vegs.nall;
-        bdall->m_vegs.deadc   += bd[ip].m_vegs.deadc;
-        bdall->m_vegs.deadn   += bd[ip].m_vegs.deadn;
       }
+
+      BOOST_LOG_SEV(glg, debug) << "Post-burn, assign the updated C/N pools to double linked layer matrix in ground...";
+      soilbgc.assignCarbonBd2LayerMonthly();
+      if (md->layer_n_remap_fix == 1) { soilbgc.assignNitrogenBd2LayerMonthly(); } // v5q-layern-fix
+
+      BOOST_LOG_SEV(glg, debug) << "Post-burn, adjust soil structure...";
+      ground.adjustSoilAfterburn(); // must call after soilbgc.assignCarbonBd2LayerMonthly()
+
+      BOOST_LOG_SEV(glg, debug) << "Post-burn, save the data back to 'bdall'...";
+      soilbgc.assignCarbonLayer2BdMonthly();
+      if (md->layer_n_remap_fix == 1) { soilbgc.assignNitrogenLayer2BdMonthly(); } // v5q-layern-fix
+
+      BOOST_LOG_SEV(glg, debug) << "Post-burn, update all other pft's 'bd'...";
+      assignSoilBd2pfts_monthly();
+
+      BOOST_LOG_SEV(glg, debug) << "Post-burn, update cd, ground, fine root fraction...";
+      cd.yrsdist = 0;
+      cd.mthsdist = 0;
+      ground.retrieveSnowDimension(&cd.d_snow);
+      ground.retrieveSoilDimension(&cd.m_soil);
+      cd.d_soil = cd.m_soil;
+      cd.y_soil = cd.m_soil;
+      getSoilFineRootFrac_Monthly();
     }
-
-    BOOST_LOG_SEV(glg, debug) << "Post-burn, assign the updated C/N pools to double linked layer matrix in ground...";
-    soilbgc.assignCarbonBd2LayerMonthly();
-    if (md->layer_n_remap_fix == 1) { soilbgc.assignNitrogenBd2LayerMonthly(); } // v5q-layern-fix
-
-    BOOST_LOG_SEV(glg, debug) << "Post-burn, adjust soil structure...";
-    ground.adjustSoilAfterburn(); // must call after soilbgc.assignCarbonBd2LayerMonthly()
-
-    BOOST_LOG_SEV(glg, debug) << "Post-burn, save the data back to 'bdall'...";
-    soilbgc.assignCarbonLayer2BdMonthly();
-    if (md->layer_n_remap_fix == 1) { soilbgc.assignNitrogenLayer2BdMonthly(); } // v5q-layern-fix
-
-    BOOST_LOG_SEV(glg, debug) << "Post-burn, update all other pft's 'bd'...";
-    assignSoilBd2pfts_monthly();
-
-    BOOST_LOG_SEV(glg, debug) << "Post-burn, update cd, ground, fine root fraction...";
-    cd.yrsdist = 0;
-    cd.mthsdist = 0;
-    ground.retrieveSnowDimension(&cd.d_snow);
-    ground.retrieveSoilDimension(&cd.m_soil);
-    cd.d_soil = cd.m_soil;
-    cd.y_soil = cd.m_soil;
-    getSoilFineRootFrac_Monthly();
 
   } else {
     BOOST_LOG_SEV(glg, debug) << "Not time for a fire. Nothing to do.";
