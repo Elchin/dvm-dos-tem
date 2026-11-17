@@ -765,7 +765,11 @@ void Soil_Env::retrieveDailyFronts() {
 void Soil_Env::updateDailySM(double weighted_veg_tran) {
   // define the soil water module's domain
   //Skip moss for all soil moisture calculations
-  Layer * fstsoill = ground->fstshlwl;
+  // RTS (thermokarst, after an RTS initiation only; rts-regrow bc19d300): all fibric layers can be
+  // gone until litterfall builds a new one: start the domain at the first non-moss soil layer.
+  // Otherwise (legacy) fstsoill == ground->fstshlwl for the whole function.
+  Layer * fstsoill = (tk_nofibric_fix && ground->fstshlwl == NULL) ?
+                     (ground->fstdeepl ? ground->fstdeepl : ground->fstminel) : ground->fstshlwl;
   Layer * lstsoill = ground->lstsoill;
   Layer * drainl = ground->drainl;
   double draindepth = ground->draindepth;
@@ -817,6 +821,14 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   ground->expelled_zm_mm = 0.0;
   //Update water table for runoff calculation
   ed->d_sois.watertab = getWaterTable(lstsoill);
+  // RTS (thermokarst; rts-regrow, from feature/thermokarst-prototype): surface settled since last
+  // step -> shallow the WTD by the collapse to preserve absolute water-table elevation. No-op unless
+  // excess ice has melted (tk_subsidence stays 0 when thermokarst = 0).
+  if (ground->tk_subsidence > ground->tk_prev_subsidence) {
+    ed->d_sois.watertab = fmax(0.0, ed->d_sois.watertab -
+                               (ground->tk_subsidence - ground->tk_prev_subsidence));
+    ground->tk_prev_subsidence = ground->tk_subsidence;
+  }
   // wetland (phase 3): run-on (cd->runon_status, CMT-gated per cohort) adds an inflow equal to
   // the cell's own would-be runoff (upstream regional_wetland_deepc design) and sets local
   // runoff to 0; the inflow is booked in runon_in_mm for the water balance. runon_status
@@ -951,8 +963,8 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   // a closed talik, there should be no water exiting other than
   // transpiration, and in the case of an open talik, our equations
   // may need modification. 
-  if(ground->fstshlwl->frozen != 1 && ground->fstmossl->frozen != 1){
-    richards.update(ground->fstshlwl, drainl, draindepth, baseflow,
+  if(fstsoill->frozen != 1 && ground->fstmossl->frozen != 1){
+    richards.update(fstsoill, drainl, draindepth, baseflow,
                     ed->d_sois.watertab, root_water_up, evap,
                     infil, cd->cell_slope);
     ed->d_soi2l.qdrain += richards.qdrain;
@@ -1030,15 +1042,15 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   // Option 2 (v5h): lateral drainage of thawed near-surface
   // organic layers (off unless org_drain_rate > 0). Same thawed-top condition
   // as the Richards branch above.
-  if(org_drain_rate > 0.0 && ground->fstshlwl->frozen != 1
+  if(org_drain_rate > 0.0 && fstsoill->frozen != 1
      && ground->fstmossl->frozen != 1){
     ed->d_soi2l.qdrain += orgLateralDrain();
   }
   //for moss layers excluded from hydrological process, match
   //water to first shallow layer.
-  currl = ground->fstshlwl->prevl;
+  currl = fstsoill->prevl;
   while (currl!=NULL && currl->isMoss) {
-    double lwc = ground->fstshlwl->getVolLiq();
+    double lwc = fstsoill->getVolLiq();
     currl->liq = currl->dz*(1.0-currl->frozenfrac) * lwc * DENLIQ;
     currl=currl->prevl;
   }

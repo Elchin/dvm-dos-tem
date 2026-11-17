@@ -1631,6 +1631,22 @@ void Soil_Bgc::prepareIntegration(const bool &mdnfeedback,
   // double abvlfc = bd->m_v2soi.ltrfalc[I_stem] + bd->m_v2soi.ltrfalc[I_leaf];
   // double abvlfn = bd->m_v2soi.ltrfaln[I_stem] + bd->m_v2soi.ltrfaln[I_leaf];
 
+  if (tk_litter_fix) {
+    // RTS (thermokarst, after an RTS initiation only; rts-regrow c5f4c45e/bc19d300): root litter goes
+    // to layers by root fraction, but only non-moss layers take it. The part with no receiving layer
+    // (root fraction in moss layers, or no root fraction at all, e.g. roots removed with a slump) was
+    // dropped: route it with the above-ground litter into the first non-moss layer.
+    double rtfrac_taken = 0.;
+    for(int i=0; i<cd->m_soil.numsl; i++) {
+      if (cd->m_soil.type[i] > 0) { rtfrac_taken += bd->m_v2soi.rtlfalfrac[i]; }
+      else { ltrflc[i] = 0.; ltrfln[i] = 0.; }
+    }
+    if (rtfrac_taken < 1.) {
+      abvlfc += (1. - rtfrac_taken) * blwlfc;
+      abvlfn += (1. - rtfrac_taken) * blwlfn;
+    }
+  }
+
   for(int i=0; i<cd->m_soil.numsl; i++) {
     //FIX litterfall should be added to the shallow layer
     //There *must* be a shallow layer
@@ -1642,8 +1658,13 @@ void Soil_Bgc::prepareIntegration(const bool &mdnfeedback,
     //if (cd->m_soil.type[i]>0) { WRONG
     //soillayer sl = ground ;lksadjf; [i];
 
-    if( (i==0 && cd->m_soil.type[i]==1) ||
-        ((i>0 && cd->m_soil.type[i]==1) && (cd->m_soil.type[i-1]!=1)) ) {
+    const bool litter_layer = tk_litter_fix ?
+        // RTS: the first non-moss layer (fibric, or the top humic/mineral layer when the RTS left no
+        //   fibric layer; legacy dropped the above-ground litter then)
+        (cd->m_soil.type[i]>0 && (i==0 || cd->m_soil.type[i-1]==0)) :
+        ( (i==0 && cd->m_soil.type[i]==1) ||
+          ((i>0 && cd->m_soil.type[i]==1) && (cd->m_soil.type[i-1]!=1)) );
+    if( litter_layer ) {
       // always put the litterfall from vascular and moss in the
       // first non-moss soil layer
       ltrflc[i] = abvlfc + bd->m_v2soi.mossdeathc + bd->m_v2soi.rtlfalfrac[i] * blwlfc;
@@ -2264,7 +2285,28 @@ void Soil_Bgc::deltac() {
     del_soi2soi.ch4_sompr[il] = bd->m_soi2soi.ch4_sompr[il];
     del_soi2soi.ch4_somcr[il] = bd->m_soi2soi.ch4_somcr[il];
 
+    if (tk_floor_on) {
+      // RTS floor: oxygen limitation, then labile-limited cap on exposed mineral C (RTSFloor.h)
+      double m = tk_rhmult[il];
+      double r = (del_soi2a.rhrawc[il] + del_soi2a.rhsoma[il] + del_soi2a.rhsompr[il] + del_soi2a.rhsomcr[il]) * m;
+      if (tk_navln_exempt) { tk_rh_precap[il] = r; }
+      if (tk_cap_on && tk_capmask[il] && r > 0.0) {
+        const double c = std::max(0.0, tmp_sois.rawc[il]) + std::max(0.0, tmp_sois.soma[il])
+                       + std::max(0.0, tmp_sois.sompr[il]) + std::max(0.0, tmp_sois.somcr[il]);
+        m *= RTSFloor::capLayerRH(tk_floorpar, tk_months, r, c) / r;
+      }
+      del_soi2a.rhrawc[il] *= m; del_soi2a.rhsoma[il] *= m;
+      del_soi2a.rhsompr[il] *= m; del_soi2a.rhsomcr[il] *= m;
+    }
   } // loop for each soil layer
+  if (tk_floor_on && tk_rmin_target > 0.0) {
+    // RTS floor minimum respiration (RTSFloor.h (4)): from the existing pools only
+    double w[MAX_SOI_LAY];
+    const int n = std::min(cd->m_soil.numsl, MAX_SOI_LAY);
+    for (int il = 0; il < n; il++) { w[il] = bd->m_soid.rhmoist[il] * bd->m_soid.rhq10[il]; }
+    RTSFloor::applyMinimum(tk_rmin_target, n, w, tmp_sois.rawc, tmp_sois.soma, tmp_sois.sompr, tmp_sois.somcr,
+                           del_soi2a.rhrawc, del_soi2a.rhsoma, del_soi2a.rhsompr, del_soi2a.rhsomcr);
+  }
 
   // for wood debris at ground surface
   del_soi2a.rhwdeb = 0.;
@@ -2303,6 +2345,8 @@ void Soil_Bgc::deltan() {
                      del_soi2a.rhsoma[i] +
                      del_soi2a.rhsompr[i]+
                      del_soi2a.rhsomcr[i];
+
+      if (tk_navln_exempt && tk_floor_on && tk_cap_on && tk_capmask[i]) { rhsum = std::max(rhsum, tk_rh_precap[i]); }  // RTS regrow
 
       double nimmob = getNimmob(ed->m_sois.liq[i], totc,
                                 tmp_sois.orgn[i], tmp_sois.avln[i],
@@ -2728,7 +2772,7 @@ void Soil_Bgc::deltastate() {
       // Inorganic N pools
       double ninput = 0.;
 
-      if (il == 0) {
+      if (il == tk_ninput_layer) {   // 0 (legacy) unless an RTS regrow moved it
         ninput = bd->m_a2soi.avlninput;
       }
 

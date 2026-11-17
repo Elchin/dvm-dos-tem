@@ -1975,7 +1975,7 @@ void Ground::combineTwoSoilLayersL2U(SoilLayer* lsl, SoilLayer* usl) {
 //   on C content change after fire
 // So, it must be called after 'bd' layerd C content was assigned to the
 //   orginal double-linked layer matrix
-double Ground::adjustSoilAfterburn() {
+double Ground::adjustSoilAfterburn(bool tk_remove_mineral) {
   BOOST_LOG_SEV(glg, debug) << "Beginning of adjustSoilAfterburn(..)" << this->layer_report_string();
 
   double bdepthadj = 0.; // this is used to check if thickness change here
@@ -2013,6 +2013,19 @@ double Ground::adjustSoilAfterburn() {
         removeLayer(currl);
         currl = toplayer; //then the new toplayer is currl->nextl
                           //  (otherwise, bug here)
+      } else {
+        if (!tk_remove_mineral) { break; }   // fire / legacy
+        currl = fstminel;  // RTS: go on to the mineral layers below
+      }
+    } else if (tk_remove_mineral && currl->isMineral) {
+      // RTS (thermokarst only): remove mineral layers whose C was all exported by the slump
+      double tsomc = currl->rawc + currl->soma + currl->sompr + currl->somcr;
+      if(tsomc <= 0.0) {
+        bdepthadj += currl->dz;
+        adjustFrontsAfterThickchange(0, -currl->dz);
+        Layer * topMinLayer = currl->nextl;
+        removeLayer(currl);
+        currl = topMinLayer;
       } else {
         break;
       }
@@ -2178,6 +2191,178 @@ void Ground::getLayerFrozenstatusByFronts(Layer * soill) {
   } // end else fronts exist in column
 }
 
+
+// ---- RTS (model_settings.thermokarst; verbatim from rts-regrow 7c9fd634). Called only on
+//      the thermokarst path (Cohort::updateMonthly_Thermokarst / Thermokarst).
+void Ground::updateMineralProperties(soistate_dim * soildim){
+
+  Layer* currl = fstminel;
+  int mine_ind = 0;
+
+  while(currl->isMineral){
+    // solind is 1-based index
+    if(currl->dz!=soildim->dz[currl->solind-1]){
+      currl->dz = soildim->dz[currl->solind-1];
+      mineralinfo.dz[mine_ind] = currl->dz;
+      // if the thickness has been changed we want to change
+      // the soil texture of that layer as well
+      // Here we are taking 50% of the amount of clay
+      // then assigning the other 50% as sand to represent
+      // drainage of smaller soil particulate matter
+      mineralinfo.clay[mine_ind] *= 0.5;
+      mineralinfo.sand[mine_ind] += mineralinfo.clay[mine_ind];
+      dynamic_cast<MineralLayer*>(currl)->updateProperty5Lookup();
+    }
+
+    currl = currl->nextl;
+    mine_ind++;
+    
+  }
+};
+
+// The following module will re-construct double-linked layer matrix based
+//   on C content change after fire
+// So, it must be called after 'bd' layerd C content was assigned to the
+//   orginal double-linked layer matrix
+
+double Ground::getThawDepth(){
+  // loop through fronts
+  int fntnum = frontsz.size();
+  for(int fntind=0; fntind<fntnum; fntind++){
+    if(frontstype[fntind]<0){
+      return frntz[fntind];
+    }
+  }
+  return -1;
+}
+
+double Ground::excessIceForLayer(const double ztop, const double dz,
+                                 const double fraction, const double top,
+                                 const double bottom) {
+  if (fraction <= 0.0 || fraction >= 1.0) { return 0.0; }
+  const double overlap = std::max(0.0, std::min(ztop + dz, bottom) - std::max(ztop, top));
+  // excess volume / (matrix + excess) volume == fraction  (as in the prototype)
+  return DENICE * overlap * fraction / (1.0 - fraction);
+}
+
+double Ground::meltExcessColumn(std::vector<double> & excess, std::vector<double> & liq,
+                                const std::vector<double> & maxliq,
+                                const std::vector<double> & meltfrac,
+                                double & melted, double & drained) {
+  melted = 0.0; drained = 0.0;
+  for (size_t i = 0; i < excess.size(); i++) {
+    const double f = std::min(1.0, std::max(0.0, meltfrac[i]));
+    const double m = excess[i] * f;
+    if (m <= 0.0) { continue; }
+    excess[i] -= m;
+    melted += m;
+    const double room = std::max(0.0, maxliq[i] - liq[i]);
+    const double keep = std::min(room, m);
+    liq[i] += keep;
+    drained += m - keep;
+  }
+  return melted / DENICE; // subsidence (m): volume of melted segregated ice
+}
+
+double Ground::initExcessIce(const double fraction, const double top, const double bottom) {
+  double total = 0.0;
+  for (Layer* l = fstsoill; l != NULL && l->isSoil; l = l->nextl) {
+    l->excess_ice = 0.0;
+    if (!l->isMineral || l->frozen != 1) { continue; } // only frozen mineral soil
+    l->excess_ice = excessIceForLayer(l->z, l->dz, fraction, top, bottom);
+    total += l->excess_ice;
+  }
+  tk_excess_initialized = true;
+  BOOST_LOG_SEV(glg, info) << "Initialized excess ground ice: " << total << " kg/m2";
+  return total;
+}
+
+double Ground::totalExcessIce() {
+  double total = 0.0;
+  for (Layer* l = fstsoill; l != NULL && l->isSoil; l = l->nextl) { total += l->excess_ice; }
+  return total;
+}
+
+double Ground::meltExcessIce(double & melted, double & drained) {
+  std::vector<Layer*> ls;
+  std::vector<double> excess, liq, maxliq, meltfrac;
+  for (Layer* l = fstsoill; l != NULL && l->isSoil; l = l->nextl) {
+    if (l->excess_ice <= 0.0) { continue; }
+    ls.push_back(l); excess.push_back(l->excess_ice); liq.push_back(l->liq);
+    maxliq.push_back(l->poro * l->dz * DENLIQ);
+    double f = 0.0;
+    if (l->frozen == -1) { f = 1.0; }
+    else if (l->frozen == 0) { f = 1.0 - l->frozenfrac; }
+    meltfrac.push_back(f);
+  }
+  melted = 0.0; drained = 0.0;
+  if (ls.empty()) { return 0.0; }
+  double sub = meltExcessColumn(excess, liq, maxliq, meltfrac, melted, drained);
+  for (size_t i = 0; i < ls.size(); i++) { ls[i]->excess_ice = excess[i]; ls[i]->liq = liq[i]; }
+  tk_subsidence += sub;
+  return sub;
+}
+
+double Ground::thawColumn(const std::vector<double> & ztop,
+                          const std::vector<double> & dz,
+                          std::vector<double> & ice, std::vector<double> & liq,
+                          const std::vector<double> & maxliq,
+                          const double depth, double & drained,
+                          std::vector<bool> & thawed) {
+  double melted = 0.0;
+  drained = 0.0;
+  thawed.assign(dz.size(), false);
+  for (size_t i = 0; i < dz.size(); i++) {
+    if (ztop[i] + dz[i] > depth + 1.e-9) { break; } // only whole layers
+    thawed[i] = true;
+    melted += ice[i];
+    liq[i] += ice[i];
+    ice[i] = 0.0;
+    if (liq[i] > maxliq[i]) {
+      drained += liq[i] - maxliq[i];
+      liq[i] = maxliq[i];
+    }
+  }
+  return melted;
+}
+
+double Ground::thawToDepth(const double depth, double & drained) {
+  drained = 0.0;
+  if (depth <= 0.0) { return 0.0; }
+  std::vector<Layer*> ls;
+  std::vector<double> ztop, dz, ice, liq, maxliq;
+  for (Layer* l = fstsoill; l != NULL && !l->isRock; l = l->nextl) {
+    ls.push_back(l); ztop.push_back(l->z); dz.push_back(l->dz);
+    ice.push_back(l->ice); liq.push_back(l->liq);
+    maxliq.push_back(l->poro * l->dz * DENLIQ);
+  }
+  std::vector<bool> thawed;
+  double melted = thawColumn(ztop, dz, ice, liq, maxliq, depth, drained, thawed);
+  double thawbot = 0.0;
+  Layer* below = NULL;
+  for (size_t i = 0; i < ls.size(); i++) {
+    if (!thawed[i]) { below = ls[i]; break; }
+    ls[i]->ice = ice[i]; ls[i]->liq = liq[i];
+    ls[i]->frozen = -1; ls[i]->frozenfrac = 0.0;
+    if (ls[i]->tem < 0.01) { ls[i]->tem = 0.01; }
+    thawbot = ztop[i] + dz[i];
+  }
+  // Reset phase-change fronts: drop fronts inside the thawed zone; if frozen
+  // ground remains directly below, put a thawing front at the thaw bottom.
+  while (!frontsz.empty() && frontsz.front() <= thawbot + 1.e-9) {
+    frontsz.pop_front(); frontstype.pop_front();
+  }
+  if (below != NULL && below->frozen >= 0 && thawbot > 0.0 &&
+      (frontstype.empty() || frontstype.front() != -1)) {
+    frontsz.push_front(thawbot); frontstype.push_front(-1);
+  }
+  checkFrontsValidity();
+  setFstLstFrontLayers();
+  checkWaterValidity();
+  BOOST_LOG_SEV(glg, info) << "RTS thaw to " << thawbot << " m: melted " << melted
+                           << " kg/m2 ice, drained " << drained << " kg/m2";
+  return melted;
+}
 
 void Ground::setDrainL() {
 

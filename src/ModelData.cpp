@@ -645,6 +645,20 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     }
     deadroot_n_route_fix = v.asInt();
   }
+  { // RTS / thermokarst master switch (port of rts-regrow). Integers 0/1 only.
+    Json::Value v = controldata["model_settings"].get("thermokarst", 0);
+    if (!bnf::valid_int(v, 0, 1)) {
+      std::cerr << "FATAL: model_settings.thermokarst must be 0 (legacy, off) or 1 (retrogressive thaw slumps)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    thermokarst = v.asInt();
+    if (thermokarst == 1) {
+      hist_exp_thermokarst_file = controldata["IO"]["hist_exp_thermokarst_file"].asString();
+      proj_exp_thermokarst_file = controldata["IO"]["proj_exp_thermokarst_file"].asString();
+      parse_thermokarst_settings(controldata["model_settings"], *this);
+      apply_thermokarst_auto_switches(controldata["model_settings"], *this);
+    }
+  }
   {
     const Json::Value& ss = controldata["stage_settings"];
     // Stage request: "fire" if present (Reburn), else the legacy "dsb" flag (backward compatible).
@@ -744,6 +758,7 @@ ModelData::ModelData():force_cmt(-1) {
   frozen_layer_liq_cap = 0; // off (legacy)
   fire_n_redep_fix = 0; fire_c_bookkeep_fix = 0; // fire-balance fixes (off)
   dwd_n_leak_fix = 0; deadroot_n_route_fix = 0;  // N leak fixes (off)
+  thermokarst = 0; // RTS (off)
   fire = 0; fire_on_EQ = fire_on_SP = fire_on_TR = fire_on_SC = false; // Reburn master switch (off)
   fire_ignition_tr = 0; fire_ignition_sc = 0; fire_process_wildfire = false; fire_temp_fm = -1;
   snow_scheme = 0; snow_class_wind = -1.0; snow_diag = 0; // Schaefer 2009 snow classes (off)
@@ -1476,4 +1491,91 @@ std::string ModelData::thermal_switches_error(int solver, int sfcc, int face, in
   if (gmode != 1 && gflux != 0.0) { return "model_settings.geothermal_flux is used with geothermal_flux_mode = 1 only (leave it 0 otherwise)"; }
   if (gmode == 2 && gfile.empty()) { return "geothermal_flux_mode = 2 requires IO.geothermal_flux_file (NetCDF, variable geothermal_flux, W m-2)"; }
   return "";
+}
+
+
+/** RTS / thermokarst sub-keys (only read when model_settings.thermokarst = 1). FATAL on a key of
+ * the wrong type (bool keys: true/false or 0/1; number keys: a number) or an invalid excess-ice
+ * profile. Unknown RTS keys are not checked (as for every other model_settings key).
+ */
+void ModelData::parse_thermokarst_settings(const Json::Value & ms, ModelData & md) {
+  static const char * bool_keys[] = {
+    "thermokarst_initiation", "thermokarst_ch4", "thermokarst_rh_cap", "thermokarst_floor_export",
+    "thermokarst_floor_anox", "thermokarst_floor_rmin", "thermokarst_regrow",
+    "rts_regrow_n_taper", "rts_regrow_navln_exempt" };
+  for (const char * k : bool_keys) {
+    if (!ms.isMember(k)) { continue; }
+    const Json::Value & v = ms[k];
+    if (!(v.isBool() || bnf::valid_int(v, 0, 1))) {
+      std::cerr << "FATAL: model_settings." << k << " must be true/false or 0/1" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+  }
+  for (const std::string & k : ms.getMemberNames()) {
+    if (k == "thermokarst") { continue; }
+    bool rts_key = (k.rfind("thermokarst_", 0) == 0 || k.rfind("rts_", 0) == 0);
+    if (!rts_key) { continue; }
+    bool is_bool_key = false;
+    for (const char * b : bool_keys) { if (k == b) { is_bool_key = true; } }
+    if (!is_bool_key && !(ms[k].isNumeric() && !ms[k].isBool())) {
+      std::cerr << "FATAL: model_settings." << k << " must be a number" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+  }
+  if (ms.isMember("thermokarst_folr"))            md.tk_folr = ms["thermokarst_folr"].asDouble();
+  if (ms.isMember("thermokarst_c_resp_frac"))     md.tk_c_resp_frac = ms["thermokarst_c_resp_frac"].asDouble();
+  if (ms.isMember("thermokarst_veg_remove_frac")) md.tk_veg_remove_frac = ms["thermokarst_veg_remove_frac"].asDouble();
+  if (ms.isMember("thermokarst_thaw_depth"))      md.tk_thaw_depth = ms["thermokarst_thaw_depth"].asDouble();
+  if (ms.isMember("thermokarst_post_drainage")) {
+    if (!bnf::valid_int(ms["thermokarst_post_drainage"], -1, 1)) {
+      std::cerr << "FATAL: model_settings.thermokarst_post_drainage must be -1 (keep), 0 or 1" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    md.tk_post_drainage = ms["thermokarst_post_drainage"].asInt();
+  }
+  if (ms.isMember("thermokarst_excess_fraction")) md.tk_excess_fraction = ms["thermokarst_excess_fraction"].asDouble();
+  if (ms.isMember("thermokarst_excess_top"))      md.tk_excess_top = ms["thermokarst_excess_top"].asDouble();
+  if (ms.isMember("thermokarst_excess_bottom"))   md.tk_excess_bottom = ms["thermokarst_excess_bottom"].asDouble();
+  if (ms.isMember("thermokarst_initiation")) md.tk_initiation = ms["thermokarst_initiation"].asBool();
+  if (ms.isMember("thermokarst_ch4")) md.tk_ch4 = ms["thermokarst_ch4"].asBool();
+  md.tk_ch4par.load(ms);
+  md.tk_floor.load(ms);
+  md.tk_regrow.load(ms);
+  for (const char * k : {"thermokarst_folr", "thermokarst_c_resp_frac", "thermokarst_veg_remove_frac"}) {
+    if (ms.isMember(k)) {
+      double x = ms[k].asDouble();
+      if (!(x >= 0.0 && x <= 1.0) && !(std::string(k) == "thermokarst_folr" && x < 0.0)) {
+        std::cerr << "FATAL: model_settings." << k << " must be in [0, 1]" << std::endl;
+        exit(EXIT_FAILURE);
+      }
+    }
+  }
+  if (!(md.tk_excess_fraction >= 0.0 && md.tk_excess_fraction < 0.8) || !(md.tk_excess_top >= 0.0) ||
+      !(md.tk_excess_bottom > md.tk_excess_top)) {
+    std::cerr << "FATAL: invalid thermokarst excess-ice profile (need 0 <= thermokarst_excess_fraction < 0.8, "
+              << "0 <= thermokarst_excess_top < thermokarst_excess_bottom)" << std::endl;
+    exit(EXIT_FAILURE);
+  }
+}
+
+/** RTS (thermokarst = 1 only): the layer / soil-N fixes that rts-regrow v0.3 has always on map to
+ *  existing switches of this fork; with thermokarst = 1 they default to 1 when the key is absent:
+ *    soil_negpool_fix 1   (no N created by the negative-AVLN clip, which the RTS tolerance relies on)
+ *    layer_n_remap_fix 1  (layer N follows C through the RTS / dsl layer restructuring)
+ *    layer_bookkeep_fix 1 (no C/N created when a new fibric layer forms on the slump floor;
+ *                          only if layer_n_remap_fix ends up 1, which it requires)
+ *  An explicit 0 is kept (WARNING: C and N do not close after an RTS then). */
+void ModelData::apply_thermokarst_auto_switches(const Json::Value & ms, ModelData & md) {
+  struct Sw { const char * key; int * v; };
+  Sw sw[] = { {"soil_negpool_fix", &md.soil_negpool_fix}, {"layer_n_remap_fix", &md.layer_n_remap_fix},
+              {"layer_bookkeep_fix", &md.layer_bookkeep_fix} };
+  for (Sw & s : sw) {
+    if (!ms.isMember(s.key)) {
+      if (std::string(s.key) == "layer_bookkeep_fix" && md.layer_n_remap_fix != 1) { continue; }
+      *s.v = 1;
+    } else if (*s.v == 0) {
+      std::cerr << "WARNING: thermokarst = 1 with " << s.key << " = 0: C/N do not close after an RTS "
+                << "(rts-regrow v0.3 has this fix always on). docs/WORK_NOTES_rts.md" << std::endl;
+    }
+  }
 }

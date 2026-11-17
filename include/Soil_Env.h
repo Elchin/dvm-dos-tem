@@ -64,6 +64,10 @@ struct SebDiag {
 
 class Soil_Env {
 public:
+  // RTS (thermokarst, port of rts-regrow bc19d300/c62242cd): after an RTS no fibric layer may be
+  // left; the water domain then starts at the first humic/mineral layer, and excess-ice
+  // subsidence shallows the water table. Set by Cohort only after an RTS initiation.
+  bool tk_nofibric_fix = false;
 
   Soil_Env();
   ~Soil_Env();

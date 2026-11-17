@@ -121,6 +121,14 @@ Cohort::Cohort(int y, int x, ModelData* modeldatapointer):
                         this->cd.cell_slope, this->cd.cell_aspect, this->cd.cell_elevation, y, x,
                         this->lat, md);//FW_MOD
 
+  // RTS (thermokarst): the explicit thermokarst input is read only when model_settings.thermokarst = 1
+  if (modeldatapointer->thermokarst == 1) {
+    BOOST_LOG_SEV(glg, debug) << "Setup the thermokarst information.";
+    this->restartdata.read_tk_state = true;
+    this->thermokarst = Thermokarst(modeldatapointer->hist_exp_thermokarst_file,
+      this->cd.cell_slope, this->cd.cell_aspect, this->cd.cell_elevation, y, x);
+  }
+
 
   this->soilenv = Soil_Env();
   
@@ -169,6 +177,11 @@ Cohort::~Cohort() {
 /** Loads data from the projected explicit fire input file into internal datastructures. */
 void Cohort::load_proj_explicit_fire(const std::string& proj_exp_fire_file){
   fire.load_projected_explicit_data(proj_exp_fire_file, y, x);
+}
+
+/** RTS (thermokarst = 1 only): projected explicit thermokarst input. */
+void Cohort::load_proj_explicit_thermokarst(const std::string& proj_exp_thermokarst_file){
+  thermokarst.load_projected_explicit_data(proj_exp_thermokarst_file, y, x);
 }
 
 /** Provides necessary data to Climate for loading projected climate data*/
@@ -240,6 +253,15 @@ void Cohort::initialize_internal_pointers() {
   fire.setClimate(&climate);// FW_MOD
   fire.setGround(&ground);// FW_MOD
 
+  // RTS / thermokarst module pointers (inert unless thermokarst = 1)
+  thermokarst.setCohortLookup(&chtlu);
+  thermokarst.setCohortData(&cd);
+  thermokarst.setAllEnvBgcData(edall, bdall);
+  for (int i=0; i<NUM_PFT; i++) {
+    thermokarst.setBgcData(&bd[i], i);
+  }
+  thermokarst.setThermokarstData(tkdata);
+
   //BGC states change integration module pointers
   for (int i=0; i<NUM_PFT; i++) {
     vegintegrator[i].setBgcData(&bd[i]);
@@ -267,6 +289,12 @@ void Cohort::setProcessData(EnvData * alledp, BgcData * allbdp, FirData *fdp) {
     bd[i].cd = &cd;
     ed[i].cd = &cd;
   }
+};
+
+/** As above, plus the RTS (thermokarst) data container. */
+void Cohort::setProcessData(EnvData * alledp, BgcData * allbdp, FirData *fdp, ThermokarstData * tdp) {
+  setProcessData(alledp, allbdp, fdp);
+  tkdata = (tdp != NULL) ? tdp : &tk_own;
 };
 
 //re-initializing for a new community of all PFTs sharing same
@@ -453,6 +481,11 @@ void Cohort::initialize_state_parameters() {
   fire.initializeState();
 
   fire.initializeParameter();
+
+  // RTS (thermokarst): monthly RTS data start at zero (output only when off)
+  tkdata->init();
+  for (int im = 0; im < 12; im++) { year_tkdata[im] = *tkdata; }
+  if (md->thermokarst == 1) { thermokarst.initializeState(); }
   
   BOOST_LOG_SEV(glg, debug) << "Done with Cohort::initStatepar()!  " << ground.layer_report_string("depth thermal ptr desc");
 }
@@ -504,6 +537,20 @@ void Cohort::initialize_state_parameters() {
 //  }
 //};
 
+// Optional monthly N-balance check (env NBAL_DIAG set; off by default):
+// prints total ecosystem N (veg structural+labile, standing dead, soil
+// ORGN+AVLN, woody debris) at month start/end and the external N fluxes.
+static double nbal_total(Cohort* c) {
+  double n = c->bdall->m_sois.wdebrisn;
+  for (int ip = 0; ip < NUM_PFT; ip++) {
+    if (c->cd.m_veg.vegcov[ip] > 0.) {
+      n += c->bd[ip].m_vegs.strn[I_leaf] + c->bd[ip].m_vegs.strn[I_stem] + c->bd[ip].m_vegs.strn[I_root]
+           + c->bd[ip].m_vegs.labn + c->bd[ip].m_vegs.deadn;
+    }
+  }
+  for (int i = 0; i < c->cd.m_soil.numsl; i++) { n += c->bdall->m_sois.orgn[i] + c->bdall->m_sois.avln[i]; }
+  return n;
+}
 void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
                            const int & dinmcurr, std::string stage) {
 
@@ -521,6 +568,9 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
   // v5p daily_c_split: output only (reads the model, writes only ds_* / daily driver copies)
   const bool ds_on = (md->daily_c_split == 1) && md->get_envmodule() && md->get_bgcmodule();
   if (ds_on) { ds_begin_month(); }
+  if (md->thermokarst == 1) { tk_set_month_flags(); }  // RTS (thermokarst only)
+  static const bool nbal_diag = (md->thermokarst == 1) && getenv("NBAL_DIAG") != NULL;  // RTS diagnostic
+  const double nbal_n0 = nbal_diag ? nbal_total(this) : 0.0;
   if(md->get_envmodule()) {
   
     BOOST_LOG_SEV(glg, debug) << "RIGHT BEFORE updateMonthlyEnv()"
@@ -529,6 +579,9 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
     BOOST_LOG_SEV(glg, info) << "Run the environmental module - updates water/thermal processes to get (bio)physical conditions.";
     updateMonthly_Env(currmind, dinmcurr);
     if (ds_on) { ds_snapshot_soil(ds_env_numsl, ds_env_z, ds_env_dz, NULL); }
+    // RTS (thermokarst only): this year's ALD, used as the "previous-year" ALD of the RTS step
+    // (rts-regrow EnvData::prev_year_ald, set in grnd_endOfMonth at month 11)
+    if (md->thermokarst == 1 && currmind == 11) { tk_prev_ald = edall->y_soid.ald; }
     
     BOOST_LOG_SEV(glg, debug) << "RIGHT AFTER updateMonthlyEnv() yr:"
                               << yrcnt << " m:" << currmind << " "
@@ -563,6 +616,16 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
     if (md->thermal_solver == 1) { soilenv.enth_bk_fire += soilenv.columnEnthalpyE() - enth_hf; }
   }
 
+  // RTS / thermokarst (model_settings.thermokarst = 1 only), after fire, in tr-run and sc-run only
+  // (excess-ice set-up and melt, regrow GPP record, initiation from the explicit file). With thermal_solver 1 the enthalpy change of
+  // the slump restructuring is booked with the disturbance term (enth_bk_fire).
+  if (md->thermokarst == 1 && md->get_envmodule() && md->get_bgcmodule() &&
+      (stage == "tr-run" || stage == "sc-run")) {   // rts-regrow ran it in the tr disturbance step
+    const double enth_ht = (md->thermal_solver == 1) ? soilenv.columnEnthalpyE() : 0.0;
+    updateMonthly_Thermokarst(yrcnt, currmind, stage);
+    if (md->thermal_solver == 1) { soilenv.enth_bk_fire += soilenv.columnEnthalpyE() - enth_ht; }
+  }
+
   BOOST_LOG_SEV(glg, debug) << "Clean up at the end of the month";
   cd.endOfMonth();
   BOOST_LOG_SEV(glg, debug) << "Soil aggregation at end of month";
@@ -571,6 +634,24 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
   // otherwise the model enters the next month's integration with
   // old values.
   this->bdall->soil_updatePools(currmind);
+  if (nbal_diag) {
+    const ThermokarstData & t = year_tkdata[currmind];
+    // plant N uptake not taken from any soil layer (non-vascular uptake is a
+    // parameterized external source: deposition/fixation): an implicit input
+    double next = 0.;
+    for (int il = 0; il < cd.m_soil.numsl; il++) { next += bdall->m_soi2v.nextract[il]; }
+    const double vegin = bdall->m_soi2v.snuptakeall + bdall->m_soi2v.lnuptake - next;
+    // columns: yr m N0 N1 avlninput orgninput avlnlost orgnlost tk_lat tk_resp vegin
+    // (in 'baseline' mode orgnlost is the C:N-budget mismatch; it is not
+    //  removed from the pools, so it is not part of the N balance)
+    // last column: RTS regrow external N to veg/organic layer (TKREGROWN)
+    fprintf(stderr, "NB %d %d %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f %.6f\n", yrcnt, currmind,
+            nbal_n0, nbal_total(this), bdall->m_a2soi.avlninput, bdall->m_a2soi.orgninput,
+            bdall->m_soi2l.avlnlost, bdall->m_soi2l.orgnlost,
+            t.thermokarst_soi2lat.orgn + t.thermokarst_soi2lat.vegn,
+            t.thermokarst_soi2a.orgn + t.thermokarst_v2a.orgn, vegin, t.thermokarst_soid.regrow_n);
+  }
+
 
   // v5p daily_c_split (output only): split this month's C fluxes into days.
   if (ds_on) {
@@ -1162,6 +1243,7 @@ void Cohort::updateMonthly_Bgc(const int & currmind, const int & dinmcurr) {
     bdall->soil_beginOfMonth();
   }
 
+  if (md->thermokarst == 1 && md->tk_regrow.on && tk_rg_have && ground.tk_months_since_init >= 0) { updateMonthly_RTSRegrowVeg(); }
   // vegetation BGC module calling
   for (int ip=0; ip<NUM_PFT; ip++) {
     if (cd.m_veg.vegcov[ip]>0.) {
@@ -1209,6 +1291,40 @@ void Cohort::updateMonthly_Bgc(const int & currmind, const int & dinmcurr) {
     }
   }
 
+  if (md->thermokarst == 1) {  // RTS floor / regrow (port of rts-regrow; nothing before an initiation)
+    const int m = ground.tk_months_since_init;
+    tk_cur_month = currmind;
+    if (md->tk_floor.any()) { updateMonthly_RTSFloorPrep(); }
+    if (md->tk_regrow.on && m >= 0) {
+      // RTS regrow (RTSRegrow.h (5),(6)): floor N supply into soil available N via the
+      // atmospheric-input hook, ADDED to any BNF soil input (rts-regrow overwrote avlninput,
+      // which is 0 there). Before an initiation nothing changes (legacy layer 0).
+      soilbgc.tk_navln_exempt = md->tk_regrow.navln_exempt;
+      soilbgc.tk_ninput_layer = -1;  // first rooted layer (Soil_Bgc updates AVLN only in rooted layers)
+      for (int il = 0; il < std::min(cd.m_soil.numsl, MAX_SOI_LAY); il++) {
+        if (bdall->m_v2soi.rtlfalfrac[il] > 0. || bdall->m_soi2v.nextract[il] > 0.) { soilbgc.tk_ninput_layer = il; break; }
+      }
+      double supply = 0.0;
+      if (tk_rg_have) {  // v2 taper: trailing-12-month GPP vs dynamic pre-slump reference (RTSRegrow.h (4))
+        tk_rg_gpp12[tk_rg_gpp12_i] = std::max(0.0, bdall->m_a2v.gppall);
+        tk_rg_ingpp12[tk_rg_gpp12_i] = std::max(0.0, bdall->m_a2v.ingppall);
+        tk_rg_gpp12_i = (tk_rg_gpp12_i + 1) % 12; tk_rg_gpp12_n = std::min(12, tk_rg_gpp12_n + 1);
+        double gann = 0.0, iann = 0.0;
+        for (int k = 0; k < tk_rg_gpp12_n; k++) { gann += tk_rg_gpp12[k]; iann += tk_rg_ingpp12[k]; }
+        if (tk_rg_gpp12_n > 0 && tk_rg_gpp12_n < 12) { const double f = 12.0 / tk_rg_gpp12_n; gann *= f; iann *= f; }
+        const double gref = (tk_rg_ingpp > 0.0) ? tk_rg_gpp * iann / tk_rg_ingpp : tk_rg_gpp;
+        tk_rg_taper = RTSRegrow::taperFactor(md->tk_regrow, gref > 0.0 ? gann / gref : 0.0);
+        supply = RTSRegrow::avlnSupplyMonth(md->tk_regrow, RTSRegrow::tYears(md->tk_regrow, m), tk_rg_taper);
+      }
+      if (soilbgc.tk_ninput_layer < 0) {  // nothing rooted: carry the supply to the next rooted month
+        soilbgc.tk_ninput_layer = 0; tk_rg_ncarry += supply;
+      } else { bdall->m_a2soi.avlninput += supply + tk_rg_ncarry; tk_rg_ncarry = 0.0; }
+    } else {
+      soilbgc.tk_navln_exempt = false;
+      soilbgc.tk_ninput_layer = 0;
+    }
+    solintegrator.tk_tolerate_neg_avln = (m >= 0);
+  }
   solintegrator.updateMonthlySbgc(MAX_SOI_LAY);
   soilbgc.afterIntegration();
   if (soilbgc.bnfp.scheme > 0) {   // v5q BNF: remember this month's NPP and ET (transpiration + canopy evaporation)
@@ -1218,6 +1334,13 @@ void Cohort::updateMonthly_Bgc(const int & currmind, const int & dinmcurr) {
     soilbgc.bnfRecordMonth(currmind, bdall->m_a2v.nppall, edall->m_v2a.tran + edall->m_v2a.evap);
   }
   bdall->soil_endOfMonth(currmind);   // yearly data accumulation
+  if (md->thermokarst == 1 && md->tk_floor.rmin_on && ground.tk_months_since_init < 0 && currmind >= 0 && currmind < 12) {
+    // RTS: pre-slump RH climatology for the floor minimum respiration (diagnostic only before initiation)
+    const int ny = std::max(1, std::min(10, md->tk_floor.rmin_years));
+    tk_rh_hist[tk_rh_next[currmind] % ny][currmind] = bdall->m_soi2a.rhsom;
+    tk_rh_next[currmind] = (tk_rh_next[currmind] + 1) % ny;
+    tk_rh_nyr[currmind] = std::min(ny, tk_rh_nyr[currmind] + 1);
+  }
   bdall->land_endOfMonth();
 
   //sharing the 'ground' portion in 'bdall' with each pft 'bd'
@@ -1887,6 +2010,7 @@ void Cohort::set_state_from_restartdata() {
     vegenv[ii].set_state_from_restartdata(this->restartdata);
   }
   set_fire_state_from_restartdata();   // fire-balance fixes (no-op when both switches are 0)
+  set_tk_state_from_restartdata();     // RTS (no-op when thermokarst = 0)
 
   //  FIX: how to handle ground?? and snwstate_dim?? Looks like it is
   //  used for both m_snow and d_snow and y_snow??? which to update???
@@ -1922,6 +2046,18 @@ void Cohort::set_restartdata_from_state() {
   if (md->fire_c_bookkeep_fix == 1 || md->fire_n_redep_fix == 1) {   // fire-balance fixes: fire state
     restartdata.write_fire_state = true;
     restartdata.mthsdist = cd.mthsdist;
+  }
+  if (md->thermokarst == 1) {   // RTS state (written only when thermokarst = 1)
+    restartdata.write_tk_state = true;
+    restartdata.tk_drainage_type = cd.drainage_type;
+    restartdata.tk_exinit = ground.tk_excess_initialized ? 1 : 0;
+    restartdata.tk_init = ground.tk_months_since_init + 1;
+    restartdata.tk_subsidence = ground.tk_subsidence;
+    for (int il = 0; il < MAX_SOI_LAY; il++) { restartdata.tk_exice[il] = 0.0; }
+    int il = 0;
+    for (Layer* l = ground.fstsoill; l != NULL && l->isSoil && il < MAX_SOI_LAY; l = l->nextl, il++) {
+      restartdata.tk_exice[il] = l->excess_ice;
+    }
   }
 
   for (int ip = 0; ip < NUM_PFT; ip++) {
@@ -2170,4 +2306,376 @@ void Cohort::updateMonthly_DailyCSplit(const int & dinm) {
 
   finish(ds_daily, n);
   count_month(ds_flags, ds_fallback_months, ds_remap_months);
+}
+
+/////////////////////////////////////////////////////////////////////////////////
+// RTS / thermokarst (model_settings.thermokarst = 1 only; port of rts-regrow 7c9fd634)
+/** Thermokarst Disturbance module. */
+void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::string stage) {
+  BOOST_LOG_NAMED_SCOPE("thermokarst")
+
+  // This does not current 
+  if (midx == 0) {
+    tkdata->beginOfYear();
+  }
+  tkdata->clear(); // zero monthly thermokarst fluxes/diagnostics
+  tkdata->thermokarst_soid.drainage_type = cd.drainage_type;
+
+  // RTS CH4 (opt-in): computed on this month's soil state/RH before any slump
+  // restructuring, so layer indices match the integrated fluxes.
+  if (md->tk_ch4) { updateMonthly_RTSMethane(midx); }
+
+  // Excess ground ice: one-time initialization, then monthly melt/subsidence
+  if (md->tk_excess_fraction > 0.0 && !ground.tk_excess_initialized) {
+    ground.initExcessIce(md->tk_excess_fraction, md->tk_excess_top, md->tk_excess_bottom);
+  }
+  double xs_melt = 0.0, xs_drain = 0.0;
+  if (ground.tk_excess_initialized) {
+    ground.meltExcessIce(xs_melt, xs_drain);
+    tkdata->thermokarst_soid.excess_melted += xs_melt;
+    tkdata->thermokarst_soid.water_drained += xs_drain;
+  }
+
+  if (md->tk_regrow.on && ground.tk_months_since_init < 0) {  // pre-slump GPP record (last 60 months)
+    tk_gpp_ring[tk_gpp_i] = bdall->m_a2v.gppall; tk_ingpp_ring[tk_gpp_i] = bdall->m_a2v.ingppall;
+    tk_gpp_i = (tk_gpp_i + 1) % 60; tk_gpp_n = std::min(60, tk_gpp_n + 1);
+  }
+  // see if it is an appropriate time to initiate
+  if (md->tk_initiation && thermokarst.should_initiate(year, midx, stage)) {
+
+    BOOST_LOG_SEV(glg, debug) << "Right before thermokarst.initiate(..)  " << ground.layer_report_string();
+
+    double thaw = max(ground.getThawDepth(), tk_prev_ald);
+
+    if(thaw < 0.0){
+      BOOST_LOG_SEV(glg, debug) << "Negative thaw depth or active layer depth value. Error in thermokarst prediction.";
+    } else if(thaw == 0.0){
+      BOOST_LOG_SEV(glg, debug) << "Soil column is completely frozen. No thermokarst can occur.";
+    } else{
+      thermokarst.setThawDepth(thaw);
+      thermokarst.setRTSParams(md->tk_folr, md->tk_c_resp_frac, md->tk_veg_remove_frac);
+      if (md->tk_regrow.on) {  // RTS regrow: record the pre-slump state
+        for (int ip = 0; ip < NUM_PFT; ip++) {
+          tk_rg_type[ip] = RTSRegrow::pftType(chtlu.ifwoody[ip], chtlu.ifdeciwoody[ip], chtlu.nonvascular[ip]);
+          for (int i = 0; i < 3; i++) {
+            tk_rg_cpre[ip][i] = cd.m_veg.vegcov[ip] > 0. ? std::max(0.0, bd[ip].m_vegs.c[i]) : 0.0;
+            tk_rg_npre[ip][i] = cd.m_veg.vegcov[ip] > 0. ? std::max(0.0, bd[ip].m_vegs.strn[i]) : 0.0;
+          }
+        }
+        double g = 0.0, gi = 0.0; for (int k = 0; k < tk_gpp_n; k++) { g += tk_gpp_ring[k]; gi += tk_ingpp_ring[k]; }
+        tk_rg_gpp = tk_gpp_n > 0 ? 12.0 * g / tk_gpp_n : 0.0;   // gC/m2/yr
+        tk_rg_ingpp = tk_gpp_n > 0 ? 12.0 * gi / tk_gpp_n : 0.0;
+        tk_rg_s = RTSRegrow::tau(md->tk_regrow, tk_rg_gpp / 1000.0) / std::max(1e-9, md->tk_regrow.tau_ref);
+        tk_rg_olpre = tk_rg_olc(); tk_rg_oladd = 0.0; tk_rg_have = true;
+        BOOST_LOG_SEV(glg, info) << "RTS regrow: GPP_pre " << tk_rg_gpp << " gC/m2/yr, tau "
+                                 << RTSRegrow::tau(md->tk_regrow, tk_rg_gpp / 1000.0) << " yr, s " << tk_rg_s;
+      }
+      thermokarst.initiate(year);
+      BOOST_LOG_SEV(glg, debug) << "Right after thermokarst.initiate(..)  " << ground.layer_report_string();
+
+      // Rebuild bdall veg state from the post-RTS pft pools so this month's
+      // outputs (VEGC etc.) show the removal in the same month as TKLATC/TKRESPC
+      // (previously bdall kept its pre-RTS values until next month's aggregation).
+      for (int i=0; i<NUM_PFT_PART; i++) { bdall->m_vegs.c[i] = 0.; bdall->m_vegs.strn[i] = 0.; }
+      bdall->m_vegs.labn = 0.; bdall->m_vegs.call = 0.; bdall->m_vegs.strnall = 0.;
+      bdall->m_vegs.nall = 0.; bdall->m_vegs.deadc = 0.; bdall->m_vegs.deadn = 0.;
+      for (int ip=0; ip<NUM_PFT; ip++) {
+        if (cd.m_veg.vegcov[ip]>0.) {
+          bd[ip].m_vegs.strnall = bd[ip].m_vegs.strn[I_leaf] + bd[ip].m_vegs.strn[I_stem] + bd[ip].m_vegs.strn[I_root];
+        }
+      }
+      for (int ip=0; ip<NUM_PFT; ip++) {
+        if (cd.m_veg.vegcov[ip]>0.) {
+          for (int i=0; i<NUM_PFT_PART; i++) {
+            bdall->m_vegs.c[i] += bd[ip].m_vegs.c[i];
+            bdall->m_vegs.strn[i] += bd[ip].m_vegs.strn[i];
+          }
+          bdall->m_vegs.labn += bd[ip].m_vegs.labn;
+          bdall->m_vegs.call += bd[ip].m_vegs.call;
+          bdall->m_vegs.strnall += bd[ip].m_vegs.strnall;
+          bdall->m_vegs.nall += bd[ip].m_vegs.nall;
+          bdall->m_vegs.deadc += bd[ip].m_vegs.deadc;
+          bdall->m_vegs.deadn += bd[ip].m_vegs.deadn;
+        }
+      }
+
+      BOOST_LOG_SEV(glg, debug) << "Post-thermokarst, assign the updated C/N pools to double linked layer matrix in ground...";
+      soilbgc.assignCarbonBd2LayerMonthly(); soilbgc.assignNitrogenBd2LayerMonthly();
+
+      BOOST_LOG_SEV(glg, debug) << "Post-thermokarst, adjust soil structure...";
+      // Update mineral soil properties
+      ground.updateMineralProperties(&cd.m_soil);
+
+      // May need to rename the below function as it is generic to soil removal
+      ground.adjustSoilAfterburn(true); // RTS: also drop emptied mineral layers; after Bd2Layer
+
+      BOOST_LOG_SEV(glg, debug) << "Post-thermokarst, save the data back to 'bdall'...";
+      soilbgc.assignCarbonLayer2BdMonthly(); soilbgc.assignNitrogenLayer2BdMonthly();
+
+      BOOST_LOG_SEV(glg, debug) << "Post-thermokarst, update all other pft's 'bd'...";
+      assignSoilBd2pfts_monthly();
+
+      BOOST_LOG_SEV(glg, debug) << "Post-thermokarst, update cd, ground, fine root fraction...";
+      cd.yrsdist = 0;
+      cd.mthsdist = 0;
+      ground.retrieveSnowDimension(&cd.d_snow);
+      ground.retrieveSoilDimension(&cd.m_soil);
+      cd.d_soil = cd.m_soil;
+      cd.y_soil = cd.m_soil;
+      getSoilFineRootFrac_Monthly();
+
+      // RTS: instant thaw of (ice-rich) layers down to thermokarst_thaw_depth
+      if (md->tk_thaw_depth > 0.0) {
+        double drained = 0.0;
+        double melted = ground.thawToDepth(md->tk_thaw_depth, drained);
+        tkdata->thermokarst_soid.thaw_depth = md->tk_thaw_depth;
+        tkdata->thermokarst_soid.ice_melted = melted;
+        tkdata->thermokarst_soid.water_drained += drained;
+        if (ground.tk_excess_initialized) { // thawed layers release their excess ice
+          ground.meltExcessIce(xs_melt, xs_drain);
+          tkdata->thermokarst_soid.excess_melted += xs_melt;
+          tkdata->thermokarst_soid.water_drained += xs_drain;
+        }
+        ground.retrieveSoilDimension(&cd.m_soil);
+        cd.d_soil = cd.m_soil;
+      }
+      // RTS: drainage switch (Soil_Env reads cd.drainage_type each step)
+      if (md->tk_post_drainage == 0 || md->tk_post_drainage == 1) {
+        cd.drainage_type = md->tk_post_drainage;
+      }
+      tkdata->thermokarst_soid.drainage_type = cd.drainage_type;
+      ground.tk_months_since_init = 0;
+    }  
+  } else { // checking whether thermokarst is expected due to input forcing
+    BOOST_LOG_SEV(glg, debug) << "Not time for thermokarst. Nothing to do.";
+  }
+  if (md->tk_floor.exp_on && ground.tk_months_since_init >= 1) { updateMonthly_RTSFloorExport(); }
+  if (md->tk_regrow.on && tk_rg_have && ground.tk_months_since_init >= 0) { updateMonthly_RTSRegrow(); }
+  if (ground.tk_months_since_init >= 0) { ground.tk_months_since_init++; }
+  tkdata->thermokarst_soid.subsidence = ground.tk_subsidence;
+  tkdata->thermokarst_soid.excess_ice = ground.totalExcessIce();
+  if (md->tk_ch4) { updateMonthly_RTSMethane_lateral(); }
+  // Transfer monthly thermokarst data, regardless of initiation
+  year_tkdata[midx] = *tkdata;
+}
+
+/** RTS CH4 scheme (a): reduced-form partition of this month's RH (RTSMethane.h).
+ *  No model state changes: C pools are identical with CH4 on or off. */
+void Cohort::updateMonthly_RTSMethane(const int & midx) {
+  std::vector<RTSMethaneLayer> col;
+  int il = 0;
+  for (Layer* l = ground.fstsoill; l != NULL && l->isSoil && il < cd.m_soil.numsl; l = l->nextl, il++) {
+    RTSMethaneLayer c;
+    c.ztop = l->z; c.dz = l->dz; c.tem = l->tem;
+    c.rh = bdall->m_soi2a.rhrawc[il] + bdall->m_soi2a.rhsoma[il]
+         + bdall->m_soi2a.rhsompr[il] + bdall->m_soi2a.rhsomcr[il];
+    col.push_back(c);
+  }
+  double lai = 0.0;
+  for (int ip = 0; ip < NUM_PFT; ip++) {
+    if (cd.m_veg.vegcov[ip] > 0.0 && cd.m_veg.lai[ip] > 0.0) { lai += cd.m_veg.lai[ip] * cd.m_veg.vegcov[ip]; }
+  }
+  const double pond = RTSMethane::pondSaturation(md->tk_ch4par, ground.tk_months_since_init);
+  const double sx = 1.0 - (1.0 - pond) * (1.0 - std::max(0.0, std::min(1.0, md->tk_ch4par.bg_sat)));
+  RTSMethaneParams p = md->tk_ch4par;
+  p.ch4_frac *= RTSMethane::methanogenFactor(p, ground.tk_months_since_init);
+  RTSMethaneFluxes f = RTSMethane::compute(col, p, edall->m_sois.watertab, sx, lai);
+  soidiag_thermokarst & d = tk_ch4_month;  // copied into tkdata after the slump step
+  d.ch4_prod = f.prod; d.ch4_oxid = f.oxid; d.ch4_emis = f.emis; d.ch4_plant = f.plant;
+  d.ch4_pool = 0.0; d.pond_sat = pond;
+  d.rh_co2 = bdall->m_soi2a.rhsom - f.prod + f.oxid;   // = RHSOM - emis
+}
+
+/** RTS floor (RTSFloor.h): per-layer RH modifiers used inside Soil_Bgc::deltac. Only after initiation. */
+void Cohort::updateMonthly_RTSFloorPrep() {
+  const int m = ground.tk_months_since_init;
+  const RTSFloorParams & p = md->tk_floor;
+  soilbgc.tk_rmin_target = -1.0;
+  if (p.rmin_on && m >= 0 && tk_rh_nyr[tk_cur_month] > 0) {
+    double s = 0.0;
+    for (int k = 0; k < tk_rh_nyr[tk_cur_month]; k++) { s += tk_rh_hist[k][tk_cur_month]; }
+    soilbgc.tk_rmin_target = RTSFloor::rminFactor(p, m) * s / tk_rh_nyr[tk_cur_month];
+  }
+  soilbgc.tk_floor_on = (m >= 0) && (p.rh_cap || p.anox || soilbgc.tk_rmin_target > 0.0);
+  if (!soilbgc.tk_floor_on) { return; }
+  soilbgc.tk_cap_on = p.rh_cap; soilbgc.tk_months = m; soilbgc.tk_floorpar = p;
+  for (int il = 0; il < MAX_SOI_LAY; il++) { soilbgc.tk_rhmult[il] = 1.0; soilbgc.tk_capmask[il] = false; }
+  const double pond = RTSMethane::pondSaturation(md->tk_ch4par, m);
+  int il = 0;
+  for (Layer* l = ground.fstsoill; l != NULL && l->isSoil && il < MAX_SOI_LAY; l = l->nextl, il++) {
+    soilbgc.tk_capmask[il] = l->isMineral;
+    if (p.anox) {
+      double sat = RTSMethane::saturatedFraction(l->z, l->dz, edall->m_sois.watertab);
+      sat += (1.0 - sat) * pond;
+      soilbgc.tk_rhmult[il] = RTSFloor::anoxFactor(p, sat);
+    }
+  }
+}
+
+/** RTS floor (RTSFloor.h): lateral export of a monthly fraction of mineral-layer SOM C and orgN
+ *  (floor mass wasting / mudflows). Added to TKLATC/TKLATN, so the cell C/N balance closes. */
+void Cohort::updateMonthly_RTSFloorExport() {
+  const double f = RTSFloor::exportFraction(md->tk_floor, ground.tk_months_since_init);
+  if (f <= 0.0) { return; }
+  double dc = 0.0, dn = 0.0;
+  int il = 0;
+  for (Layer* l = ground.fstsoill; l != NULL && l->isSoil && il < MAX_SOI_LAY; l = l->nextl, il++) {
+    if (!l->isMineral) { continue; }
+    double * pools[4] = { &bdall->m_sois.rawc[il], &bdall->m_sois.soma[il], &bdall->m_sois.sompr[il], &bdall->m_sois.somcr[il] };
+    for (double * q : pools) { if (*q > 0.0) { const double x = f * (*q); *q -= x; dc += x; } }
+    if (bdall->m_sois.orgn[il] > 0.0) { const double x = f * bdall->m_sois.orgn[il]; bdall->m_sois.orgn[il] -= x; dn += x; }
+  }
+  tkdata->thermokarst_soi2lat.orgc += dc;
+  tkdata->thermokarst_soi2lat.orgn += dn;
+  soilbgc.assignCarbonBd2LayerMonthly(); soilbgc.assignNitrogenBd2LayerMonthly();
+  assignSoilBd2pfts_monthly();
+}
+
+void Cohort::updateMonthly_RTSMethane_lateral() {
+  // the initiation step resets tkdata->thermokarst_soid: copy this month's CH4 now
+  soidiag_thermokarst & t = tkdata->thermokarst_soid;
+  t.ch4_prod = tk_ch4_month.ch4_prod; t.ch4_oxid = tk_ch4_month.ch4_oxid; t.ch4_emis = tk_ch4_month.ch4_emis;
+  t.ch4_plant = tk_ch4_month.ch4_plant; t.ch4_pool = tk_ch4_month.ch4_pool; t.rh_co2 = tk_ch4_month.rh_co2;
+  t.pond_sat = tk_ch4_month.pond_sat;
+  const double latc = tkdata->thermokarst_soi2lat.orgc + tkdata->thermokarst_soi2lat.vegc;
+  tkdata->thermokarst_soid.lat_ch4 = md->tk_ch4par.lat_ch4_frac * latc;
+}
+
+/////////////////////////////////////////////////////////////////////////////////
+// RTS post-slump regrowth (RTSRegrow.h)
+double Cohort::tk_rg_olc() const {
+  double c = 0.0; int il = 0;
+  for (Layer* l = ground.fstsoill; l != NULL && l->isSoil && il < MAX_SOI_LAY; l = l->nextl, il++) {
+    if (l->isMineral) { continue; }
+    c += bdall->m_sois.rawc[il] + bdall->m_sois.soma[il] + bdall->m_sois.sompr[il] + bdall->m_sois.somcr[il];
+  }
+  return c;
+}
+
+void Cohort::rebuildBdallVeg() {
+  for (int i=0; i<NUM_PFT_PART; i++) { bdall->m_vegs.c[i] = 0.; bdall->m_vegs.strn[i] = 0.; }
+  bdall->m_vegs.labn = 0.; bdall->m_vegs.call = 0.; bdall->m_vegs.strnall = 0.;
+  bdall->m_vegs.nall = 0.; bdall->m_vegs.deadc = 0.; bdall->m_vegs.deadn = 0.;
+  for (int ip=0; ip<NUM_PFT; ip++) {
+    if (cd.m_veg.vegcov[ip]>0.) {
+      for (int i=0; i<NUM_PFT_PART; i++) {
+        bdall->m_vegs.c[i] += bd[ip].m_vegs.c[i];
+        bdall->m_vegs.strn[i] += bd[ip].m_vegs.strn[i];
+      }
+      bdall->m_vegs.labn += bd[ip].m_vegs.labn;
+      bdall->m_vegs.call += bd[ip].m_vegs.call;
+      bdall->m_vegs.strnall += bd[ip].m_vegs.strnall;
+      bdall->m_vegs.nall += bd[ip].m_vegs.nall;
+      bdall->m_vegs.deadc += bd[ip].m_vegs.deadc;
+      bdall->m_vegs.deadn += bd[ip].m_vegs.deadn;
+    }
+  }
+}
+
+/** v2 (2): shrub boost only. B >= 1 for deciduous shrubs and 1 otherwise, so cmax/nmax are never scaled
+ *  below their natural (parameter-file) values; there is no growth ceiling in v2 (vegetation equations
+ *  unchanged, as in v1). */
+void Cohort::updateMonthly_RTSRegrowVeg() {
+  const RTSRegrowParams & p = md->tk_regrow;
+  const double t = RTSRegrow::tYears(p, ground.tk_months_since_init);
+  for (int ip = 0; ip < NUM_PFT; ip++) {
+    if (!(cd.m_veg.vegcov[ip] > 0.)) { continue; }
+    const double B = RTSRegrow::boost(p, tk_rg_type[ip], t);
+    vegbgc[ip].calpar.cmax = chtlu.cmax[ip] * B;
+    vegbgc[ip].calpar.nmax = chtlu.nmax[ip] * B;
+  }
+}
+
+/** (1) reseed at stabilization, (4) organic-layer rebuild. External inputs -> TKREGROWC/TKREGROWN. */
+void Cohort::updateMonthly_RTSRegrow() {
+  const RTSRegrowParams & p = md->tk_regrow;
+  const int m = ground.tk_months_since_init;
+  const double t = RTSRegrow::tYears(p, m);
+  double addc = 0.0, addn = 0.0;
+  bool vegchanged = false;
+  if (m == RTSRegrow::stabMonth(p) && p.f_reseed > 0.0) {
+    for (int ip = 0; ip < NUM_PFT; ip++) {
+      if (!(cd.m_veg.vegcov[ip] > 0.)) { continue; }
+      const double cpre = tk_rg_cpre[ip][0] + tk_rg_cpre[ip][1] + tk_rg_cpre[ip][2];
+      const double cnow = bd[ip].m_vegs.c[I_leaf] + bd[ip].m_vegs.c[I_stem] + bd[ip].m_vegs.c[I_root];
+      const double need = p.f_reseed * cpre - cnow;
+      if (!(need > 0.0) || !(cpre > 0.0)) { continue; }
+      for (int i = 0; i < 3; i++) {
+        const double dc = need * tk_rg_cpre[ip][i] / cpre;
+        const double dn = tk_rg_cpre[ip][i] > 0.0 ? dc * tk_rg_npre[ip][i] / tk_rg_cpre[ip][i] : 0.0;
+        bd[ip].m_vegs.c[i] += dc; bd[ip].m_vegs.strn[i] += dn;
+        bd[ip].m_vegs.call += dc; bd[ip].m_vegs.strnall += dn; bd[ip].m_vegs.nall += dn;
+        addc += dc; addn += dn;
+      }
+      vegchanged = true;
+    }
+    if (vegchanged) { rebuildBdallVeg(); }
+    tk_rg_olstab = tk_rg_olc();
+  }
+  if (m >= RTSRegrow::stabMonth(p)) {
+    // organic-layer rebuild toward olstab + integral of the rate, never above the pre-slump organic C
+    const double tt = std::max(0.0, t + 1.0 / 12.0);  // end of this month
+    const double cum = std::min(tt, p.ol_T) * p.ol_rate1 + std::max(0.0, tt - p.ol_T) * p.ol_rate2;
+    const double target = std::min(tk_rg_olpre, tk_rg_olstab + cum);
+    double x = std::min(std::max(1.0, p.ol_maxmult) * RTSRegrow::olRate(p, t) / 12.0, std::max(0.0, target - tk_rg_olc()));
+    x = std::min(x, std::max(0.0, tk_rg_olpre - tk_rg_olstab - tk_rg_oladd));  // never import more than the slump removed
+    if (x > 0.0) {
+      int il = 0, itop = 0; bool found = false;
+      for (Layer* l = ground.fstsoill; l != NULL && l->isSoil && il < MAX_SOI_LAY; l = l->nextl, il++) {
+        if (l->isOrganic && !l->isMoss) { itop = il; found = true; break; }   // moss C follows moss thickness
+      }
+      if (!found) {  // no fibric/humic layer left: first non-moss soil layer
+        il = 0;
+        for (Layer* l = ground.fstsoill; l != NULL && l->isSoil && il < MAX_SOI_LAY; l = l->nextl, il++) {
+          if (!l->isMoss) { itop = il; break; }
+        }
+      }
+      const double xn = p.ol_cn > 0.0 ? x / p.ol_cn : 0.0;
+      const double fr = std::max(0.0, std::min(1.0, p.ol_frac_raw));
+      bdall->m_sois.rawc[itop] += fr * x; bdall->m_sois.sompr[itop] += (1.0 - fr) * x; bdall->m_sois.orgn[itop] += xn;
+      addc += x; addn += xn; tk_rg_oladd += x;
+      soilbgc.assignCarbonBd2LayerMonthly(); soilbgc.assignNitrogenBd2LayerMonthly();
+      assignSoilBd2pfts_monthly();
+    }
+  }
+  tkdata->thermokarst_soid.regrow_c += addc;
+  tkdata->thermokarst_soid.regrow_n += addn;
+}
+
+/** RTS (thermokarst = 1 only): base fixes the RTS needs (rts-regrow, there always on) are switched
+ *  on only after an RTS initiation, so thermokarst = 1 without a slump equals thermokarst = 0. */
+void Cohort::tk_set_month_flags() {
+  const bool after = (ground.tk_months_since_init >= 0);
+  soilbgc.tk_litter_fix = after;
+  soilenv.tk_nofibric_fix = after;
+}
+
+/** RTS (thermokarst = 1 only): RTS state from the restart file. Old restarts (no tk_* variables):
+ *  WARNING, the RTS starts as not initiated with no excess ice. */
+void Cohort::set_tk_state_from_restartdata() {
+  if (md->thermokarst != 1) { return; }
+  if (!restartdata.has_tk_state) {
+    static bool warned = false;
+    if (!warned) {
+      std::cerr << "WARNING: restart file has no RTS state (tk_drainage_type, tk_init, tk_exinit, "
+                << "tk_subsidence, tk_exice; written by runs with thermokarst = 1). The RTS starts as "
+                << "not initiated, with no excess ice." << std::endl;
+      warned = true;
+    }
+    return;
+  }
+  if (restartdata.tk_exinit == 1) {
+    ground.tk_excess_initialized = true;
+    ground.tk_subsidence = restartdata.tk_subsidence;
+    ground.tk_prev_subsidence = restartdata.tk_subsidence;
+    int il = 0;
+    for (Layer* l = ground.fstsoill; l != NULL && l->isSoil && il < MAX_SOI_LAY; l = l->nextl, il++) {
+      double x = restartdata.tk_exice[il];
+      l->excess_ice = (x == MISSING_D || x < 0.0) ? 0.0 : x;
+    }
+  }
+  if (restartdata.tk_init > 0) { ground.tk_months_since_init = restartdata.tk_init - 1; }
+  if (restartdata.tk_drainage_type == 0 || restartdata.tk_drainage_type == 1) {
+    cd.drainage_type = restartdata.tk_drainage_type;
+  }
 }

@@ -20,7 +20,7 @@ public:
                          const double & bulkden,
                          const double & partden);
 
-private:
+  // public for the RTS mineral-texture update after a slump (Ground::updateMineralProperties)
   void  updateProperty5Lookup();
 
 };

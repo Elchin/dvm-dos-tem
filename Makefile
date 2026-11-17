@@ -75,6 +75,11 @@ SOURCES= 	src/TEM.o \
 		src/FireData.o \
 		src/RestartData.o \
 		src/WildFire.o \
+		src/Thermokarst.o \
+		src/ThermokarstData.o \
+		src/RTSFloor.o \
+		src/RTSMethane.o \
+		src/RTSRegrow.o \
 		src/DoubleLinkedList.o \
 		src/Ground.o \
 		src/MineralInfo.o \
@@ -141,6 +146,11 @@ OBJECTS =	ArgHandler.o \
 		FireData.o \
 		RestartData.o \
 		WildFire.o \
+		Thermokarst.o \
+		ThermokarstData.o \
+		RTSFloor.o \
+		RTSMethane.o \
+		RTSRegrow.o \
 		DoubleLinkedList.o \
 		Ground.o \
 		MineralInfo.o \

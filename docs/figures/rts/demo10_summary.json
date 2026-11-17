@@ -1,0 +1,133 @@
+{
+ "cells_differ": {
+  "0,0": [
+   "ALD",
+   "AVLN",
+   "DEEPC",
+   "DEEPDZ",
+   "DRAINTYPE",
+   "EET",
+   "GPP",
+   "IWCLAYER",
+   "LAI",
+   "LAYERDZ",
+   "LWCLAYER",
+   "NINPUT",
+   "NPP",
+   "ORGN",
+   "QDRAINAGE",
+   "QRUNOFF",
+   "RECO",
+   "RG",
+   "RHSOM",
+   "RM",
+   "SHLWC",
+   "SHLWDZ",
+   "SOC",
+   "SWE",
+   "TKICEMELT",
+   "TKLATC",
+   "TKLATN",
+   "TKNETC",
+   "TKREGROWC",
+   "TKREGROWN",
+   "TKREMTHICK",
+   "TKRESPC",
+   "TLAYER",
+   "VEGC",
+   "VEGNTOT",
+   "restart-sc.nc",
+   "restart-tr.nc",
+   "run"
+  ],
+  "0,1": [
+   "DRAINTYPE",
+   "run"
+  ],
+  "0,2": [
+   "DRAINTYPE",
+   "run"
+  ],
+  "0,3": [
+   "DRAINTYPE",
+   "run"
+  ],
+  "0,4": [
+   "DRAINTYPE",
+   "run"
+  ],
+  "0,5": [
+   "DRAINTYPE",
+   "run"
+  ],
+  "0,6": [
+   "DRAINTYPE",
+   "run"
+  ],
+  "0,7": [
+   "DRAINTYPE",
+   "run"
+  ],
+  "0,8": [
+   "DRAINTYPE",
+   "run"
+  ],
+  "0,9": [
+   "DRAINTYPE",
+   "run"
+  ]
+ },
+ "restart": {
+  "on": [
+   "tk_drainage_type",
+   "tk_exice",
+   "tk_exinit",
+   "tk_init",
+   "tk_subsidence"
+  ],
+  "off_auto": [],
+  "off": []
+ },
+ "restart_on_sc_tk_init_row0": [
+  1484,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0,
+  0
+ ],
+ "restart_on_sc_tk_drainage_row0": [
+  1,
+  1,
+  0,
+  0,
+  0,
+  1,
+  1,
+  1,
+  1,
+  1
+ ],
+ "C_closure_tr_row0": {
+  "on": {
+   "max_abs_any_cell": 0.00831208132149186,
+   "cell00_max": 0.0012049996656564588
+  },
+  "off_auto": {
+   "max_abs_any_cell": 0.00831208132149186,
+   "cell00_max": 0.0049056997795560164
+  }
+ },
+ "slump_month_cell00": 17,
+ "cell00_slump_drop_SOC": -4211.811358418177,
+ "cell00_end_effect_SOC": -5836.5793842253515,
+ "cell00_slump_drop_VEGC": -1253.1767236804963,
+ "cell00_end_effect_VEGC": -585.1994432806969,
+ "cell00_TKLATC_slump": 4918.4892738888075,
+ "cell00_TKRESPC_slump": 546.4988082098675,
+ "cell00_gpp_last10yr_frac_of_off": 1.2413819063935896
+}

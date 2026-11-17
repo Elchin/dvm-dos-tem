@@ -15,6 +15,8 @@
 #include "Soil_Bgc.h"
 
 #include "WildFire.h"
+#include "Thermokarst.h"
+#include "ThermokarstData.h"
 
 #include "CohortData.h"
 
@@ -89,6 +91,13 @@ public :
   FirData year_fd[12]; //Monthly fire data, for all PFTs and soil
   FirData * fd;   //Fire data for an individual month 
 
+  // ---- RTS / thermokarst (model_settings.thermokarst; port of rts-regrow 7c9fd634)
+  Thermokarst thermokarst;          // constructed from IO.hist_exp_thermokarst_file only when thermokarst = 1
+  ThermokarstData year_tkdata[12];  // monthly RTS fluxes/diagnostics (outputs TK*)
+  ThermokarstData tk_own;           // used when setProcessData() gets no ThermokarstData (unit tests)
+  ThermokarstData * tkdata = &tk_own;
+  double tk_prev_ald = UIN_D;       // previous year's ALD (m), updated in December only when thermokarst = 1
+
   ModelData * md;
 
   CohortData cd;
@@ -103,6 +112,7 @@ public :
 
   void setModelData(ModelData* md);
   void setProcessData(EnvData * alledp, BgcData * allbdp, FirData *fdp);
+  void setProcessData(EnvData * alledp, BgcData * allbdp, FirData *fdp, ThermokarstData * tdp);
 
   void initialize_state_parameters();
   //void prepareAllDrivingData();
@@ -120,6 +130,8 @@ public :
   void load_proj_co2(const std::string& proj_co2_file);
   // Overwrites/fills explicit fire data containers with data from the projected fire input file.
   void load_proj_explicit_fire(const std::string& proj_exp_fire_file);
+  void load_proj_explicit_thermokarst(const std::string& proj_exp_thermokarst_file); // thermokarst = 1 only
+  void set_tk_state_from_restartdata();   // RTS state (thermokarst = 1 only)
 
   // Integrator safety-net / give-up counters (read-only access for reporting)
   const Integrator& get_solintegrator() const { return solintegrator; }
@@ -161,6 +173,31 @@ private:
 
   // Fire is a type of disturbance
   void updateMonthly_Fir(const int & year, const int & midx, std::string stage);
+  // ---- RTS (thermokarst = 1 only)
+  void updateMonthly_Thermokarst(const int &year, const int &midx, std::string stage);
+  void updateMonthly_RTSMethane(const int & midx);   // RTS CH4 (thermokarst_ch4)
+  void updateMonthly_RTSFloorPrep();                  // per-layer RH modifiers before soil integration
+  void updateMonthly_RTSFloorExport();                // monthly lateral export of floor mineral C/N
+  void updateMonthly_RTSMethane_lateral();           // CO2/CH4 split of TKLATC
+  int tk_cur_month = 0;               // calendar month of the current step (RTS floor rmin)
+  double tk_rh_hist[10][12] = {{0}};  // pre-initiation monthly RHSOM ring buffer (years x months)
+  int tk_rh_nyr[12] = {0};            // number of recorded years per calendar month (<= 10)
+  int tk_rh_next[12] = {0};           // next ring slot per calendar month
+  // RTS post-slump regrowth (RTSRegrow.h); state is not in the restart file (set at initiation)
+  bool tk_rg_have = false;            // pre-slump state recorded
+  double tk_rg_cpre[NUM_PFT][3] = {{0}}, tk_rg_npre[NUM_PFT][3] = {{0}};
+  int tk_rg_type[NUM_PFT] = {0};
+  double tk_rg_s = 1.0, tk_rg_gpp = 0.0, tk_rg_olpre = 0.0, tk_rg_olstab = 0.0, tk_rg_oladd = 0.0, tk_rg_ncarry = 0.0;
+  double tk_rg_gpp12[12] = {0}; int tk_rg_gpp12_n = 0, tk_rg_gpp12_i = 0;  // trailing-12-month GPP ring (N taper)
+  double tk_rg_ingpp = 0.0, tk_rg_ingpp12[12] = {0};  // pre-slump / trailing N-unlimited GPP (dynamic taper reference)
+  double tk_rg_taper = 1.0;           // current N-supply taper factor in [0,1] (1 until GPP recovers)
+  double tk_gpp_ring[60] = {0}, tk_ingpp_ring[60] = {0}; int tk_gpp_n = 0, tk_gpp_i = 0;
+  double tk_rg_olc() const;           // organic (non-mineral) soil layer SOM C, g/m2
+  void updateMonthly_RTSRegrowVeg();  // shrub boost only (>=1) before the veg integration; no growth ceiling in v2
+  void updateMonthly_RTSRegrow();     // reseed + organic-layer rebuild (thermokarst step)
+  void rebuildBdallVeg();
+  soidiag_thermokarst tk_ch4_month; // this month's CH4 (kept across the slump step, which resets tkdata)
+  void tk_set_month_flags();        // base fixes the RTS needs, on only after an RTS initiation
 
   // update root distribution
   void getSoilFineRootFrac_Monthly();

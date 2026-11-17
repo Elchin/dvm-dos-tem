@@ -102,7 +102,7 @@ def make_config(workdir, rts_on, tk_file='historic-explicit-thermokarst.nc', out
     io['output_nc_eq'] = 0; io['output_nc_sp'] = 0; io['output_nc_tr'] = 1; io['output_nc_sc'] = 0
     io['restart_from'] = ''
     ms = cfg['model_settings']
-    ms['thermokarst'] = bool(rts_on)
+    ms['thermokarst'] = 1 if rts_on else 0   # this fork: integer switch (bools are FATAL)
     if rts_on: ms.update(RTS_PARAMS)
     if extra: ms.update(extra)
     os.makedirs(os.path.join(workdir, 'output'), exist_ok=True)

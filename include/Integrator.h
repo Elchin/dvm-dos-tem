@@ -32,6 +32,11 @@ using namespace std;
 
 class Integrator {
 public :
+  // RTS (thermokarst, port of rts-regrow 20f4b8be): after an RTS initiation plant uptake can
+  // drive mineral-layer AVLN transiently negative mid-step; when true such steps are accepted
+  // and the existing y2cstate_soi clip moves the deficit to ORGN. Set by Cohort only after an
+  // RTS initiation (thermokarst = 1); false otherwise (legacy).
+  bool tk_tolerate_neg_avln = false;
   Integrator();
   ~Integrator();
 

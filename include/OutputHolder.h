@@ -33,6 +33,20 @@ public:
   std::vector<double> aldfront_for_output;  // v5q-humic-stefan (ALD_FRONT)
   std::vector<double> burnsoil2airc_for_output;
   std::vector<double> burnthick_for_output;
+  // RTS / thermokarst outputs
+  std::vector<double> tklatc_for_output;
+  std::vector<double> tklatn_for_output;
+  std::vector<double> tkremthick_for_output;
+  std::vector<double> tkicemelt_for_output;
+  std::vector<double> draintype_for_output;
+  std::vector<double> tksubsid_for_output;
+  std::vector<double> tkexice_for_output;
+  std::vector<double> tkexmelt_for_output;
+  std::vector<double> tkrespc_for_output;
+  std::vector<double> tkch4prod_for_output, tkch4oxid_for_output, tkch4emis_for_output, tkch4plant_for_output;
+  std::vector<double> tkch4pool_for_output, tkrhco2_for_output, tklatch4_for_output, tkpondsat_for_output;
+  std::vector<double> tkregrowc_for_output, tkregrown_for_output;
+  std::vector<double> tknetc_for_output;
   std::vector<double> burnveg2airc_for_output;
   std::vector<double> burnveg2deadc_for_output;
   std::vector<double> burnveg2soilabvc_for_output;

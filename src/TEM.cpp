@@ -955,6 +955,9 @@ void advance_model(const int rowidx, const int colidx,
                 << " = \"daily\")" << std::endl;
     }
     runner.cohort.load_proj_explicit_fire(modeldata.proj_exp_fire_file);
+    if (modeldata.thermokarst == 1) {   // RTS: projected thermokarst input only when on
+      runner.cohort.load_proj_explicit_thermokarst(modeldata.proj_exp_thermokarst_file);
+    }
     if(runner.cohort.cd.ch4_on){   // wetland (phase 3): per-cohort flag
       runner.cohort.load_ch4(modeldata.proj_ch4_file);
       runner.cohort.climate.index_proj_ch4_by_year(modeldata.proj_ch4_file, modeldata.sc_yrs);

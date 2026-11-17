@@ -78,6 +78,22 @@ public :
   double deadn0[NUM_PFT];
   void read_px_fire_vars(const std::string& fname, const int rowidx, const int colidx);
   void write_px_fire_vars(const std::string& fname, const int rowidx, const int colidx);
+  // RTS (model_settings.thermokarst): optional RTS state, written only when thermokarst = 1
+  // (write_tk_state, set by Cohort); read only when thermokarst = 1. NetCDF: tk_drainage_type,
+  // tk_init (0 = no RTS yet, else months since initiation + 1), tk_exinit (Y,X) int,
+  // tk_subsidence (Y,X) double, tk_exice (Y,X,soillayer) double. has_tk_state is true only if
+  // all five exist (old restarts: false). Serial builds only (not in the MPI datatype).
+  // Not saved (known limitation, as on rts-regrow): RTS regrow state and the floor RH history.
+  bool read_tk_state = false;   // set by Cohort when thermokarst = 1 (not reset by reinitValue)
+  bool write_tk_state = false;
+  bool has_tk_state = false;
+  int tk_drainage_type;
+  int tk_init;
+  int tk_exinit;
+  double tk_subsidence;
+  double tk_exice[MAX_SOI_LAY];
+  void read_px_tk_vars(const std::string& fname, const int rowidx, const int colidx);
+  void write_px_tk_vars(const std::string& fname, const int rowidx, const int colidx);
 
   int chtid;
 

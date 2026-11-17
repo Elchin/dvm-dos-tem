@@ -41,6 +41,9 @@ public:
   int indl;      ///< layer index, start from 1
   int solind;    ///< soil layer index, start from 1
   double age;    ///< age of a layer (year)
+  // RTS (model_settings.thermokarst): segregated excess ground ice (kg/m2), distinct from
+  // pore ice, not part of dz. Stays 0 unless thermokarst_excess_fraction > 0 (port of rts-regrow).
+  double excess_ice = 0.;
   double dz;     ///< thickness of layer (unit : \f$ m \f$)
   double z;      ///< distance to the ground surface:
   // + means below surface, for soil layer

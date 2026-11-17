@@ -1,6 +1,9 @@
 #ifndef MODELDATA_H_
 #define MODELDATA_H_
 #include "Bnf.h"
+#include "RTSMethane.h"
+#include "RTSFloor.h"
+#include "RTSRegrow.h"
 #include <string>
 #include <vector>
 #include <iostream>
@@ -76,6 +79,8 @@ public:
   string fri_fire_file;
   string hist_exp_fire_file;
   string proj_exp_fire_file;
+  string hist_exp_thermokarst_file;  // RTS: read only when thermokarst = 1
+  string proj_exp_thermokarst_file;  // RTS: read only when thermokarst = 1
   string soil_texture_file;
   string drainage_file;
   string co2_file;
@@ -499,6 +504,34 @@ public:
   //     fraction. Legacy added it to the SOMCR carbon pool (N lost, the same mass of C created).
   int dwd_n_leak_fix;
   int deadroot_n_route_fix;
+
+  // ---- RTS / thermokarst (port of rts-regrow 7c9fd634, m2d not ported). docs/WORK_NOTES_rts.md
+  // model_settings.thermokarst: integer 0 (default, legacy: nothing RTS is read, run or written)
+  // or 1 (retrogressive thaw slumps from IO.hist_exp_thermokarst_file in tr and
+  // IO.proj_exp_thermokarst_file in sc). FATAL otherwise. With 1 the RTS sub-keys below are read
+  // (FATAL on wrong types / ranges); defaults are the rts-regrow v0.3 settings: floor RH cap,
+  // floor export, floor anoxia, floor RH minimum, regrow, regrow N taper, regrow NAVLN exempt
+  // and initiation on; RTS CH4 off. This fork's soil_negpool_fix, layer_n_remap_fix and
+  // layer_bookkeep_fix default to 1 with thermokarst = 1 (apply_thermokarst_auto_switches).
+  int thermokarst;
+  bool useThermokarstSeverity = false; // (rts-regrow; unused placeholder)
+  double tk_folr = -1.0;          // <0 keeps legacy RTS-branch removal (to thaw depth)
+  double tk_c_resp_frac = 0.0;    // fraction of removed C/N respired; rest lateral export
+  double tk_veg_remove_frac = 0.99;
+  double tk_thaw_depth = 0.0;     // m; <=0 disables the instant-thaw step
+  int tk_post_drainage = -1;      // -1 keep; 0 well-drained; 1 poorly-drained
+  double tk_excess_fraction = 0.0; // excess-ice volume fraction (0 <= f < 0.8); 0 = off
+  double tk_excess_top = 0.5;      // m below soil surface
+  double tk_excess_bottom = 2.0;   // m below soil surface
+  bool tk_ch4 = false;
+  RTSMethaneParams tk_ch4par;
+  RTSRegrowParams tk_regrow;  // post-slump vegetation recovery
+  RTSFloorParams tk_floor;    // post-slump floor RH cap / export / anoxia / RH minimum
+  bool tk_initiation = true;  // false: module on (ice) but never initiate an RTS
+  // Parse and validate the RTS sub-keys of model_settings (FATAL on error). Static for unit tests.
+  static void parse_thermokarst_settings(const Json::Value & ms, ModelData & md);
+  // thermokarst = 1: soil_negpool_fix, layer_n_remap_fix, layer_bookkeep_fix default to 1 if absent
+  static void apply_thermokarst_auto_switches(const Json::Value & ms, ModelData & md);
 
   // FW_MOD_START:
   // Switches to turn fire off for each run stage.  Fire in never on the pre-run stage:

@@ -275,6 +275,9 @@ MPI_Datatype RestartData::register_mpi_datatype() {
 void RestartData::reinitValue() {
   d2m_ald_prevyr = MISSING_D;   // v5q-d2m-gate
   write_fire_state = false; has_fire_state = false; mthsdist = MISSING_I;   // fire-balance fixes
+  write_tk_state = false; has_tk_state = false;   // RTS (thermokarst)
+  tk_drainage_type = MISSING_I; tk_init = MISSING_I; tk_exinit = MISSING_I; tk_subsidence = MISSING_D;
+  for (int il = 0; il < MAX_SOI_LAY; il++) { tk_exice[il] = MISSING_D; }
   for (int ip = 0; ip < NUM_PFT; ip++) { deadc0[ip] = MISSING_D; deadn0[ip] = MISSING_D; }
   // atmosphere
   dsr         = MISSING_I;
@@ -430,6 +433,7 @@ void RestartData::update_from_ncfile(const std::string& fname, const int rowidx,
   read_px_d2m_vars(fname, rowidx, colidx);   // v5q-d2m-gate (optional variable)
   read_px_puddle_vars(fname, rowidx, colidx); // phase 3 v2 (optional puddle ice / liquid)
   read_px_fire_vars(fname, rowidx, colidx);   // fire-balance fixes (optional fire state)
+  if (read_tk_state) { read_px_tk_vars(fname, rowidx, colidx); }   // RTS (thermokarst = 1 only)
 
   BOOST_LOG_SEV(glg, debug) << "Done reading data from file into RestartData.";
 }
@@ -465,6 +469,7 @@ void RestartData::write_pixel_to_ncfile(const std::string& fname, const int rowi
   if (d2m_ald_prevyr >= 0.0) { write_px_d2m_vars(fname, rowidx, colidx); }   // v5q-d2m-gate
   if (write_puddle) { write_px_puddle_vars(fname, rowidx, colidx); }        // phase 3 v2
   if (write_fire_state) { write_px_fire_vars(fname, rowidx, colidx); }      // fire-balance fixes
+  if (write_tk_state) { write_px_tk_vars(fname, rowidx, colidx); }          // RTS (thermokarst = 1 only)
 
   BOOST_LOG_SEV(glg, debug) << "Done writing RestartData.";
 
@@ -557,6 +562,71 @@ void RestartData::write_px_fire_vars(const std::string& fname, const int rowidx,
   temutil::nc( nc_put_var1_int(ncid, vm, s2, &mthsdist) );
   temutil::nc( nc_put_vara_double(ncid, vc, s3, c3, &deadc0[0]) );
   temutil::nc( nc_put_vara_double(ncid, vn, s3, c3, &deadn0[0]) );
+  temutil::nc( nc_close(ncid) );
+#endif
+}
+
+/** RTS (thermokarst = 1 only): optional RTS state tk_drainage_type, tk_init, tk_exinit (Y,X) int,
+ *  tk_subsidence (Y,X) double, tk_exice (Y,X,soillayer) double. has_tk_state = all five present. */
+void RestartData::read_px_tk_vars(const std::string& fname, const int rowidx, const int colidx) {
+  has_tk_state = false;
+  int ncid, v[5];
+  const char * names[5] = {"tk_drainage_type", "tk_init", "tk_exinit", "tk_subsidence", "tk_exice"};
+  temutil::nc( nc_open(fname.c_str(), NC_NOWRITE, &ncid), fname );
+  bool all = true;
+  for (int k = 0; k < 5; k++) { if (nc_inq_varid(ncid, names[k], &v[k]) != NC_NOERR) { all = false; } }
+  if (all) {
+    size_t s2[2] = {(size_t)rowidx, (size_t)colidx};
+    size_t s3[3] = {(size_t)rowidx, (size_t)colidx, 0};
+    size_t c3[3] = {1, 1, MAX_SOI_LAY};
+    temutil::nc( nc_get_var1_int(ncid, v[0], s2, &tk_drainage_type) );
+    temutil::nc( nc_get_var1_int(ncid, v[1], s2, &tk_init) );
+    temutil::nc( nc_get_var1_int(ncid, v[2], s2, &tk_exinit) );
+    temutil::nc( nc_get_var1_double(ncid, v[3], s2, &tk_subsidence) );
+    temutil::nc( nc_get_vara_double(ncid, v[4], s3, c3, &tk_exice[0]) );
+    has_tk_state = true;
+  }
+  temutil::nc( nc_close(ncid) );
+}
+
+/** RTS (thermokarst = 1 only): define the RTS-state variables if needed and write this pixel (serial builds). */
+void RestartData::write_px_tk_vars(const std::string& fname, const int rowidx, const int colidx) {
+#ifdef WITHMPI
+  BOOST_LOG_SEV(glg, warn) << "RTS state (tk_*) not written to the restart in MPI builds.";
+#else
+  int ncid, v[5] = {-1, -1, -1, -1, -1};
+  const char * names[5] = {"tk_drainage_type", "tk_init", "tk_exinit", "tk_subsidence", "tk_exice"};
+  temutil::nc( nc_open(fname.c_str(), NC_WRITE, &ncid), fname );
+  bool need = false;
+  for (int k = 0; k < 5; k++) { if (nc_inq_varid(ncid, names[k], &v[k]) != NC_NOERR) { need = true; } }
+  if (need) {
+    int dv; temutil::nc( nc_inq_varid(ncid, "DZsoil", &dv) );   // (Y,X,soillayer)
+    int d3[3]; temutil::nc( nc_inq_vardimid(ncid, dv, d3) );
+    temutil::nc( nc_redef(ncid) );
+    for (int k = 0; k < 3; k++) {
+      if (nc_inq_varid(ncid, names[k], &v[k]) != NC_NOERR) {
+        temutil::nc( nc_def_var(ncid, names[k], NC_INT, 2, d3, &v[k]) );
+        temutil::nc( nc_put_att_int(ncid, v[k], "_FillValue", NC_INT, 1, &MISSING_I) );
+      }
+    }
+    if (nc_inq_varid(ncid, names[3], &v[3]) != NC_NOERR) {
+      temutil::nc( nc_def_var(ncid, names[3], NC_DOUBLE, 2, d3, &v[3]) );
+      temutil::nc( nc_put_att_double(ncid, v[3], "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
+    }
+    if (nc_inq_varid(ncid, names[4], &v[4]) != NC_NOERR) {
+      temutil::nc( nc_def_var(ncid, names[4], NC_DOUBLE, 3, d3, &v[4]) );
+      temutil::nc( nc_put_att_double(ncid, v[4], "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
+    }
+    temutil::nc( nc_enddef(ncid) );
+  }
+  size_t s2[2] = {(size_t)rowidx, (size_t)colidx};
+  size_t s3[3] = {(size_t)rowidx, (size_t)colidx, 0};
+  size_t c3[3] = {1, 1, MAX_SOI_LAY};
+  temutil::nc( nc_put_var1_int(ncid, v[0], s2, &tk_drainage_type) );
+  temutil::nc( nc_put_var1_int(ncid, v[1], s2, &tk_init) );
+  temutil::nc( nc_put_var1_int(ncid, v[2], s2, &tk_exinit) );
+  temutil::nc( nc_put_var1_double(ncid, v[3], s2, &tk_subsidence) );
+  temutil::nc( nc_put_vara_double(ncid, v[4], s3, c3, &tk_exice[0]) );
   temutil::nc( nc_close(ncid) );
 #endif
 }

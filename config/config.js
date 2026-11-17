@@ -22,6 +22,8 @@
     "fri_fire_file":      "demo-data/cru-ts40_ar5_rcp85_ncar-ccsm4_toolik_field_station_10x10/fri-fire.nc",
     "hist_exp_fire_file": "demo-data/cru-ts40_ar5_rcp85_ncar-ccsm4_toolik_field_station_10x10/historic-explicit-fire.nc",
     "proj_exp_fire_file": "demo-data/cru-ts40_ar5_rcp85_ncar-ccsm4_toolik_field_station_10x10/projected-explicit-fire.nc",
+    "hist_exp_thermokarst_file": "", // RTS: read only when model_settings.thermokarst = 1 (e.g. demo-data/..._10x10/historic-explicit-thermokarst.nc)
+    "proj_exp_thermokarst_file": "", // RTS: read only when model_settings.thermokarst = 1
     "fire_fuel_model_file": "external/Fireweed/Input_Files/Standard_Fuel_Models_Table.csv",
     "fire_fosberg_a_file": "external/Fireweed/Input_Files/NWGC_Fosberg_Table_A.txt",
     "fire_fosberg_b_file": "external/Fireweed/Input_Files/NWGC_Fosberg_Table_B.txt",
@@ -204,6 +206,9 @@
                                         //   really enters top-layer soil ORGN. docs/WORK_NOTES_fire_balance.md
     "fire_c_bookkeep_fix": 0,           // 0 (default) = legacy; 1 = standing-dead C/N fall/burn bookkeeping fixes (C, N close).
                                         //   See docs/WORK_NOTES_reburn.md.
+    "thermokarst": 0,                   // RTS master switch: 0 (default) = off, legacy (nothing RTS read, run or written);
+                                        //   1 = retrogressive thaw slumps from IO.hist/proj_exp_thermokarst_file (tr, sc).
+                                        //   Sub-keys thermokarst_* / rts_* read only when 1. docs/WORK_NOTES_rts.md
     "cell_timelimit": 0, //Run time limit per cell in seconds. 0 for no limit.
     "dynamic_lai": 1,                   // from model (1) or from input (0)
     "n_rootless_fix": 2,                // N1 fix (v5o default 2; 0 = legacy: rootless-layer net mineralisation N lost)

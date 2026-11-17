@@ -8,6 +8,7 @@
 #include "SnowClass.h"
 #include <deque>
 #include <vector>
+#include <vector>
 using namespace std;
 
 #include "DoubleLinkedList.h"
@@ -29,6 +30,7 @@ using namespace std;
 #include "BgcData.h"
 #include "CohortData.h"
 #include "FireData.h"
+#include "ThermokarstData.h"
 #include "RestartData.h"
 
 #include "parameters.h"
@@ -232,10 +234,56 @@ public :
                                   //  unfrozen(-1)/partially-frozen(0)
 
   // update water drainage layer and depth
+  // ---- RTS (model_settings.thermokarst; port of rts-regrow). Inert unless thermokarst = 1.
+  double getThawDepth(); // get seasonal thaw depth
+
+  // ---- Excess ground ice & subsidence (ported from feature/thermokarst-prototype,
+  // reduced form: excess ice is thermally passive and lives in mineral layers).
+  double tk_subsidence = 0.;      // cumulative subsidence (m)
+  double tk_prev_subsidence = 0.; // subsidence already seen by the water-table coupling
+  bool tk_excess_initialized = false;
+  int tk_months_since_init = -1;  // -1: RTS not initiated; else months since initiation
+  // Set excess ice in frozen mineral layers overlapping [top,bottom] (m) with
+  // excess volume fraction 'fraction' of the total (matrix+excess) volume.
+  // Returns total excess ice (kg/m2).
+  double initExcessIce(const double fraction, const double top, const double bottom);
+  // Melt excess ice in thawed layers (all of it if unfrozen, (1-frozenfrac) if
+  // partially frozen). Melt water fills pore space up to maxliq; surplus goes to
+  // 'drained'. Adds to tk_subsidence and returns this call's subsidence (m).
+  double meltExcessIce(double & melted, double & drained);
+  double totalExcessIce();
+  // Pure helpers (unit tested)
+  static double excessIceForLayer(const double ztop, const double dz,
+                                  const double fraction, const double top,
+                                  const double bottom);
+  static double meltExcessColumn(std::vector<double> & excess, std::vector<double> & liq,
+                                 const std::vector<double> & maxliq,
+                                 const std::vector<double> & meltfrac,
+                                 double & melted, double & drained);
+
+  // RTS initiation: instantly thaw all soil layers whose bottom is within
+  // 'depth' (m). Returns ice melted (kg/m2); 'drained' gets melt water above
+  // layer capacity (poro*dz*DENLIQ), which is removed from the column.
+  double thawToDepth(const double depth, double & drained);
+
+  // Pure column helper for thawToDepth (unit tested). Layers are top->bottom.
+  // thawed[i] is set true for every layer fully within depth.
+  static double thawColumn(const std::vector<double> & ztop,
+                           const std::vector<double> & dz,
+                           std::vector<double> & ice, std::vector<double> & liq,
+                           const std::vector<double> & maxliq,
+                           const double depth, double & drained,
+                           std::vector<bool> & thawed);  
+
   void setDrainL();
 
   // soil burning caused soil structure change
-  double adjustSoilAfterburn();
+  // update mineral soil layers after an RTS (thermokarst only)
+  void updateMineralProperties(soistate_dim * soildim);
+
+  // soil burning caused soil structure change. tk_remove_mineral (RTS only, default false =
+  // fire/legacy): also remove mineral layers left with zero C below the organic horizons.
+  double adjustSoilAfterburn(bool tk_remove_mineral = false);
 
   // organic layer thickness dynamics with C content
   void updateOslThickness5Carbon(Layer* fstsoill);

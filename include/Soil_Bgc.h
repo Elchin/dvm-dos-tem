@@ -7,6 +7,8 @@
 #include "CohortData.h"
 #include "EnvData.h"
 #include "FireData.h"
+#include "ThermokarstData.h"
+#include "RTSFloor.h"
 #include "BgcData.h"
 #include "RestartData.h"
 
@@ -24,6 +26,22 @@ using namespace std;
 class Soil_Bgc {
   friend class Integrator; // soil safety net reads the monthly inputs
 public:
+  // ---- RTS (model_settings.thermokarst; port of rts-regrow). All inert at their defaults.
+  // RTS floor (RTSFloor.h); tk_floor_on=false -> code path untouched (bitwise v0.1)
+  bool tk_floor_on = false;
+  bool tk_cap_on = false;
+  int tk_months = -1;
+  RTSFloorParams tk_floorpar;
+  double tk_rhmult[MAX_SOI_LAY];   // anoxia multiplier per layer (1 = none)
+  bool tk_capmask[MAX_SOI_LAY];    // layer subject to the mineralization cap (mineral layers)
+  int tk_ninput_layer = 0;          // layer receiving m_a2soi.avlninput (0 = legacy; RTS regrow: first rooted layer)
+  bool tk_navln_exempt = false;    // RTS regrow: net N mineralization from the uncapped RH (RTSRegrow.h (6))
+  double tk_rh_precap[MAX_SOI_LAY]; // layer RH before the floor cap (valid when tk_navln_exempt && tk_floor_on)
+  double tk_rmin_target = -1.0;    // minimum column RHSOM this month, g/month (<0: off)
+  // RTS: route above-ground litter to the first non-moss layer when no fibric layer is left and
+  //   root litter with no receiving layer with it (rts-regrow c5f4c45e/bc19d300); only after an RTS.
+  bool tk_litter_fix = false;
+
   Soil_Bgc();
   ~Soil_Bgc();
 

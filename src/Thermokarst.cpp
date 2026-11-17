@@ -112,8 +112,10 @@ void Thermokarst::initializeState() {
 };
 
 // Looks like this is just used when setting up a Cohort from a Restart file...
-void Thermokarst::set_state_from_restartdata(const RestartData & rdata) {
-  tkdata->thermokarst_a2soi.orgn = rdata.thermokarsta2sorgn;
+void Thermokarst::set_state_from_restartdata(const RestartData & /*rdata*/) {
+  // port (thermokarst switch): thermokarst_a2soi.orgn is never used and not in this fork's restart
+  // file (the RTS state is RestartData::tk_*, read by Cohort::set_tk_state_from_restartdata).
+  tkdata->thermokarst_a2soi.orgn = 0.0;
 }
 
 /** Figure out whether or not there should be thermokarst, based on stage, yr, month.

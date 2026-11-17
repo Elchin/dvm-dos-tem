@@ -361,5 +361,46 @@ struct veg2dead_fir{
   veg2dead_fir(): vegC(UIN_D), strN(UIN_D) {}
 };
 
+// ---- RTS / thermokarst (port of rts-regrow; used only with model_settings.thermokarst = 1)
+struct atm2soi_thermokarst {
+  double orgn;
+  atm2soi_thermokarst(): orgn(0.0){}
+};
+
+struct soi2atm_thermokarst {
+  double orgc;
+  double orgn;
+  soi2atm_thermokarst(): orgc(0.0), orgn(0.0) {}
+};
+
+struct veg2atm_thermokarst {
+  double orgc;
+  double orgn;
+  veg2atm_thermokarst(): orgc(0.0), orgn(0.0) {}
+};
+
+struct veg2soi_thermokarst {
+  double abvc;
+  double abvn;
+  double blwc;
+  double blwn;
+  veg2soi_thermokarst() : abvc(0.0), abvn(0.0), blwc(0.0), blwn(0.0) {}
+};
+
+struct veg2dead_thermokarst{
+  double vegC;
+  double strN;
+  veg2dead_thermokarst() : vegC(0.0), strN(0.0) {}
+};
+
+// RTS/thermokarst lateral export (mudflow) of C and N out of the cell
+struct soi2lat_thermokarst {
+  double orgc; // soil organic C + woody debris exported laterally (g/m2)
+  double orgn;
+  double vegc; // removed vegetation C exported laterally (g/m2)
+  double vegn;
+  soi2lat_thermokarst(): orgc(0.0), orgn(0.0), vegc(0.0), vegn(0.0) {}
+};
+
 #endif /*FLUXES_H_*/
 

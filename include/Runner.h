@@ -95,6 +95,7 @@ private:
                     //   (i.e. 'edall in 'cht')
   BgcData  chtbd;
   FirData  chtfd;
+  ThermokarstData chttd; // RTS (thermokarst)
 
   deque<RestartData> mlyres;
 
