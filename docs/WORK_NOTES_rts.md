@@ -215,10 +215,25 @@ Closures (syn7, final binary `tk7`, monthly, tr):
 |---|---|---|---|
 | on | 0.0018 | **0.081** | only the pre-slump base event (month 66, also in noinit and thermokarst-off runs) |
 | on_nosnc (`thermokarst_safetynet_conserve` false) | 0.009 | 0.19 | post-slump events yr 14–15 |
-| ice | **0.39** | 0.081 | C: one event month (yr 14 m 5): the soil receives 0.39 g more litter C than the vegetation lost; also with snc off; **open** |
+| ice | **0.39** | 0.081 | C: one event month (yr 14 m 5); **fixed in §9.6** (base float accumulation, now 0.0014) |
 | on_snc (global `n_safetynet_conserve` 1) | 0.0026 | 1.5e-4 | closes the pre-slump event too |
 | on_fx (`soil_giveup_retry` 1, not enabled) | 0.080 | 0.002 | |
 | on_noauto | 6.1 | 342 | why the auto switches are on |
+
+### 9.6 Ice-case C residual and base N leak (Elchin: "ice case chase it. fix the N leak for the base model")
+- **Cause (base, not RTS):** the soil integrator state is float. In months where the step size collapses, large pools (SOMCR ~1e3 g/m2) drop increments below half their float spacing while the RH / N-flux accumulators book them. In the ice event month: +0.390 gC/m2 before the give-up (t0 = 0.729), exactly the residual. The litter routing and the safety net itself are exact. Same mechanism as the v5k C1 note (+2.74 gC).
+- **Fix:** base switch `n_safetynet_conserve` **level 2** = L1 + exact (double) soil accumulation in `adapt()`; default stays 0. `config/config.js` now sets it to 2 (Elchin's go-ahead); the RTS test scripts inherit it, so before initiation they also run at level 2. Details, closures, regression effect: `docs/WORK_NOTES_safetynet_conserve2.md`.
+- **RTS:** `thermokarst_safetynet_conserve` (default true) now gives `max(global, 2)` from initiation on. The base N leak before initiation (0.081 gN, also with RTS off) closes only with a global level ≥ 1. Elchin's base fix is level 2, not auto-enabled (base defaults unchanged).
+- Synthetic closures (tk9c): on C 0.0014 / N 0.081 (pre-init); ice **0.389 → 0.0014** / 0.081; ice_snc 0.36 → 0.0026 / 1.5e-4; on_snc2 0.00083 / 6.8e-5; ice_snc2 0.00068 / 7.1e-5.
+- **10-cell case (tk9c):**
+  - `on` vs `off_auto`: cells (0,1)–(0,9) identical except `run_status` runtime. Slump-cell C closure max 0.0039 → 0.0007.
+  - RTS effect: SOC end −5974 (was −5970), VEGC −600.1 (−599.8), GPP last 10 yr 1.198 (1.198).
+- **Global level 2 in the 10-cell case** (`off_snc2`): all 10 cells differ.
+  - vs `off_auto` (level 0), last year: VEGC −2.5 … +0.8 %, GPP −12.9 … +11.9 %, SOC within 0.03 %.
+  - vs `off_snc` (level 1), last year: VEGC −1.9 … +1.5 %, GPP −8.1 … +11.9 %, SOC within 0.02 %. Means over the run: VEGC ≤ 0.9 %, GPP ≤ 3 %.
+  - So in these N-limited cells, the yearly GPP trajectory is sensitive to the round-off path, while the stocks are not.
+
+![snc2 closure](figures/rts/snc2_closure.png)
 
 ### 9.4b What `soil_giveup_retry` does (correction)
 It does **not** retry with smaller substeps (the month is already forced at the minimum step 100 times before it gives up). On a give-up it restores the month's starting state and integrates the month again with the G1 N-extraction limiter on (plant root N extraction becomes a saturating function of soil available N, so a zero-order sink can't drive AVLN negative), for that month only. If the retry also gives up, the safety net applies as before. Months without a give-up are bit-identical. It stays off (pending).
@@ -235,8 +250,8 @@ It does **not** retry with smaller substeps (the month is already forced at the 
 
 ## 8. Open items
 - **`soil_giveup_retry`:** not enabled (Elchin pending; §9.4b).
-- **Ice-case C residual 0.39 g/m2** in one safety-net month (§9.4); not yet diagnosed.
-- **Pre-slump base safety-net N leak** (0.081 gN/m2, also in thermokarst-off runs) stays unless the global `n_safetynet_conserve` is turned on.
+- Ice-case C residual: fixed (§9.6).
+- **Pre-slump base safety-net N leak** (0.081 gN/m2, also in thermokarst-off runs): fixed by the global `n_safetynet_conserve` 1 or 2 (§9.6); default stays 0.
 - First-year GPP after the slump is 0.375 vs v0.3 0.546 (base N limitation, §9.2).
 - **v0.3 comparison has only one case** (single synthetic cell; base physics differ).
 - The excess-ice profile (`ICE_PARAMS`) is a placeholder from rts-regrow.
