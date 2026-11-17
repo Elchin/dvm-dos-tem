@@ -298,8 +298,8 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
   }
   // Fix L1 (v5m), default 0 = off (legacy). Refs (L1): see Integrator.h.
   n_safetynet_conserve = controldata["model_settings"].get("n_safetynet_conserve", 0).asInt();
-  if (n_safetynet_conserve < 0 || n_safetynet_conserve > 1) {
-    std::cerr << "FATAL: model_settings n_safetynet_conserve must be 0 or 1" << std::endl;
+  if (n_safetynet_conserve < 0 || n_safetynet_conserve > 2) {
+    std::cerr << "FATAL: model_settings n_safetynet_conserve must be 0, 1 or 2" << std::endl;
     exit(EXIT_FAILURE);
   }
   // v5n (G1, G2, diagnostics), default 0 = off (legacy). Refs: see Soil_Bgc.h / Integrator.h.

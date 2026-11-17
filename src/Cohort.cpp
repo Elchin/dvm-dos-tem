@@ -1336,8 +1336,26 @@ void Cohort::updateMonthly_Bgc(const int & currmind, const int & dinmcurr) {
     }
     solintegrator.tk_tolerate_neg_avln = (m >= 0);
   }
+  static const bool cbal_diag = (md->thermokarst == 1) && getenv("NBAL_DIAG") != NULL;  // RTS diagnostic
+  auto soilc_tot = [this]() {
+    double c = bdall->m_sois.wdebrisc;
+    for (int il = 0; il < MAX_SOI_LAY; il++) {
+      c += bdall->m_sois.rawc[il] + bdall->m_sois.soma[il] + bdall->m_sois.sompr[il] + bdall->m_sois.somcr[il];
+    }
+    return c;
+  };
+  const double cb_c0 = cbal_diag ? soilc_tot() : 0.0;
   solintegrator.updateMonthlySbgc(MAX_SOI_LAY);
   soilbgc.afterIntegration();
+  if (cbal_diag) {   // soil C step: CB yr m C0 C1 litter_in(soil view) veg_litter(veg view) RH safetynet t0 C_net
+    const double lit = soilbgc.diag_litterc_in(); double rh = bdall->m_soi2a.rhwdeb;
+    for (int il = 0; il < std::min(cd.m_soil.numsl, MAX_SOI_LAY); il++) {
+      rh += bdall->m_soi2a.rhrawc[il] + bdall->m_soi2a.rhsoma[il] + bdall->m_soi2a.rhsompr[il] + bdall->m_soi2a.rhsomcr[il];
+    }
+    const double vlit = bdall->m_v2soi.ltrfalcall + bdall->m_v2soi.mossdeathc + bdall->m_v2soi.d2wdebrisc;
+    fprintf(stderr, "CB %d %d %.6f %.6f %.6f %.6f %.6f %d %.4f %.6f\n", 0, currmind, cb_c0, soilc_tot(), lit, vlit, rh,
+            solintegrator.safetynet_fired ? 1 : 0, solintegrator.safetynet_t0, solintegrator.safetynet_c);
+  }
   if (soilbgc.bnfp.scheme > 0) {   // v5q BNF: remember this month's NPP and ET (transpiration + canopy evaporation)
     for (int ip = 0; ip < NUM_PFT; ip++) {   // Phase 2: per-PFT annual NPP for the plant shares
       if (cd.m_veg.vegcov[ip] > 0.) { soilbgc.bnfRecordPft(ip, bd[ip].m_a2v.nppall); }
@@ -2677,9 +2695,11 @@ void Cohort::tk_set_month_flags() {
   const bool after = (ground.tk_months_since_init >= 0);
   soilbgc.tk_litter_fix = after;
   soilenv.tk_nofibric_fix = after;
-  // after an RTS initiation the soil safety net conserves N (Integrator.h, Fix L1) in this cell; before it,
-  // and in cells without an RTS, the global model_settings.n_safetynet_conserve applies unchanged
-  Integrator::n_safetynet_conserve = (md->n_safetynet_conserve == 1 || (after && md->tk_safetynet_conserve)) ? 1 : 0;
+  // after an RTS initiation the soil safety net conserves C and N in this cell (Integrator.h,
+  // n_safetynet_conserve level 2 = L1 + exact soil accumulation); before it, and in cells without
+  // an RTS, the global model_settings.n_safetynet_conserve applies unchanged
+  Integrator::n_safetynet_conserve = (after && md->tk_safetynet_conserve) ? std::max(md->n_safetynet_conserve, 2)
+                                                                          : md->n_safetynet_conserve;
 }
 
 /** RTS (thermokarst = 1 only): RTS state from the restart file. Old restarts (no tk_* variables):

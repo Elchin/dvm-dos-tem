@@ -255,7 +255,7 @@ void Integrator::updateMonthlySbgc(const int & numsoillayer) {
   }
   // Fix L1 (v5m): N owed by an earlier safety-net event whose donors were empty
   // Refs (L1): see Integrator.h (n_safetynet_conserve).
-  if ((n_safetynet_conserve == 1 || soil_negpool_fix == 1) && n_debt > 0.0) {
+  if ((n_safetynet_conserve >= 1 || soil_negpool_fix == 1) && n_debt > 0.0) {
     payNDebt();
   }
   // integration
@@ -334,7 +334,7 @@ void Integrator::applySoilSafetyNet() {
     // v5q: with bnf_scheme > 0 (needs n_rootless_fix 2) the BNF input is always
     // deposited as deltastate() does. Refs: see Bnf.h.
     if (bd->m_v2soi.rtlfalfrac[0] > 0. ||
-        (n_safetynet_conserve == 1 && ssl->n_rootless_fix == 2) ||
+        (n_safetynet_conserve >= 1 && ssl->n_rootless_fix == 2) ||
         (ssl->bnfp.scheme > 0 && ssl->n_rootless_fix == 2)) {
       double an = frac * bd->m_a2soi.avlninput;
       y[I_L_AVLN] += an;
@@ -343,7 +343,7 @@ void Integrator::applySoilSafetyNet() {
   }
   // Fix L1 (v5m): debit the root N extraction the vegetation already took for
   // the remaining (1 - t0) of the month. Refs (L1): see Integrator.h.
-  if (nf && n_safetynet_conserve == 1) {
+  if (nf && n_safetynet_conserve >= 1) {
     safetynet_ndebit = conserveSafetyNetN(frac);
   }
   safetynet_fired = true;
@@ -356,7 +356,7 @@ void Integrator::applySoilSafetyNet() {
                            << " N=" << dn << " (g/m2)";
 }
 
-/** Fix L1 (v5m), only called with n_safetynet_conserve == 1 and nfeed.
+/** Fix L1 (v5m), only called with n_safetynet_conserve >= 1 and nfeed.
 *   N that must leave the soil = (1 - t0) of this month's root N extraction, in
 *   exactly the layers where Soil_Bgc::deltastate() applies it (rooted layers,
 *   or every layer with n_rootless_fix == 2). Donors: ORGN of those layers by
@@ -529,6 +529,26 @@ void Integrator::recordGiveupDiag(const float pstate[], const int numeq,
   diag_totnextract = ssl->dg_totnextract; diag_totdzavln = ssl->dg_totdzavln;
 }
 
+/** One accepted adapt() step. Legacy (pdacc false): the state becomes the float
+*   RKF result pdum4 = pstate + dt*yprime. n_safetynet_conserve 2 (pdacc true,
+*   soil only): the same float increment dt*yprime is added to the double state
+*   pyd, which is copied to pstate; a step forced after a negative pool
+*   (pstepok false, pdum4 == pstate) adds nothing. See Integrator.h. */
+void Integrator::acceptStep(float pstate[], const float pdum4[], double pyd[],
+                            const float pyprime[], const float pdt, const bool pstepok,
+                            const bool pdacc, const int numeq) {
+  if (pdacc) {
+    for (int i = 0; i < numeq; i++) {
+      if (pstepok) { pyd[i] += (double)(pdt * pyprime[i]); }
+      pstate[i] = (float)pyd[i];
+    }
+  } else {
+    for (int i = 0; i < numeq; i++) {
+      pstate[i] = pdum4[i];
+    }
+  }
+}
+
 /** Has some mechanism to check error and change step-size accordingly */
 int Integrator::adapt(float pstate[], const int & numeq) {
   int i;
@@ -540,6 +560,11 @@ int Integrator::adapt(float pstate[], const int & numeq) {
   last_reject_test = -1; last_reject_pool = -1;  // v5n diag only
   float  ptol = 0.01;
   blackhol = 0;
+  // n_safetynet_conserve 2 (soil only): state kept in double, see Integrator.h
+  const bool dacc = (soibgc && n_safetynet_conserve == 2);
+  bool stepok = false;
+  double oldstate_d[NUMEQ];
+  if (dacc) { for (i = 0; i < numeq; i++) { ystate_d[i] = pstate[i]; } }
 
   while ( time != 1.0 ) {
     test = REJECT;
@@ -549,6 +574,7 @@ int Integrator::adapt(float pstate[], const int & numeq) {
 
         // false indicates that some pool went negative....
         bool testavln = rkf45(numeq, pstate, dt);
+        stepok = testavln;
 
         if(testavln) {
           test = boundcon(dum4, error, ptol);
@@ -570,6 +596,7 @@ int Integrator::adapt(float pstate[], const int & numeq) {
             for( i = 0; i < numeq; i++ ) {
               oldstate[i] = pstate[i];
             }
+            if (dacc) { for (i = 0; i < numeq; i++) { oldstate_d[i] = ystate_d[i]; } }
             bh_t0 = time;
           }
 
@@ -578,9 +605,7 @@ int Integrator::adapt(float pstate[], const int & numeq) {
 
         // We are keeping this one...
         if ( test == ACCEPT ) {
-          for( i = 0; i < numeq; i++ ) {
-            pstate[i] = dum4[i];
-          }
+          acceptStep(pstate, dum4, ystate_d, yprime, dt, stepok, dacc, numeq);
 
           time += dt;
 
@@ -604,6 +629,7 @@ int Integrator::adapt(float pstate[], const int & numeq) {
           for( i = 0; i < numeq; i++ ) {
             pstate[i] = oldstate[i];
           }
+          if (dacc) { for (i = 0; i < numeq; i++) { ystate_d[i] = oldstate_d[i]; } }
         }
       } // end while test != accept
     } // end syint loop

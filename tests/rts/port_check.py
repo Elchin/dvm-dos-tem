@@ -39,6 +39,10 @@ CASES = {
   'on_snc': (True, {'n_safetynet_conserve': 1}),
   'ice_snc': (True, {**r.ICE_PARAMS, 'n_safetynet_conserve': 1}),
   'off_snc': (False, {'soil_negpool_fix': 1, 'layer_n_remap_fix': 1, 'layer_bookkeep_fix': 1, 'n_safetynet_conserve': 1}),
+  # global n_safetynet_conserve 2 (L1 + exact soil accumulation, base fix)
+  'on_snc2': (True, {'n_safetynet_conserve': 2}),
+  'ice_snc2': (True, {**r.ICE_PARAMS, 'n_safetynet_conserve': 2}),
+  'off_snc2': (False, {'soil_negpool_fix': 1, 'layer_n_remap_fix': 1, 'layer_bookkeep_fix': 1, 'n_safetynet_conserve': 2}),
   'on_ta09': (True, {'rts_regrow_t_active': 0.9}),   # stabilization ~1 month earlier (tested, not adopted)
   # thermokarst = 1 without the post-initiation safety-net N conservation (thermokarst_safetynet_conserve)
   'on_nosnc': (True, {'thermokarst_safetynet_conserve': False}),

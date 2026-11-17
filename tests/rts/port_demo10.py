@@ -31,7 +31,9 @@ def run(name, on):
     return name, p.returncode
 AUTO = {'soil_negpool_fix': 1, 'layer_n_remap_fix': 1, 'layer_bookkeep_fix': 1}
 CASES = {'off': (False, None), 'on': (True, None), 'off_auto': (False, AUTO),
-         'off_snc': (False, {**AUTO, 'n_safetynet_conserve': 1})}  # option A: global safety-net N conservation
+         'off_snc': (False, {**AUTO, 'n_safetynet_conserve': 1}),   # option A: global safety-net N conservation
+         'off_snc2': (False, {**AUTO, 'n_safetynet_conserve': 2}),  # base fix: L1 + exact soil accumulation
+         'on_snc2': (True, {'n_safetynet_conserve': 2})}
 names = sys.argv[sys.argv.index('--cases') + 1].split(',') if '--cases' in sys.argv else ['off', 'on']
 def run2(name):
     on, extra = CASES[name]

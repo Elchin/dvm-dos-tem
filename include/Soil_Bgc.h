@@ -26,6 +26,8 @@ using namespace std;
 class Soil_Bgc {
   friend class Integrator; // soil safety net reads the monthly inputs
 public:
+  // RTS NBAL_DIAG (Cohort): this month's soil-side litter C input (non-moss layers + woody debris), g/m2
+  double diag_litterc_in() const { double c = d2wdebrisc; for (int il = 0; il < cd->m_soil.numsl && il < MAX_SOI_LAY; il++) { if (cd->m_soil.type[il] > 0) { c += ltrflc[il]; } } return c; }
   // ---- RTS (model_settings.thermokarst; port of rts-regrow). All inert at their defaults.
   // RTS floor (RTSFloor.h); tk_floor_on=false -> code path untouched (bitwise v0.1)
   bool tk_floor_on = false;

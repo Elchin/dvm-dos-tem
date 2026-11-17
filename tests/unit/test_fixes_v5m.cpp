@@ -60,7 +60,8 @@ TEST_CASE("L1 default 0 (legacy) in Integrator and ModelData(); ModelData(Json) 
   ModelData md; CHECK(md.n_safetynet_conserve == 0);
   ModelData m0(ms("svp_ice_fix", 0)); CHECK(m0.n_safetynet_conserve == 0);
   ModelData m1(ms("n_safetynet_conserve", 1)); CHECK(m1.n_safetynet_conserve == 1);
-  CHECK(ut::exit_status_of([] { ModelData m(ms("n_safetynet_conserve", 2)); }) == EXIT_FAILURE);
+  ModelData m2(ms("n_safetynet_conserve", 2)); CHECK(m2.n_safetynet_conserve == 2);   // level 2 (test_snc2.cpp)
+  CHECK(ut::exit_status_of([] { ModelData m(ms("n_safetynet_conserve", 3)); }) == EXIT_FAILURE);
   CHECK(ut::exit_status_of([] { ModelData m(ms("n_safetynet_conserve", -1)); }) == EXIT_FAILURE);
   CHECK(ut::exit_status_of([] { ModelData m(ms("n_safetynet_conserve", 1)); }) == 0);
   Integrator in;

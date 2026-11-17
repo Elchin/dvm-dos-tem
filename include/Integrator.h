@@ -151,8 +151,19 @@ public :
   // Soil_Bgc::deltastate() would (rooted top layer, or any top layer when
   // n_rootless_fix == 2). Total N is then conserved to float round-off.
   // Carbon: no leak (the veg does not remove soil C; all litter C delivered).
+  // 2 = L1 plus exact accumulation in the soil adapt(): the state y[] is float,
+  // so an accepted step adds dt*f to each pool in float. A large pool (SOMCR
+  // ~1e3 g/m2, float spacing ~1e-4) loses every increment below half its
+  // spacing, while the small RH / N-flux accumulators keep it; once the step
+  // size collapses (the months that end in a give-up) that is a systematic
+  // C and N gain (ice case: +0.39 gC/m2 in one month, all before t0).
+  // With 2 the soil adapt() keeps the state in double (ystate_d), adds the
+  // float increments dt*yprime there and copies it to y[] after every
+  // accepted step: pools and flux accumulators get the same increments, so
+  // C and N are conserved to double round-off (plus one float rounding per
+  // pool at the end of the month). Vegetation integration unchanged.
   static int n_safetynet_conserve;
-  // Refs (L1): no published source for the fix (code: Integrator::applySoilSafetyNet, be8a62fa); principle restored: closed N mass balance of the TEM / DOS-TEM N cycle, plant N uptake debited from the soil N pools (McGuire et al. 1992, doi:10.1029/92GB00219; Raich et al. 1991, doi:10.2307/1941899; Euskirchen et al. 2009, doi:10.1890/08-0806.1; Yuan et al. 2012, doi:10.1890/11-1957.1); donor = ORGN first: boreal/arctic plants take up organic N (Nasholm et al. 1998, doi:10.1038/31921; Schimel & Bennett 2004, doi:10.1890/03-8002); clipping/resetting a stiff ODE state is not mass-conserving unless the removed mass is booked (Shampine et al. 2005, doi:10.1016/j.amc.2004.12.011); unclosed N biases long C-N spin-ups (Thornton & Rosenbloom 2005, doi:10.1016/j.ecolmodel.2005.04.008).
+  // Refs (L1): no published source for the fix (code: Integrator::applySoilSafetyNet, be8a62fa); level 2: compensated / higher-precision accumulation of small increments into large sums (Higham 2002, Accuracy and Stability of Numerical Algorithms, 2nd ed., ch. 4, doi:10.1137/1.9780898718027; Kahan 1965, doi:10.1145/363707.363723); principle restored: closed N mass balance of the TEM / DOS-TEM N cycle, plant N uptake debited from the soil N pools (McGuire et al. 1992, doi:10.1029/92GB00219; Raich et al. 1991, doi:10.2307/1941899; Euskirchen et al. 2009, doi:10.1890/08-0806.1; Yuan et al. 2012, doi:10.1890/11-1957.1); donor = ORGN first: boreal/arctic plants take up organic N (Nasholm et al. 1998, doi:10.1038/31921; Schimel & Bennett 2004, doi:10.1890/03-8002); clipping/resetting a stiff ODE state is not mass-conserving unless the removed mass is booked (Shampine et al. 2005, doi:10.1016/j.amc.2004.12.011); unclosed N biases long C-N spin-ups (Thornton & Rosenbloom 2005, doi:10.1016/j.ecolmodel.2005.04.008).
   // Fix G2 (v5n), OFF by default: model_settings.soil_giveup_retry.
   // 1 = event-only retry: the soil month is first integrated exactly as in
   // legacy; only if adapt() gives up (100 steps forced at the minimum step
@@ -229,6 +240,9 @@ private:
   void c2ystate_veg(float y[]);
   void c2ystate_soi(float y[]);
   int adapt(float pstate[], const int &numeq);
+  // one accepted adapt() step (legacy float copy, or n_safetynet_conserve 2 double sum)
+  static void acceptStep(float pstate[], const float pdum4[], double pyd[], const float pyprime[],
+                         const float pdt, const bool pstepok, const bool pdacc, const int numeq);
   void y2cstate_veg(float y[]);
   void y2cstate_soi(float y[]);
   void y2cflux_veg(float y[]);
@@ -266,6 +280,7 @@ private:
   float dumy[NUMEQ];
 
   float ydum[NUMEQ];
+  double ystate_d[NUMEQ];   // n_safetynet_conserve 2: double-precision soil state in adapt()
   float yprime[NUMEQ];
   float rk45[NUMEQ];
 
