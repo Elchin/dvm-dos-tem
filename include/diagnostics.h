@@ -272,6 +272,7 @@ struct soidiag_thermokarst {
   double thaw_depth;    // depth (m) to which ice-rich layers were thawed at initiation
   double ice_melted;    // ice converted to liquid (kg/m2)
   double water_drained; // melt water above layer capacity, removed (kg/m2)
+  double water_removed; // soil water (liquid + ice + excess ice) exported with the slumped soil (kg/m2)
   int drainage_type;    // drainage class after initiation (0 well, 1 poor)
   double subsidence;    // cumulative surface subsidence from excess-ice melt (m)
   double excess_ice;    // column excess ice remaining (kg/m2)
@@ -284,7 +285,7 @@ struct soidiag_thermokarst {
   double pond_sat;   // post-slump ponding saturation factor (0-1)
   double regrow_c, regrow_n; // RTS regrow external C/N input (reseed + organic-layer rebuild), g/m2/month
   soidiag_thermokarst() : removal_thickness(0.0), rolr(0.0), thaw_depth(0.0),
-                          ice_melted(0.0), water_drained(0.0), drainage_type(-1),
+                          ice_melted(0.0), water_drained(0.0), water_removed(0.0), drainage_type(-1),
                           subsidence(0.0), excess_ice(0.0), excess_melted(0.0),
                           ch4_prod(0.0), ch4_oxid(0.0), ch4_emis(0.0), ch4_plant(0.0),
                           ch4_pool(0.0), rh_co2(0.0), lat_ch4(0.0), pond_sat(0.0),

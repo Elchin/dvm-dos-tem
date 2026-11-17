@@ -30,7 +30,8 @@ def run(name, on):
         p = subprocess.run([binary, '-f', cfgp, '-l', 'fatal'] + ARGS, cwd=REPO, stdout=subprocess.DEVNULL, stderr=fe, timeout=7200)
     return name, p.returncode
 AUTO = {'soil_negpool_fix': 1, 'layer_n_remap_fix': 1, 'layer_bookkeep_fix': 1}
-CASES = {'off': (False, None), 'on': (True, None), 'off_auto': (False, AUTO)}
+CASES = {'off': (False, None), 'on': (True, None), 'off_auto': (False, AUTO),
+         'off_snc': (False, {**AUTO, 'n_safetynet_conserve': 1})}  # option A: global safety-net N conservation
 names = sys.argv[sys.argv.index('--cases') + 1].split(',') if '--cases' in sys.argv else ['off', 'on']
 def run2(name):
     on, extra = CASES[name]

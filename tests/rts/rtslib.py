@@ -18,7 +18,7 @@ BASE_OUTPUTS = {'SOC': 'm', 'SHLWC': 'm', 'DEEPC': 'm', 'MOSSDZ': 'y', 'SHLWDZ':
                 'RECO': 'm',
                 # extra C pools for the carbon-balance check
                 'DEADC': 'm', 'DWDC': 'm'}  # MOSSDEATHC is all-fill in this model version
-RTS_OUTPUTS = {'TKLATC': 'm', 'TKLATN': 'm', 'TKREMTHICK': 'm', 'TKICEMELT': 'm', 'DRAINTYPE': 'm',
+RTS_OUTPUTS = {'TKLATC': 'm', 'TKLATN': 'm', 'TKREMTHICK': 'm', 'TKICEMELT': 'm', 'TKWDRAIN': 'm', 'DRAINTYPE': 'm',
                'TKRESPC': 'm', 'TKNETC': 'm'}
 # monthly->daily legacy path (flag off): bit-identical to pre-m2d code
 LEGACY_M2D = {'monthly2daily_mean_preserving': False}

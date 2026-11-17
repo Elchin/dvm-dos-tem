@@ -21,7 +21,7 @@ sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
 import rtslib as r
 
 FX = {'layer_bookkeep_fix': 1, 'layer_n_remap_fix': 1, 'soil_negpool_fix': 1, 'soil_giveup_retry': 1}
-WATER = {v: 'm' for v in ('RAINFALL', 'SNOWFALL', 'EET', 'QRUNOFF', 'QDRAINAGE', 'SWE', 'IWCLAYER')}
+WATER = {v: 'm' for v in ('RAINFALL', 'SNOWFALL', 'EET', 'QRUNOFF', 'QDRAINAGE', 'SWE', 'IWCLAYER', 'TKWDRAIN', 'TKWLAT')}
 NOUT = {v: 'm' for v in ('VEGNTOT', 'AVLN', 'DEADN', 'DWDN', 'NINPUT', 'NLOST')}
 OUTS = {**r.BASE_OUTPUTS, **r.RTS_OUTPUTS, **r.REGROW_OUTPUTS, **r.ICE_OUTPUTS, **WATER, **NOUT}
 CASES = {
@@ -35,6 +35,14 @@ CASES = {
   # thermokarst = 1 with the three auto-enabled layer/N switches forced off (shows why they are on)
   # thermokarst = 0 with the three switches that thermokarst = 1 auto-enables (base for the RTS effect)
   'off_auto': (False, {'soil_negpool_fix': 1, 'layer_n_remap_fix': 1, 'layer_bookkeep_fix': 1}),
+  # safety-net N conservation (n_safetynet_conserve) and/or soil_giveup_retry on top of the defaults
+  'on_snc': (True, {'n_safetynet_conserve': 1}),
+  'ice_snc': (True, {**r.ICE_PARAMS, 'n_safetynet_conserve': 1}),
+  'off_snc': (False, {'soil_negpool_fix': 1, 'layer_n_remap_fix': 1, 'layer_bookkeep_fix': 1, 'n_safetynet_conserve': 1}),
+  'on_ta09': (True, {'rts_regrow_t_active': 0.9}),   # stabilization ~1 month earlier (tested, not adopted)
+  # thermokarst = 1 without the post-initiation safety-net N conservation (thermokarst_safetynet_conserve)
+  'on_nosnc': (True, {'thermokarst_safetynet_conserve': False}),
+  'ice_nosnc': (True, {**r.ICE_PARAMS, 'thermokarst_safetynet_conserve': False}),
   'on_noauto': (True, {'soil_negpool_fix': 0, 'layer_n_remap_fix': 0, 'layer_bookkeep_fix': 0}),
 }
 REF = os.path.join(r.REPO, 'tests', 'rts', 'reference')
@@ -71,6 +79,15 @@ def c_closure(d):
     res = np.diff(st) + (nee + lat + rsp - rg)[1:]
     return res
 
+def w_closure_wb(wd):
+    """Exact water check of the RTS step from the NBAL_DIAG 'WB' lines (tr stage): (W0 - W1) - TKWDRAIN -
+    TKWLAT per month, kg/m2; excess-ice initialization (a source, first RTS month) excluded."""
+    rows = [l.split()[1:] for l in open(os.path.join(wd, 'stderr.txt')) if l.startswith('WB ')]
+    if not rows: return None
+    yr, m, w0, wp, wr, w1, dr = np.array(rows[-360:], dtype=float).T
+    res = (w0 - w1) - dr - (wp - wr)
+    return res[1:]
+
 def n_closure_nb(wd):
     """Monthly N residual from the NBAL_DIAG lines (tr stage = last 360 lines)."""
     rows = [l.split()[1:] for l in open(os.path.join(wd, 'stderr.txt')) if l.startswith('NB ')]
@@ -79,11 +96,14 @@ def n_closure_nb(wd):
     yr, m, n0, n1, ain, oin, alost, olost, tlat, tresp, vegin, rgn = a.T
     return (n1 - n0) - (ain + oin - alost - tlat - tresp + vegin + rgn)
 
-def w_closure(d):
+def w_closure(d, drain=True):
     dz = cell(rd(d, 'LAYERDZ')); lwc = cell(rd(d, 'LWCLAYER')); iwc = cell(rd(d, 'IWCLAYER'))
     stor = np.nansum((np.nan_to_num(lwc) + np.nan_to_num(iwc)) * np.nan_to_num(dz) * 1000., axis=1) + colsum(rd(d, 'SWE'))
     P = colsum(rd(d, 'RAINFALL')) + colsum(rd(d, 'SNOWFALL'))
     out = colsum(rd(d, 'EET')) + colsum(rd(d, 'QRUNOFF')) + colsum(rd(d, 'QDRAINAGE'))
+    for v in (('TKWDRAIN', 'TKWLAT', 'TKEXMELT') if drain else ()):   # RTS water terms (TKEXMELT: source)
+        x = rd(d, v)
+        if x is not None: out = out + (-1 if v == 'TKEXMELT' else 1) * colsum(x)
     return np.diff(stor) - (P - out)[1:]
 
 def ident(a, b, skip=('TK', 'DRAINTYPE')):
@@ -99,14 +119,14 @@ def ident(a, b, skip=('TK', 'DRAINTYPE')):
 
 EFFECT_VARS = ['VEGC', 'SOC', 'SHLWC', 'DEEPC', 'ORGN', 'GPP', 'NPP', 'RHSOM', 'RECO', 'DEADC', 'DWDC', 'ALD',
                'MOSSDZ', 'SHLWDZ', 'DEEPDZ', 'TKLATC', 'TKRESPC', 'TKLATN', 'TKREMTHICK', 'TKICEMELT', 'DRAINTYPE',
-               'TKSUBSID', 'TKEXICE']
+               'TKSUBSID', 'TKEXICE', 'TKWDRAIN', 'TKWLAT']
 
 def series(d, v):
     ts = r.BASE_OUTPUTS.get(v, 'm')
     a = rd(d, v, 'yearly' if ts == 'y' else 'monthly')
     if a is None: return None
     s = colsum(a) if a.ndim > 1 and cell(a).shape[1] > 1 and v not in ('ALD',) else cell(a)[:, 0]
-    if ts == 'm' and v not in ('TKLATC', 'TKRESPC', 'TKLATN', 'TKREMTHICK', 'TKICEMELT'):
+    if ts == 'm' and v not in ('TKLATC', 'TKRESPC', 'TKLATN', 'TKREMTHICK', 'TKICEMELT', 'TKWDRAIN', 'TKWLAT'):
         s = s.reshape(-1, 12).mean(1)      # stocks/rates: yearly mean of the monthly values
     elif ts == 'm':
         s = s.reshape(-1, 12).sum(1)       # RTS pulses: yearly sums
@@ -124,6 +144,8 @@ def effect(on, off, ref_on, ref_off):
                       ours_mean=float(np.nanmean(e)), v03_mean=float(np.nanmean(re)),
                       ours_max_abs=float(np.nanmax(np.abs(e))), v03_max_abs=float(np.nanmax(np.abs(re))),
                       ours_off_end=float(b[-1]), v03_off_end=float(rb[-1]))
+        if v == 'GPP':
+            out[v]['ours_ratio_yearly'] = (a / b).tolist(); out[v]['v03_ratio_yearly'] = (ra / rb).tolist()
     return out
 
 def main():
@@ -150,6 +172,9 @@ def main():
         ent = dict(C_max_abs_month=float(np.nanmax(np.abs(c))), C_sum=float(np.nansum(c)),
                    W_max_abs_month=float(np.nanmax(np.abs(w))), W_sum=float(np.nansum(w)),
                    W_sum_pctP=float(100 * np.nansum(w) / np.nansum(P[1:])))
+        w0 = w_closure(O(n), drain=False); wb = w_closure_wb(os.path.join(a.work, n))
+        if wb is not None: ent.update(WB_rts_step_max_abs_month=float(np.max(np.abs(wb))))
+        ent.update(W_nodrain_max_abs_month=float(np.nanmax(np.abs(w0))), W_nodrain_sum=float(np.nansum(w0)))
         if nb is not None: ent.update(N_max_abs_month=float(np.max(np.abs(nb))), N_sum=float(np.sum(nb)))
         ent['init_month'] = None
         tk = rd(O(n), 'TKREMTHICK')
@@ -159,7 +184,8 @@ def main():
     S['effect'] = {}
     for on, off, ref in (('on', 'off', 'v03/rts'), ('ice', 'off', 'v03/rts_ice'), ('on_fx', 'off_fx', 'v03/rts'),
                          ('ice_fx', 'off_fx', 'v03/rts_ice'), ('on_noauto', 'off', 'v03/rts'),
-                         ('on', 'off_auto', 'v03/rts'), ('ice', 'off_auto', 'v03/rts_ice')):
+                         ('on', 'off_auto', 'v03/rts'), ('ice', 'off_auto', 'v03/rts_ice'),
+                         ('on_ta09', 'off_auto', 'v03/rts'), ('on_nosnc', 'off_auto', 'v03/rts')):
         if on in names and off in names:
             S['effect'][on if off != 'off_auto' else on + '-off_auto'] = effect(O(on), O(off), os.path.join(REF, ref), os.path.join(REF, 'baseline'))
     json.dump(S, open(os.path.join(a.work, 'summary.json'), 'w'), indent=1)

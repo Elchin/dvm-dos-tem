@@ -278,6 +278,8 @@ void RestartData::reinitValue() {
   write_tk_state = false; has_tk_state = false;   // RTS (thermokarst)
   tk_drainage_type = MISSING_I; tk_init = MISSING_I; tk_exinit = MISSING_I; tk_subsidence = MISSING_D;
   for (int il = 0; il < MAX_SOI_LAY; il++) { tk_exice[il] = MISSING_D; }
+  has_tk_rg_state = false;
+  for (int k = 0; k < TK_RG_NSTATE; k++) { tk_rg_state[k] = MISSING_D; }
   for (int ip = 0; ip < NUM_PFT; ip++) { deadc0[ip] = MISSING_D; deadn0[ip] = MISSING_D; }
   // atmosphere
   dsr         = MISSING_I;
@@ -586,6 +588,18 @@ void RestartData::read_px_tk_vars(const std::string& fname, const int rowidx, co
     temutil::nc( nc_get_vara_double(ncid, v[4], s3, c3, &tk_exice[0]) );
     has_tk_state = true;
   }
+  has_tk_rg_state = false;   // regrow state: optional (older thermokarst restarts lack it)
+  int vr, dr[3]; size_t len = 0;
+  if (nc_inq_varid(ncid, "tk_regrow_state", &vr) == NC_NOERR) {
+    temutil::nc( nc_inq_vardimid(ncid, vr, dr) );
+    temutil::nc( nc_inq_dimlen(ncid, dr[2], &len) );
+    if (len == (size_t)TK_RG_NSTATE) {
+      size_t s3r[3] = {(size_t)rowidx, (size_t)colidx, 0};
+      size_t c3r[3] = {1, 1, (size_t)TK_RG_NSTATE};
+      temutil::nc( nc_get_vara_double(ncid, vr, s3r, c3r, &tk_rg_state[0]) );
+      has_tk_rg_state = (tk_rg_state[0] != MISSING_D);
+    }
+  }
   temutil::nc( nc_close(ncid) );
 }
 
@@ -619,9 +633,26 @@ void RestartData::write_px_tk_vars(const std::string& fname, const int rowidx, c
     }
     temutil::nc( nc_enddef(ncid) );
   }
+  int vr;
+  if (nc_inq_varid(ncid, "tk_regrow_state", &vr) != NC_NOERR) {
+    int dv; temutil::nc( nc_inq_varid(ncid, "DZsoil", &dv) );
+    int d3[3]; temutil::nc( nc_inq_vardimid(ncid, dv, d3) );
+    temutil::nc( nc_redef(ncid) );
+    int dr;
+    if (nc_inq_dimid(ncid, "tkrgstate", &dr) != NC_NOERR) {
+      temutil::nc( nc_def_dim(ncid, "tkrgstate", TK_RG_NSTATE, &dr) );
+    }
+    int d3r[3] = {d3[0], d3[1], dr};
+    temutil::nc( nc_def_var(ncid, "tk_regrow_state", NC_DOUBLE, 3, d3r, &vr) );
+    temutil::nc( nc_put_att_double(ncid, vr, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
+    int ver = 1; temutil::nc( nc_put_att_int(ncid, vr, "layout_version", NC_INT, 1, &ver) );
+    temutil::nc( nc_enddef(ncid) );
+  }
   size_t s2[2] = {(size_t)rowidx, (size_t)colidx};
   size_t s3[3] = {(size_t)rowidx, (size_t)colidx, 0};
   size_t c3[3] = {1, 1, MAX_SOI_LAY};
+  size_t c3r[3] = {1, 1, (size_t)TK_RG_NSTATE};
+  temutil::nc( nc_put_vara_double(ncid, vr, s3, c3r, &tk_rg_state[0]) );
   temutil::nc( nc_put_var1_int(ncid, v[0], s2, &tk_drainage_type) );
   temutil::nc( nc_put_var1_int(ncid, v[1], s2, &tk_init) );
   temutil::nc( nc_put_var1_int(ncid, v[2], s2, &tk_exinit) );

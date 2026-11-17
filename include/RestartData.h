@@ -92,6 +92,13 @@ public :
   int tk_exinit;
   double tk_subsidence;
   double tk_exice[MAX_SOI_LAY];
+  // RTS regrowth / floor-RH state (Cohort tk_rg_*, tk_gpp_*, tk_rh_*), flat, layout version 1
+  // (Cohort::tk_rg_pack). NetCDF: tk_regrow_state (Y,X,tkrgstate) double; optional, read only
+  // when thermokarst = 1; has_tk_rg_state is true only if present with the expected length.
+  static const int TK_RG_NSTATE = 2 * NUM_PFT * 3 + NUM_PFT + 6 + 1 + 12 + 2 + 1 + 12 + 1
+                                  + 60 + 60 + 2 + 10 * 12 + 12 + 12;
+  bool has_tk_rg_state = false;
+  double tk_rg_state[TK_RG_NSTATE];
   void read_px_tk_vars(const std::string& fname, const int rowidx, const int colidx);
   void write_px_tk_vars(const std::string& fname, const int rowidx, const int colidx);
 

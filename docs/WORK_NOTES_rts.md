@@ -77,11 +77,10 @@ Any value other than integer 0 or 1 is FATAL. `config/config.js` has the key set
 - With 0, they are neither written nor read: §4 compares restart files too.
 - An old restart without them loads with one WARNING, and the RTS starts as not initiated with no excess ice.
 - 10-cell check (§5.4): sc carried on from restart-tr. Cell (0,0) has `tk_init` = 1484 at the end of sc, which is 115·12 − 17 + 10·12 + 1.
-- **Not saved (known limitation, deferred, same as rts-regrow):**
-  - the RTS regrow state (pre-slump PFT pools, GPP rings, taper);
-  - the floor RH history.
-
-  A run that restarts within the regrow window therefore restarts regrow without its pre-slump reference. Splitting a run at a stage boundary *before* any slump is exact.
+- **Regrow / floor-RH state (added Nov 17):** `tk_regrow_state(Y,X,tkrgstate)`, 371 doubles, attribute `layout_version` = 1, packed by `Cohort::tk_rg_pack` / `tk_rg_unpack`: pre-slump PFT C/N and types, GPP and N-unlimited-GPP rings, taper, organic-layer rebuild state, N carry, floor RH history. Written and read only with `thermokarst = 1`.
+  - An older thermokarst restart (five `tk_*` vars, no `tk_regrow_state`) still loads, with one WARNING; regrow then starts without its pre-slump reference, as before. A length mismatch is ignored, not misread.
+  - Check (`tests/rts/port_split.py`, synthetic, `-t 12` so the split falls inside the regrow window): sc run alone in a new process from a copy of `restart-tr.nc` is **bit-identical** to the continuous run (on and off_auto). The previous binary differs in 26 sc files (GPP up to 31 g/m2/month).
+  - Note: within one dvmdostem process tr→sc kept these members anyway; the restart only matters for separate restart runs (`restart_from`).
 - MPI builds don't write the `tk_*` state (WARNING), as with the fire state.
 
 ## 4. Thermokarst-off bit identity (vs `ad509904`)
@@ -97,6 +96,8 @@ Any value other than integer 0 or 1 is FATAL. `config/config.js` has the key set
 | **total** | **28** | **56/56 (0 diffs)** |
 
 The smoke set covers fire with every fire-balance, N-leak and layer switch on, and the restart split.
+
+Re-run Nov 17 with `tk6` and again with the final binary `rts-work/reg/bin/dvmdostem_tk7` (HEAD source): **56/56 identical** both times (`rts-work/reg/ident6.json`, `ident7.json`).
 
 ## 5. RTS on
 
@@ -121,7 +122,7 @@ Columns: C residual = d(VEGC+SOC+DEADC+DWDC) + RECO − GPP + TKLATC + TKRESPC �
 - With the default auto switches, C closes to round-off through the slump.
 - The only N residual is a pre-slump give-up event, which `soil_giveup_retry` removes.
 - Without the auto switches, C and N do not close. This is why they are on.
-- **Water:** in the two slump months the residual is −34 mm against off_auto, from melt water above layer capacity drained at the instant thaw (`thaw_depth` 1 m). That water leaves the column with no output flux. The monthly ±100 mm pattern is the same in off; it is a snapshot/timing artefact of the monthly formula, and the yearly residual is ~0.1–0.3 % of P.
+- **Water:** in the slump month the output-based residual is about −34 mm against off_auto. The exact in-model check (Nov 17, `NBAL_DIAG` `WB` lines) shows it is the soil water exported with the slumped soil (35.9 kg/m2, now output as `TKWLAT`); melt water drained above layer capacity is `TKWDRAIN` (0 in `on`, 185.6 kg/m2 in `ice`, from excess-ice melt). Per RTS step, W0 − W1 − TKWDRAIN − TKWLAT = 0 to ≤ 1e-6 kg/m2 in every case. The output-only formula cannot close exactly (monthly-mean LWC/IWC, ice counted at 1000 kg/m3, excess ice outside IWC). The monthly ±100 mm pattern is the same in off; it is a snapshot/timing artefact of the monthly formula, and the yearly residual is ~0.1–0.3 % of P.
 
 ![closure](figures/rts/rts_closure.png)
 
@@ -156,13 +157,13 @@ Columns: C residual = d(VEGC+SOC+DEADC+DWDC) + RECO − GPP + TKLATC + TKRESPC �
 
 ### 5.4 10-cell demo-data case (`tests/rts/port_demo10.py`, `port_demo10_analyze.py`)
 - Setup: toolik 10x10, row 0 (10 cells), `-p 10 -e 100 -s 10 -t 115 -n 10`, with tr and sc outputs. The repo's demo thermokarst file has one RTS, in cell (0,0) in 1902. This is a smoke test, not a calibrated run.
-- Cells (0,1)–(0,9): `on` vs `off_auto` identical in all outputs and restarts, apart from the DRAINTYPE output sentinel and `total_runtime`.
+- Cells (0,1)–(0,9): `on` vs `off_auto` identical in all outputs and restarts, apart from DRAINTYPE (before Nov 17: the −1 sentinel in off) and `total_runtime`. Final rerun (`rts-work/demo10_7`, `tk7`): cells (0,1)–(0,9) identical to off_auto (DRAINTYPE now equal too); cell (0,0) end effects SOC −5970, VEGC −600, GPP last 10 yr 1.20× off; `restart-tr/sc` carry `tk_regrow_state` (cell (0,0) recorded) only in `on`.
 - Cell (0,0): slump in tr month 17. SOC −4212, VEGC −1253, TKLATC 4918, TKRESPC 546 g/m2. GPP over the last 10 years is 1.24× off.
 - C closure over the row: max 0.0083 g/m2/month, the same in off_auto.
 - `restart-tr/sc` carry `tk_*` only in `on`. Summary: `docs/figures/rts/demo10_summary.json`.
 
 ## 6. Unit tests
-`make unittest`: **421 test cases pass**, which is 401 before plus 20 new in `tests/unit/test_rts.cpp`. Of 3,158,931 assertions, 8 fail; they are the same known 8 as before (test_climate ×2, test_richards_water_energy ×2, test_seb ×2, test_stefan_water ×2). The RTS tests cover:
+`make unittest`: **426 test cases pass** (Nov 17: 401 before + 25 in `tests/unit/test_rts.cpp`, 5 new: `thermokarst_safetynet_conserve` parsing, regrow-state restart round trip and old thermokarst restarts, length-mismatch, `tk_rg_pack`/`unpack` round trip, TKWDRAIN/TKWLAT diagnostics and output_spec rows). Of 3,158,931 assertions, 8 fail; they are the same known 8 as before (test_climate ×2, test_richards_water_energy ×2, test_seb ×2, test_stefan_water ×2). The RTS tests cover:
 - switch parsing, FATAL values, sub-key parsing, and the auto-enabled list;
 - that hook defaults are inert;
 - the restart `tk_*` round trip and old restarts;
@@ -176,14 +177,73 @@ Columns: C residual = d(VEGC+SOC+DEADC+DWDC) + RECO − GPP + TKLATC + TKRESPC �
 - `tests/rts/rtslib.py`: the switch is an integer here.
 - rts-regrow's pytest suites (`tests/rts/test_rts_*.py`) are kept as they came. Some of them assume m2d and rts-regrow's base physics, so they are not expected to pass on this branch.
 
+## 9. Retune and small items (Nov 17)
+
+### 9.1 Regrow N bug (fixed, `19f6eb67`)
+The port added the floor N supply with `+=` to `m_a2soi.avlninput`, which only the BNF scheme re-assigns each month. With `bnf_scheme` 0 the supply accumulated: NINPUT 12.2 gN/m2/yr forever, vs rts-regrow's 0.37, 0.67, 0.22, 0.03 in years 10–13. The fix resets it to the base (0 without BNF) before adding the month's supply. After the fix: 0.45, 0.61, 0.03, 0. This changed the last-year GPP ratio from 1.30 to 1.17 and did not change the first-year ratio.
+
+### 9.2 First-year GPP gap (0.38 vs 0.55): base physics, not port logic
+- The RTS functions are identical to 7c9fd634 apart from the N-assign calls. The rebuilt rts-regrow binary (`rts-work/rr-src`) reproduces the v0.3 references exactly; m2d off moves its ratio only from 0.546 to 0.552.
+- The gap is in July–August of year 11, *before* stabilization (month 139), from the 1 % remnant vegetation. LAI is similar (0.28 vs 0.33), but GPP is 12.6 vs 34.8 g/m2: soil AVLN in June is 0.08 vs 0.20 g/m2. The fork's post-slump vegetation is more N-limited (off GPP 142 vs 182 gC/m2/yr). With the v5o N fixes set to legacy the ratio becomes 0.46.
+- Reseed fraction and `n_rate1` don't change year 11 (they start at stabilization). Only `rts_regrow_t_active` does.
+
+### 9.3 Regrow parameters (Elchin, Nov 17: "use values from Pizano et al.")
+`config/config.js` sets `rts_regrow_n_rate1` 2.2 gN/m2/yr (Pizano et al. 2014, the v0.3 value) and `rts_regrow_t_active` 1.0 yr (v0.3). Both are read only when `thermokarst = 1`.
+- An earlier retune (`n_rate1` 5.0, `t_active` 0.9; `e4b1f7bf`) matched the v0.3 GPP curve but was withdrawn.
+- `t_active` is not a Pizano parameter: it is rts-regrow's 1-yr active-slump phase (`docs_src/rts_ch4.md`). 0.9 had no field basis, only the fit. With `n_rate1` 2.2 it gives yr 11 0.50 but yr 13 1.07 (worse than 1.0's 1.15 against v0.3's 1.33), so it was **reverted to 1.0**. Case `on_ta09` in `port_check.py` keeps the comparison.
+
+| on − off_auto | phase 1 | N fix only (`19f6eb67`) | withdrawn retune (5.0 / 0.9) | **final (2.2 / 1.0 + safety-net N)** | v0.3 |
+|---|---|---|---|---|---|
+| GPP ratio yr 11 / 12 / 13 / 14 / 15 | 0.375 / – | 0.375 / 0.99 / 1.15 / 1.18 / 1.26 | 0.543 / 1.11 / 1.35 / 1.36 / 1.32 | **0.375 / 0.99 / 1.15 / 1.18 / 1.26** | 0.546 / 1.06 / 1.33 / 1.40 / 1.39 |
+| GPP ratio last year | 1.30 | 1.165 | 1.165 | **1.226** | 1.253 |
+| SOC effect end | −5694 | −5739 | −5710 | **−5738** | −5586 |
+| VEGC effect end | −866 | −919 | −907 | **−921** | −866 |
+| slump SOC / VEGC drop; TKLATC; TKRESPC; TKLATN | −4205 / −1267; 4925 (6926); 547; 224 (397) | same | same | same | −4272 / −1304; 5018 (7022); 558; 217 (391) |
+| ice: subsidence / excess ice left | 0.247 / 402.6 | same | same | same | 0.247 / 402.6 |
+
+The first-year gap (0.375 vs 0.546) stays: it is the base N limitation of §9.2, not an RTS parameter.
+
+### 9.4 Safety-net N residual (Elchin: "tune it"): closed inside the thermokarst path
+- Cause: a base soil-integrator safety-net event (adapt() gives up; Integrator.h Fix L1). The vegetation already took the whole month's root N, but the net skips the root N extraction for the remaining (1 − t0) of the month; with `n_rootless_fix` 2 it also skips the AVLN input (here: the RTS floor N supply) into a rootless top layer. Post-slump soils hit such events (yr 13–15).
+- Fix: new RTS sub-key `thermokarst_safetynet_conserve` (bool, default **true**, read only with `thermokarst = 1`). `Cohort::tk_set_month_flags` turns `n_safetynet_conserve` on for a cell **from its RTS initiation on**; before initiation and in cells without an RTS the global `n_safetynet_conserve` applies unchanged. So it is not an auto-switch of the base flag.
+- Effect: no-slump cells are bit-identical (10-cell case: cells (0,1)–(0,9) `on` vs `off_auto` identical in all outputs and restarts, only `run_status` runtime differs), and RTS-off is untouched (56/56).
+- Alternative considered (auto-enable the global `n_safetynet_conserve` with thermokarst = 1, like the other three): it changes no-slump cells. 10-cell case, `off_auto` + `n_safetynet_conserve` 1 vs `off_auto`: 7 of 10 cells differ in tr (27 events in tr/sc), last-year VEGC −1.9 … +0.7 % in tr, −2.4 … +0.5 % in sc, last-year GPP up to −11 %, SOC within 0.02 %. Not adopted.
+
+Closures (syn7, final binary `tk7`, monthly, tr):
+
+| run | C max | N max | note |
+|---|---|---|---|
+| on | 0.0018 | **0.081** | only the pre-slump base event (month 66, also in noinit and thermokarst-off runs) |
+| on_nosnc (`thermokarst_safetynet_conserve` false) | 0.009 | 0.19 | post-slump events yr 14–15 |
+| ice | **0.39** | 0.081 | C: one event month (yr 14 m 5): the soil receives 0.39 g more litter C than the vegetation lost; also with snc off; **open** |
+| on_snc (global `n_safetynet_conserve` 1) | 0.0026 | 1.5e-4 | closes the pre-slump event too |
+| on_fx (`soil_giveup_retry` 1, not enabled) | 0.080 | 0.002 | |
+| on_noauto | 6.1 | 342 | why the auto switches are on |
+
+### 9.4b What `soil_giveup_retry` does (correction)
+It does **not** retry with smaller substeps (the month is already forced at the minimum step 100 times before it gives up). On a give-up it restores the month's starting state and integrates the month again with the G1 N-extraction limiter on (plant root N extraction becomes a saturating function of soil available N, so a zero-order sink can't drive AVLN negative), for that month only. If the retry also gives up, the safety net applies as before. Months without a give-up are bit-identical. It stays off (pending).
+
+### 9.5 Small items
+- (a) restart: §3.
+- (b) `TKWDRAIN` (melt water drained at thaw / excess-ice melt) and `TKWLAT` (soil water exported with the slumped soil), output only, kg/m2/time; `water_removed` is a new diagnostic field. §5.2.
+- (c) DRAINTYPE: when the RTS module does not run (thermokarst 0, or eq/sp) the output now is the cohort's drainage class (0/1) instead of −1. **This is the only off-mode output change**; DRAINTYPE is not in the default output set and nothing reads it back. 10-cell off and off_auto vs the previous binary: only DRAINTYPE and `run_status` (runtime) differ.
+- (d) HPC readiness (no change made):
+  - The only C++20 feature used is `std::lerp` in `src/GFProfile.cpp` (ground fire, not RTS). Every other source passes `-std=c++17 -fsyntax-only` (conda gcc 13.4). Needs GCC ≥ 9 (libstdc++ `std::lerp`) and `-std=c++20` (GCC ≥ 10; `-std=c++2a` on 8–9).
+  - Makefile: `CC=g++` hard-coded, `-Werror`; system g++ on calib-elchin lacks `-std=c++20` (we build with `CC=$CXX` from conda). `HPC_MODULES=1` uses exacloud lmod paths (`/mnt/exacloud/...`, `dvmdostem-deps/2026-02`). The RTS sources are in the Makefile.
+  - SConstruct is stale: `-std=c++11`, personal absolute paths (`/home/UA/rarutter`, `/home/vagrant`, `/home/tobey`), missing `FW_Interface`, `GFProfile`, `GroundFire`, `SnowClass`, and `distutils` (removed in Python 3.12). It cannot build this branch as is. RTS sources are listed.
+- The excess-ice profile (`ICE_PARAMS`) is still the rts-regrow placeholder. `soil_giveup_retry` stays off.
+
 ## 8. Open items
-- **Regrow-state restart** (deferred, §3).
-- **Melt water drained at the instant thaw has no output flux.** This explains the −34 mm water gap in the slump month. A `TKWDRAIN` output (output only) would close it.
-- **`soil_giveup_retry`:** not auto-enabled, though it removes the small pre-slump N give-up residual. Elchin to decide whether RTS runs should turn it on (recommended).
-- **DRAINTYPE output is −1 when the RTS module is off** (cosmetic; the output is off by default).
-- **v0.3 comparison has only one case.** It is the single synthetic cell; the base physics differ (m2d, deep C v2), so only the effect is compared.
+- **`soil_giveup_retry`:** not enabled (Elchin pending; §9.4b).
+- **Ice-case C residual 0.39 g/m2** in one safety-net month (§9.4); not yet diagnosed.
+- **Pre-slump base safety-net N leak** (0.081 gN/m2, also in thermokarst-off runs) stays unless the global `n_safetynet_conserve` is turned on.
+- First-year GPP after the slump is 0.375 vs v0.3 0.546 (base N limitation, §9.2).
+- **v0.3 comparison has only one case** (single synthetic cell; base physics differ).
 - The excess-ice profile (`ICE_PARAMS`) is a placeholder from rts-regrow.
-- **HPC:** the new sources are in `SConstruct` and `Makefile`; the C++20 support of the HPC compiler is still unverified.
-- **Two-stage / trigger-file drivers:** RTS-expert's `scripts/run_rts_two_stage.py` and the trigger-file workflow came in with the merge but were not exercised here.
+- **HPC:** §9.5 (d); SConstruct is not usable for this branch.
+- **Two-stage / trigger-file drivers** were not exercised. MPI builds do not write the `tk_*` state.
 
 Compute on calib-elchin for this work (worker 3): builds about 0.55 core-h, identity runs 0.81, synthetic and 10-cell runs about 0.3. Total about 1.7 core-h.
+
+Nov 17 retune + small items: about 1.3 core-h more (identity 0.45, unit tests/builds 0.4, synthetic/scans/10-cell 0.45).
+Nov 17 decisions round (Pizano values, safety-net N): about 1.0 core-h more.

@@ -209,6 +209,8 @@
     "thermokarst": 0,                   // RTS master switch: 0 (default) = off, legacy (nothing RTS read, run or written);
                                         //   1 = retrogressive thaw slumps from IO.hist/proj_exp_thermokarst_file (tr, sc).
                                         //   Sub-keys thermokarst_* / rts_* read only when 1. docs/WORK_NOTES_rts.md
+    "rts_regrow_n_rate1": 2.2,          // RTS floor N supply, gN/m2/yr (Pizano et al. 2014; v0.3 default). Read only when thermokarst = 1.
+    "rts_regrow_t_active": 1.0,         // RTS active phase before stabilization, yr (v0.3 default; not a Pizano value).
     "cell_timelimit": 0, //Run time limit per cell in seconds. 0 for no limit.
     "dynamic_lai": 1,                   // from model (1) or from input (0)
     "n_rootless_fix": 2,                // N1 fix (v5o default 2; 0 = legacy: rootless-layer net mineralisation N lost)

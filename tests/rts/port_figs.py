@@ -45,7 +45,6 @@ M['gpp_first_full_year_after_slump_frac_of_off'] = dict(
     ours=float(g.reshape(-1, 12).sum(1)[INIT // 12 + 1] / gb.reshape(-1, 12).sum(1)[INIT // 12 + 1]),
     v03=float(rg.reshape(-1, 12).sum(1)[INIT // 12 + 1] / rgb.reshape(-1, 12).sum(1)[INIT // 12 + 1]))
 M['gpp_last_year_frac_of_off'] = dict(ours=float(g[-12:].sum() / gb[-12:].sum()), v03=float(rg[-12:].sum() / rgb[-12:].sum()))
-json.dump(M, open(os.path.join(OUT, 'rts_port_metrics.json'), 'w'), indent=1)
 
 t = np.arange(len(g)) / 12.0
 fig, ax = plt.subplots(2, 2, figsize=(11, 7), sharex=True)
@@ -75,11 +74,18 @@ fig.savefig(os.path.join(OUT, 'rts_closure.png'), dpi=110); plt.close(fig)
 
 fig, ax = plt.subplots(1, 2, figsize=(11, 3.8))
 gy, gby, rgy, rgby = [x.reshape(-1, 12).sum(1) for x in (g, gb, rg, rgb)]
-ax[0].plot(gy / gby, 'C3', label='port'); ax[0].plot(rgy / rgby, color='0.5', lw=2.5, label='v0.3', zorder=0)
+ax[0].plot(gy / gby, 'C3', label='port (config.js: Pizano n_rate1 2.2, t_active 1.0)'); 
+_v3 = O('on_ta09')
+_g3 = rd(_v3, 'GPP') if os.path.isdir(_v3) else None
+if _g3 is not None:
+    _g3y = _g3.reshape(-1, 12).sum(1); ax[0].plot(_g3y / gby, 'C0--', label='port, t_active 0.9 (not adopted)'); M['gpp_ratio_yearly_ta09'] = (_g3y / gby).tolist()
+M['gpp_ratio_yearly'] = {'ours': (gy / gby).tolist(), 'v03': (rgy / rgby).tolist()}
+ax[0].plot(rgy / rgby, color='0.5', lw=2.5, label='v0.3', zorder=0)
 ax[0].axvline(INIT // 12, color='k', ls=':'); ax[0].set_title('annual GPP on / off'); ax[0].set_xlabel('tr year'); ax[0].legend()
 for v, c in (('TKREGROWC', 'C1'), ('TKREGROWN', 'C4')):
     a = rd(on, v)
     if a is not None: ax[1].plot(t, np.cumsum(a), c, label=v + ' (cumulative)')
 ax[1].set_title('RTS regrow external inputs (port)'); ax[1].set_xlabel('tr year'); ax[1].set_ylabel('g/m2'); ax[1].legend()
 fig.tight_layout(); fig.savefig(os.path.join(OUT, 'rts_regrow.png'), dpi=110); plt.close(fig)
+json.dump(M, open(os.path.join(OUT, 'rts_port_metrics.json'), 'w'), indent=1)
 print(json.dumps(M, indent=1))

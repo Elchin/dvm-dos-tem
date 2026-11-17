@@ -150,6 +150,10 @@ public :
   long ds_remap_months = 0;     // months with the midpoint layer remap (cumulative)
   void load_ch4(const std::string& ch4_file);
 
+  // RTS regrow / floor-RH restart state (layout version 1; see the private tk_rg_* members)
+  void tk_rg_pack(double * s) const;
+  void tk_rg_unpack(const double * s);
+
 private:
   // v5p daily_c_split: soil layer structure of the Env loop and of the Bgc step
   int ds_env_numsl = 0, ds_bgc_numsl = 0;
@@ -183,7 +187,8 @@ private:
   double tk_rh_hist[10][12] = {{0}};  // pre-initiation monthly RHSOM ring buffer (years x months)
   int tk_rh_nyr[12] = {0};            // number of recorded years per calendar month (<= 10)
   int tk_rh_next[12] = {0};           // next ring slot per calendar month
-  // RTS post-slump regrowth (RTSRegrow.h); state is not in the restart file (set at initiation)
+  // RTS post-slump regrowth (RTSRegrow.h); this state and tk_rh_* go to the restart as
+  // tk_regrow_state (thermokarst = 1 only; tk_rg_pack / tk_rg_unpack, RestartData::TK_RG_NSTATE)
   bool tk_rg_have = false;            // pre-slump state recorded
   double tk_rg_cpre[NUM_PFT][3] = {{0}}, tk_rg_npre[NUM_PFT][3] = {{0}};
   int tk_rg_type[NUM_PFT] = {0};

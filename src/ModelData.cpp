@@ -1502,7 +1502,7 @@ void ModelData::parse_thermokarst_settings(const Json::Value & ms, ModelData & m
   static const char * bool_keys[] = {
     "thermokarst_initiation", "thermokarst_ch4", "thermokarst_rh_cap", "thermokarst_floor_export",
     "thermokarst_floor_anox", "thermokarst_floor_rmin", "thermokarst_regrow",
-    "rts_regrow_n_taper", "rts_regrow_navln_exempt" };
+    "rts_regrow_n_taper", "rts_regrow_navln_exempt", "thermokarst_safetynet_conserve" };
   for (const char * k : bool_keys) {
     if (!ms.isMember(k)) { continue; }
     const Json::Value & v = ms[k];
@@ -1538,6 +1538,7 @@ void ModelData::parse_thermokarst_settings(const Json::Value & ms, ModelData & m
   if (ms.isMember("thermokarst_excess_bottom"))   md.tk_excess_bottom = ms["thermokarst_excess_bottom"].asDouble();
   if (ms.isMember("thermokarst_initiation")) md.tk_initiation = ms["thermokarst_initiation"].asBool();
   if (ms.isMember("thermokarst_ch4")) md.tk_ch4 = ms["thermokarst_ch4"].asBool();
+  if (ms.isMember("thermokarst_safetynet_conserve")) md.tk_safetynet_conserve = ms["thermokarst_safetynet_conserve"].asBool();
   md.tk_ch4par.load(ms);
   md.tk_floor.load(ms);
   md.tk_regrow.load(ms);

@@ -527,6 +527,8 @@ public:
   RTSMethaneParams tk_ch4par;
   RTSRegrowParams tk_regrow;  // post-slump vegetation recovery
   RTSFloorParams tk_floor;    // post-slump floor RH cap / export / anoxia / RH minimum
+  bool tk_safetynet_conserve = true;  // thermokarst_safetynet_conserve: after an RTS initiation, soil safety-net
+                                      // events debit the root N already taken (n_safetynet_conserve for this cell)
   bool tk_initiation = true;  // false: module on (ice) but never initiate an RTS
   // Parse and validate the RTS sub-keys of model_settings (FATAL on error). Static for unit tests.
   static void parse_thermokarst_settings(const Json::Value & ms, ModelData & md);

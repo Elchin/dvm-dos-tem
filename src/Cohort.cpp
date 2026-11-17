@@ -15,6 +15,8 @@
  *
  */
 
+#include <cassert>
+#include <cmath>
 #include <string>
 #include <map>
 #include <fstream>
@@ -624,6 +626,10 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
     const double enth_ht = (md->thermal_solver == 1) ? soilenv.columnEnthalpyE() : 0.0;
     updateMonthly_Thermokarst(yrcnt, currmind, stage);
     if (md->thermal_solver == 1) { soilenv.enth_bk_fire += soilenv.columnEnthalpyE() - enth_ht; }
+  } else {
+    // RTS not run this month (thermokarst = 0, or not a tr/sc stage): DRAINTYPE output reports the
+    // cohort's drainage class instead of the -1 placeholder (output only; nothing reads it back)
+    year_tkdata[currmind].thermokarst_soid.drainage_type = cd.drainage_type;
   }
 
   BOOST_LOG_SEV(glg, debug) << "Clean up at the end of the month";
@@ -1304,6 +1310,11 @@ void Cohort::updateMonthly_Bgc(const int & currmind, const int & dinmcurr) {
       for (int il = 0; il < std::min(cd.m_soil.numsl, MAX_SOI_LAY); il++) {
         if (bdall->m_v2soi.rtlfalfrac[il] > 0. || bdall->m_soi2v.nextract[il] > 0.) { soilbgc.tk_ninput_layer = il; break; }
       }
+      // m_a2soi.avlninput is assigned every month only by the BNF scheme (Soil_Bgc::prepareIntegration,
+      // bnf_scheme > 0); otherwise it keeps its previous value, so the RTS supply added below would
+      // accumulate month after month (port bug found in the retune, Nov 17). Reset it to the base
+      // input (0 without BNF) before adding this month's supply, as rts-regrow's overwrite did.
+      if (soilbgc.bnfp.scheme <= 0) { bdall->m_a2soi.avlninput = 0.0; }
       double supply = 0.0;
       if (tk_rg_have) {  // v2 taper: trailing-12-month GPP vs dynamic pre-slump reference (RTSRegrow.h (4))
         tk_rg_gpp12[tk_rg_gpp12_i] = std::max(0.0, bdall->m_a2v.gppall);
@@ -2058,6 +2069,7 @@ void Cohort::set_restartdata_from_state() {
     for (Layer* l = ground.fstsoill; l != NULL && l->isSoil && il < MAX_SOI_LAY; l = l->nextl, il++) {
       restartdata.tk_exice[il] = l->excess_ice;
     }
+    tk_rg_pack(restartdata.tk_rg_state);
   }
 
   for (int ip = 0; ip < NUM_PFT; ip++) {
@@ -2320,6 +2332,16 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
   }
   tkdata->clear(); // zero monthly thermokarst fluxes/diagnostics
   tkdata->thermokarst_soid.drainage_type = cd.drainage_type;
+  // NBAL_DIAG water check of this RTS step: column soil water incl. excess ice (kg/m2) at the start,
+  // just before / after the slump restructuring, at the end; W0 - W1 = TKWDRAIN + TKWLAT (Wpre - Wrm)
+  static const bool wbal_diag = getenv("NBAL_DIAG") != NULL;
+  auto tk_colwater = [this]() {
+    double w = 0.0;
+    for (Layer* l = ground.fstsoill; l != NULL && l->isSoil; l = l->nextl) { w += l->liq + l->ice + l->excess_ice; }
+    return w;
+  };
+  const double tk_w0 = wbal_diag ? tk_colwater() : 0.0;
+  double tk_wpre = 0.0, tk_wrm = 0.0;
 
   // RTS CH4 (opt-in): computed on this month's soil state/RH before any slump
   // restructuring, so layer indices match the integrated fluxes.
@@ -2370,6 +2392,7 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
         BOOST_LOG_SEV(glg, info) << "RTS regrow: GPP_pre " << tk_rg_gpp << " gC/m2/yr, tau "
                                  << RTSRegrow::tau(md->tk_regrow, tk_rg_gpp / 1000.0) << " yr, s " << tk_rg_s;
       }
+      tk_wpre = tk_colwater();   // TKWLAT: water removed with the slumped soil (output only)
       thermokarst.initiate(year);
       BOOST_LOG_SEV(glg, debug) << "Right after thermokarst.initiate(..)  " << ground.layer_report_string();
 
@@ -2408,6 +2431,8 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
 
       // May need to rename the below function as it is generic to soil removal
       ground.adjustSoilAfterburn(true); // RTS: also drop emptied mineral layers; after Bd2Layer
+      tk_wrm = tk_colwater();
+      tkdata->thermokarst_soid.water_removed = tk_wpre - tk_wrm;
 
       BOOST_LOG_SEV(glg, debug) << "Post-thermokarst, save the data back to 'bdall'...";
       soilbgc.assignCarbonLayer2BdMonthly(); soilbgc.assignNitrogenLayer2BdMonthly();
@@ -2455,6 +2480,10 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
   tkdata->thermokarst_soid.subsidence = ground.tk_subsidence;
   tkdata->thermokarst_soid.excess_ice = ground.totalExcessIce();
   if (md->tk_ch4) { updateMonthly_RTSMethane_lateral(); }
+  if (wbal_diag) {   // columns: yr m W0 Wpre Wrm W1 drained (Wpre = Wrm = 0 without a slump this month)
+    fprintf(stderr, "WB %d %d %.6f %.6f %.6f %.6f %.6f\n", year, midx, tk_w0, tk_wpre, tk_wrm, tk_colwater(),
+            tkdata->thermokarst_soid.water_drained);
+  }
   // Transfer monthly thermokarst data, regardless of initiation
   year_tkdata[midx] = *tkdata;
 }
@@ -2648,6 +2677,9 @@ void Cohort::tk_set_month_flags() {
   const bool after = (ground.tk_months_since_init >= 0);
   soilbgc.tk_litter_fix = after;
   soilenv.tk_nofibric_fix = after;
+  // after an RTS initiation the soil safety net conserves N (Integrator.h, Fix L1) in this cell; before it,
+  // and in cells without an RTS, the global model_settings.n_safetynet_conserve applies unchanged
+  Integrator::n_safetynet_conserve = (md->n_safetynet_conserve == 1 || (after && md->tk_safetynet_conserve)) ? 1 : 0;
 }
 
 /** RTS (thermokarst = 1 only): RTS state from the restart file. Old restarts (no tk_* variables):
@@ -2678,4 +2710,59 @@ void Cohort::set_tk_state_from_restartdata() {
   if (restartdata.tk_drainage_type == 0 || restartdata.tk_drainage_type == 1) {
     cd.drainage_type = restartdata.tk_drainage_type;
   }
+  if (restartdata.has_tk_rg_state) {
+    tk_rg_unpack(restartdata.tk_rg_state);
+  } else {
+    static bool warned_rg = false;
+    if (!warned_rg) {
+      std::cerr << "WARNING: restart file has RTS state but no tk_regrow_state (older thermokarst "
+                << "restart): post-slump regrowth and floor-RH history start from scratch." << std::endl;
+      warned_rg = true;
+    }
+  }
+}
+
+/** RTS: flat copy of the regrowth / floor-RH state (layout version 1, RestartData::TK_RG_NSTATE
+ *  values; ints and bools stored as exact doubles). Order must match tk_rg_unpack. */
+void Cohort::tk_rg_pack(double * s) const {
+  int k = 0;
+  s[k++] = tk_rg_have ? 1.0 : 0.0;
+  for (int ip = 0; ip < NUM_PFT; ip++) for (int j = 0; j < 3; j++) { s[k++] = tk_rg_cpre[ip][j]; }
+  for (int ip = 0; ip < NUM_PFT; ip++) for (int j = 0; j < 3; j++) { s[k++] = tk_rg_npre[ip][j]; }
+  for (int ip = 0; ip < NUM_PFT; ip++) { s[k++] = tk_rg_type[ip]; }
+  for (double x : {tk_rg_s, tk_rg_gpp, tk_rg_olpre, tk_rg_olstab, tk_rg_oladd, tk_rg_ncarry}) { s[k++] = x; }
+  for (int i = 0; i < 12; i++) { s[k++] = tk_rg_gpp12[i]; }
+  s[k++] = tk_rg_gpp12_n; s[k++] = tk_rg_gpp12_i;
+  s[k++] = tk_rg_ingpp;
+  for (int i = 0; i < 12; i++) { s[k++] = tk_rg_ingpp12[i]; }
+  s[k++] = tk_rg_taper;
+  for (int i = 0; i < 60; i++) { s[k++] = tk_gpp_ring[i]; }
+  for (int i = 0; i < 60; i++) { s[k++] = tk_ingpp_ring[i]; }
+  s[k++] = tk_gpp_n; s[k++] = tk_gpp_i;
+  for (int y = 0; y < 10; y++) for (int m = 0; m < 12; m++) { s[k++] = tk_rh_hist[y][m]; }
+  for (int m = 0; m < 12; m++) { s[k++] = tk_rh_nyr[m]; }
+  for (int m = 0; m < 12; m++) { s[k++] = tk_rh_next[m]; }
+  assert(k == RestartData::TK_RG_NSTATE);
+}
+
+void Cohort::tk_rg_unpack(const double * s) {
+  int k = 0;
+  tk_rg_have = (s[k++] != 0.0);
+  for (int ip = 0; ip < NUM_PFT; ip++) for (int j = 0; j < 3; j++) { tk_rg_cpre[ip][j] = s[k++]; }
+  for (int ip = 0; ip < NUM_PFT; ip++) for (int j = 0; j < 3; j++) { tk_rg_npre[ip][j] = s[k++]; }
+  for (int ip = 0; ip < NUM_PFT; ip++) { tk_rg_type[ip] = (int)std::lround(s[k++]); }
+  tk_rg_s = s[k++]; tk_rg_gpp = s[k++]; tk_rg_olpre = s[k++];
+  tk_rg_olstab = s[k++]; tk_rg_oladd = s[k++]; tk_rg_ncarry = s[k++];
+  for (int i = 0; i < 12; i++) { tk_rg_gpp12[i] = s[k++]; }
+  tk_rg_gpp12_n = (int)std::lround(s[k++]); tk_rg_gpp12_i = (int)std::lround(s[k++]);
+  tk_rg_ingpp = s[k++];
+  for (int i = 0; i < 12; i++) { tk_rg_ingpp12[i] = s[k++]; }
+  tk_rg_taper = s[k++];
+  for (int i = 0; i < 60; i++) { tk_gpp_ring[i] = s[k++]; }
+  for (int i = 0; i < 60; i++) { tk_ingpp_ring[i] = s[k++]; }
+  tk_gpp_n = (int)std::lround(s[k++]); tk_gpp_i = (int)std::lround(s[k++]);
+  for (int y = 0; y < 10; y++) for (int m = 0; m < 12; m++) { tk_rh_hist[y][m] = s[k++]; }
+  for (int m = 0; m < 12; m++) { tk_rh_nyr[m] = (int)std::lround(s[k++]); }
+  for (int m = 0; m < 12; m++) { tk_rh_next[m] = (int)std::lround(s[k++]); }
+  assert(k == RestartData::TK_RG_NSTATE);
 }

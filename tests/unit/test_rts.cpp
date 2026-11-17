@@ -17,6 +17,9 @@
 #include "../../include/TKNetC.h"
 #include "../../include/Ground.h"
 #include "../../include/Soil_Env.h"
+#include "../../include/Cohort.h"
+#include <fstream>
+#include <string>
 #include "nc_fixtures.h"
 #include <unistd.h>
 
@@ -104,6 +107,16 @@ TEST_CASE("thermokarst 1: sub-keys are read (synthetic-test settings)") {
   CHECK(m.tk_floor.exp_on);   // untouched keys keep their defaults
 }
 
+TEST_CASE("thermokarst_safetynet_conserve: default true with thermokarst 1, false by key, FATAL type; global switch untouched") {
+  ModelData m(tkc(1)); CHECK(m.tk_safetynet_conserve); CHECK(m.n_safetynet_conserve == 0);
+  ModelData f(tkon("thermokarst_safetynet_conserve", false)); CHECK_FALSE(f.tk_safetynet_conserve);
+  ModelData z(tkon("thermokarst_safetynet_conserve", 0)); CHECK_FALSE(z.tk_safetynet_conserve);
+  CHECK(ut::exit_status_of([] { ModelData x(tkon("thermokarst_safetynet_conserve", 2)); }) == EXIT_FAILURE);
+  CHECK(ut::exit_status_of([] { ModelData x(tkon("thermokarst_safetynet_conserve", "yes")); }) == EXIT_FAILURE);
+  Json::Value c = tkc(0); c["model_settings"]["thermokarst_safetynet_conserve"] = 7;   // ignored when off
+  ModelData o(c); CHECK(o.tk_safetynet_conserve); CHECK(o.n_safetynet_conserve == 0);
+}
+
 TEST_CASE("thermokarst 1: wrong types and ranges are FATAL") {
   CHECK(ut::exit_status_of([] { ModelData m(tkon("thermokarst_regrow", 2)); }) == EXIT_FAILURE);
   CHECK(ut::exit_status_of([] { ModelData m(tkon("thermokarst_regrow", "yes")); }) == EXIT_FAILURE);
@@ -165,6 +178,93 @@ TEST_CASE("restart RTS state round trip: drainage, init month, excess-ice flag, 
   RestartData r3; r3.reinitValue(); r3.read_px_tk_vars(fn, 0, 1);   // never written: fill values
   CHECK(r3.has_tk_state); CHECK(r3.tk_init == MISSING_I); CHECK(r3.tk_exice[0] == MISSING_D);
   std::remove(fn.c_str());
+}
+
+TEST_CASE("restart RTS regrow state: optional tk_regrow_state round trip; old thermokarst restarts load without it") {
+  // a thermokarst restart written before tk_regrow_state existed: the five tk vars only
+  std::string fo = tk_restart_file("rgold");
+  {
+    int nc, dv, d3[3], v;
+    ut::ncchk(nc_open(fo.c_str(), NC_WRITE, &nc)); ut::ncchk(nc_inq_varid(nc, "DZsoil", &dv));
+    ut::ncchk(nc_inq_vardimid(nc, dv, d3)); ut::ncchk(nc_redef(nc));
+    for (const char* n : {"tk_drainage_type", "tk_init", "tk_exinit"}) { ut::ncchk(nc_def_var(nc, n, NC_INT, 2, d3, &v)); }
+    ut::ncchk(nc_def_var(nc, "tk_subsidence", NC_DOUBLE, 2, d3, &v));
+    ut::ncchk(nc_def_var(nc, "tk_exice", NC_DOUBLE, 3, d3, &v));
+    ut::ncchk(nc_close(nc));
+  }
+  RestartData ro; ro.reinitValue(); ro.read_px_tk_vars(fo, 1, 2);
+  CHECK(ro.has_tk_state); CHECK_FALSE(ro.has_tk_rg_state);
+  CHECK(ro.tk_rg_state[0] == MISSING_D);
+  std::remove(fo.c_str());
+
+  std::string fn = tk_restart_file("rg");
+  RestartData w; w.reinitValue();
+  w.tk_drainage_type = 1; w.tk_init = 5; w.tk_exinit = 0; w.tk_subsidence = 0.0;
+  for (int il = 0; il < MAX_SOI_LAY; il++) { w.tk_exice[il] = 0.0; }
+  for (int k = 0; k < RestartData::TK_RG_NSTATE; k++) { w.tk_rg_state[k] = (k == 0) ? 1.0 : 0.5 * k + 1e-7 * k * k; }
+  w.write_px_tk_vars(fn, 1, 2);
+  RestartData r; r.reinitValue(); r.read_px_tk_vars(fn, 1, 2);
+  REQUIRE(r.has_tk_state); REQUIRE(r.has_tk_rg_state);
+  for (int k = 0; k < RestartData::TK_RG_NSTATE; k++) { CHECK(r.tk_rg_state[k] == w.tk_rg_state[k]); }
+  RestartData r2; r2.reinitValue(); r2.read_px_tk_vars(fn, 0, 0);   // never written: fill -> no regrow state
+  CHECK_FALSE(r2.has_tk_rg_state);
+  int nc, vr, dr[3], ver = 0; size_t len = 0;
+  ut::ncchk(nc_open(fn.c_str(), NC_NOWRITE, &nc)); ut::ncchk(nc_inq_varid(nc, "tk_regrow_state", &vr));
+  ut::ncchk(nc_inq_vardimid(nc, vr, dr)); ut::ncchk(nc_inq_dimlen(nc, dr[2], &len));
+  ut::ncchk(nc_get_att_int(nc, vr, "layout_version", &ver)); nc_close(nc);
+  CHECK(len == (size_t)RestartData::TK_RG_NSTATE); CHECK(ver == 1);
+  RestartData rr; rr.has_tk_rg_state = true; rr.tk_rg_state[3] = 7.0; rr.reinitValue();
+  CHECK_FALSE(rr.has_tk_rg_state); CHECK(rr.tk_rg_state[3] == MISSING_D);
+  std::remove(fn.c_str());
+}
+
+TEST_CASE("restart RTS regrow state: a length mismatch (other layout) is ignored, not misread") {
+  std::string fn = tk_restart_file("rglen");
+  RestartData w; w.reinitValue(); w.tk_drainage_type = 0; w.tk_init = 0; w.tk_exinit = 0; w.tk_subsidence = 0.0;
+  for (int il = 0; il < MAX_SOI_LAY; il++) { w.tk_exice[il] = 0.0; }
+  int nc, dv, d3[3], dr, v;   // pre-define tk_regrow_state with a different length
+  ut::ncchk(nc_open(fn.c_str(), NC_WRITE, &nc)); ut::ncchk(nc_inq_varid(nc, "DZsoil", &dv));
+  ut::ncchk(nc_inq_vardimid(nc, dv, d3)); ut::ncchk(nc_redef(nc));
+  ut::ncchk(nc_def_dim(nc, "tkrgstate", RestartData::TK_RG_NSTATE + 1, &dr));
+  int d3r[3] = {d3[0], d3[1], dr}; ut::ncchk(nc_def_var(nc, "tk_regrow_state", NC_DOUBLE, 3, d3r, &v));
+  ut::ncchk(nc_close(nc));
+  RestartData r; r.reinitValue(); r.read_px_tk_vars(fn, 0, 0);
+  CHECK_FALSE(r.has_tk_rg_state);
+  std::remove(fn.c_str());
+}
+
+TEST_CASE("Cohort tk_rg_pack / tk_rg_unpack: the regrow and floor-RH state round-trips exactly (unpack -> pack)") {
+  // distinct value per slot (ints/bools where the layout has them); a slot that unpack/pack mapped to
+  // the wrong member, or dropped, would not come back unchanged (the slot count is asserted in Cohort)
+  const int NP = NUM_PFT, N = RestartData::TK_RG_NSTATE;
+  std::vector<double> s(N);
+  for (int k = 0; k < N; k++) { s[k] = 0.5 + 1.25 * k; }
+  s[0] = 1.0;                                                           // tk_rg_have
+  for (int ip = 0; ip < NP; ip++) { s[1 + 6 * NP + ip] = ip % 4; }      // tk_rg_type
+  const int o = 1 + 7 * NP + 6 + 12;                                    // gpp12_n, gpp12_i
+  s[o] = 12; s[o + 1] = 7;
+  const int o2 = o + 2 + 1 + 12 + 1 + 120;                              // gpp_n, gpp_i
+  s[o2] = 60; s[o2 + 1] = 33;
+  for (int m = 0; m < 24; m++) { s[N - 24 + m] = m % 10; }              // rh_nyr, rh_next
+  Cohort c; c.tk_rg_unpack(s.data());
+  std::vector<double> s2(N, MISSING_D); c.tk_rg_pack(s2.data());
+  CHECK(s2 == s);
+  Cohort d; std::vector<double> z(N, MISSING_D); d.tk_rg_pack(z.data());   // default state: not recorded
+  CHECK(z[0] == 0.0); for (double x : z) { CHECK(x != MISSING_D); }
+}
+
+TEST_CASE("RTS water outputs: TKWDRAIN / TKWLAT diagnostics start at 0, clear() resets them, output_spec rows exist") {
+  soidiag_thermokarst d; CHECK(d.water_drained == 0.0); CHECK(d.water_removed == 0.0); CHECK(d.drainage_type == -1);
+  ThermokarstData t; t.thermokarst_soid.water_drained = 3.0; t.thermokarst_soid.water_removed = 4.0; t.clear();
+  CHECK(t.thermokarst_soid.water_drained == 0.0); CHECK(t.thermokarst_soid.water_removed == 0.0);
+  std::ifstream f("../../config/output_spec.csv"); REQUIRE(f.good());
+  std::string line; int found = 0;
+  while (std::getline(f, line)) {
+    if (line.rfind("TKWDRAIN,", 0) == 0 || line.rfind("TKWLAT,", 0) == 0) {
+      found++; CHECK(line.find(",kg/m2/time,") != std::string::npos);
+    }
+  }
+  CHECK(found == 2);
 }
 
 TEST_CASE("Soil_Bgc AVLN input layer: default 0 = legacy; an RTS regrow can move it to a rooted layer") {

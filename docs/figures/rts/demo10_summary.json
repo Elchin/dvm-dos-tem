@@ -5,7 +5,6 @@
    "AVLN",
    "DEEPC",
    "DEEPDZ",
-   "DRAINTYPE",
    "EET",
    "GPP",
    "IWCLAYER",
@@ -33,6 +32,7 @@
    "TKREGROWN",
    "TKREMTHICK",
    "TKRESPC",
+   "TKWDRAIN",
    "TLAYER",
    "VEGC",
    "VEGNTOT",
@@ -41,39 +41,27 @@
    "run"
   ],
   "0,1": [
-   "DRAINTYPE",
    "run"
   ],
   "0,2": [
-   "DRAINTYPE",
-   "run"
-  ],
-  "0,3": [
-   "DRAINTYPE",
    "run"
   ],
   "0,4": [
-   "DRAINTYPE",
    "run"
   ],
   "0,5": [
-   "DRAINTYPE",
    "run"
   ],
   "0,6": [
-   "DRAINTYPE",
    "run"
   ],
   "0,7": [
-   "DRAINTYPE",
    "run"
   ],
   "0,8": [
-   "DRAINTYPE",
    "run"
   ],
   "0,9": [
-   "DRAINTYPE",
    "run"
   ]
  },
@@ -83,6 +71,7 @@
    "tk_exice",
    "tk_exinit",
    "tk_init",
+   "tk_regrow_state",
    "tk_subsidence"
   ],
   "off_auto": [],
@@ -115,7 +104,7 @@
  "C_closure_tr_row0": {
   "on": {
    "max_abs_any_cell": 0.00831208132149186,
-   "cell00_max": 0.0012049996656564588
+   "cell00_max": 0.003858783513042141
   },
   "off_auto": {
    "max_abs_any_cell": 0.00831208132149186,
@@ -124,10 +113,10 @@
  },
  "slump_month_cell00": 17,
  "cell00_slump_drop_SOC": -4211.811358418177,
- "cell00_end_effect_SOC": -5836.5793842253515,
+ "cell00_end_effect_SOC": -5970.33196081491,
  "cell00_slump_drop_VEGC": -1253.1767236804963,
- "cell00_end_effect_VEGC": -585.1994432806969,
+ "cell00_end_effect_VEGC": -599.8019163012505,
  "cell00_TKLATC_slump": 4918.4892738888075,
  "cell00_TKRESPC_slump": 546.4988082098675,
- "cell00_gpp_last10yr_frac_of_off": 1.2413819063935896
+ "cell00_gpp_last10yr_frac_of_off": 1.198292677779507
 }

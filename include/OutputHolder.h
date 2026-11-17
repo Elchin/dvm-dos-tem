@@ -38,6 +38,8 @@ public:
   std::vector<double> tklatn_for_output;
   std::vector<double> tkremthick_for_output;
   std::vector<double> tkicemelt_for_output;
+  std::vector<double> tkwdrain_for_output;
+  std::vector<double> tkwlat_for_output;
   std::vector<double> draintype_for_output;
   std::vector<double> tksubsid_for_output;
   std::vector<double> tkexice_for_output;
