@@ -60,7 +60,12 @@ struct Params {
   int    water_scheme = 0;   // moss_water_scheme
   double w_bsw      = 1.0;   // moss_bsw (-), Beringer et al. 2001 via Chadburn et al. 2015
   double w_psisat   = 0.12;  // moss_psisat (m suction), Beringer et al. 2001 via Chadburn et al. 2015
-  double w_thetasat = 0.9;   // moss_thetasat (-), Beringer et al. 2001 via Chadburn et al. 2015 (capped at porosity)
+  // moss_thetasat (-): -1 (default) = the moss layer porosity (Elchin 2026-11-18: cap matches porosity);
+  // a value in (0, 1] is used instead, capped at porosity (Beringer et al. 2001 via Chadburn et al. 2015: 0.9).
+  // Frozen moss (frozen == 1): today's surface water (infiltration, then the surface runoff split off for frozen
+  // ground) is taken and refrozen up to the pore space and the cold content (refreeze_take); the rest goes on to
+  // the existing frozen-ground path (ponding / surface runoff).
+  double w_thetasat = -1.0;
 };
 
 // Chadburn et al. 2015 Eq. 1 (Brooks-Corey): equilibrium moss water content for a soil suction psi (m, >= 0).
@@ -90,6 +95,17 @@ inline WaterOut water_step(const WaterIn& w) {
   o.evap = std::fmin(std::fmax(w.evap, 0.0), std::fmax(0.0, o.liq - w.minliq));
   o.liq -= o.evap;
   return o;
+}
+
+// moss_water_scheme 1, frozen moss: water (kg/m2) the moss takes from supply and refreezes today, limited by
+// the pore space left (as ice, 917 kg/m3) and the cold content hcap (-T) / (Lf + h_in); hcap in J/m2/K, T in C,
+// h_in = specific enthalpy of the incoming liquid (J/kg, >= 0).
+inline double refreeze_take(double supply, double dz, double poro, double liq, double ice, double hcap, double T,
+                            double h_in, double lf) {
+  if (!(supply > 0.0) || !(T < 0.0) || !(dz > 0.0) || !(hcap > 0.0)) { return 0.0; }
+  const double room_mm = std::fmax(0.0, poro * dz * 1000.0 - std::fmax(ice, 0.0) * (1000.0 / 917.0) - std::fmax(liq, 0.0));
+  const double cold = hcap * (-T) / (lf + std::fmax(h_in, 0.0));
+  return std::fmax(0.0, std::fmin(supply, std::fmin(room_mm * 0.917, cold)));
 }
 
 // moss_tc_scheme 2: Johansen / Farouki moss conductivity (see Params). sr = (theta_liq+theta_ice)/eta.
@@ -162,7 +178,9 @@ inline std::string parse(const Json::Value& ms, Params& p) {
   p.water_scheme = w.asInt();
   if (!(p.w_bsw > 0.0 && p.w_bsw <= 20.0)) { return "model_settings.moss_bsw must be in (0, 20]"; }
   if (!(p.w_psisat > 0.0 && p.w_psisat <= 10.0)) { return "model_settings.moss_psisat must be in (0, 10] m"; }
-  if (!(p.w_thetasat > 0.0 && p.w_thetasat <= 1.0)) { return "model_settings.moss_thetasat must be in (0, 1]"; }
+  if (!(p.w_thetasat == -1.0 || (p.w_thetasat > 0.0 && p.w_thetasat <= 1.0))) {
+    return "model_settings.moss_thetasat must be -1 (layer porosity, default) or in (0, 1]";
+  }
   return "";
 }
 

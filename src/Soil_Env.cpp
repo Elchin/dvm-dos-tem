@@ -2030,7 +2030,7 @@ void Soil_Env::mossWaterStep(Layer* fib, double& infil, double& evap) {
   Layer* m = ground->fstmossl;
   if (m == NULL || !m->isMoss || fib == NULL || fib == m || !fib->isSoil) { return; }
   SoilLayer* fs = dynamic_cast<SoilLayer*>(fib);
-  const double tsat = fmin(moss_thetasat, (double)m->poro);
+  const double tsat = (moss_thetasat > 0.0) ? fmin(moss_thetasat, (double)m->poro) : (double)m->poro;
   const bool fib_thawed = (fs != NULL && fib->frozen == -1 && fib->tem > 0.0);
   double theq = tsat;                       // top soil frozen: the moss only holds up to theta_sat
   if (fib_thawed) {
@@ -2048,10 +2048,22 @@ void Soil_Env::mossWaterStep(Layer* fib, double& infil, double& evap) {
   fib->liq -= o.rise;
   infil += o.drain - o.intercept;
   evap -= o.evap;
+  double frzin = 0.0;
+  const double qover0 = fmax(ed->d_soi2l.qover, 0.0);
+  if (m->frozen == 1 && infil + qover0 > 0.0) {
+    // frozen moss: today's surface water (infiltration, then the surface runoff getRunoff split off because the
+    // ground is frozen) refreezes in the moss as far as pore space and cold content allow (the enthalpy water
+    // remap books the inflow; the next enthalpy step releases its latent heat); the rest ponds / runs off as before
+    const double hcap = enthLayerCs(m) + fmax(m->liq, 0.0) * SHCLIQ + fmax(m->ice, 0.0) * SHCICE;
+    frzin = mossdyn::refreeze_take(infil + qover0, m->dz, m->poro, m->liq, m->ice, hcap, m->tem, infil_h_spec, LHFUS);
+    const double from_infil = fmin(frzin, fmax(infil, 0.0));
+    m->ice += frzin; infil -= from_infil; ed->d_soi2l.qover -= frzin - from_infil;
+    moss_wd.frz_runoff = frzin - from_infil;
+  }
   const double w1 = fmax(m->liq, 0.0) + fmax(m->ice, 0.0) + fib->liq;
-  const double resid = (w1 - w0) - (o.intercept - o.drain - o.evap);
+  const double resid = (w1 - w0) - (o.intercept + frzin - o.drain - o.evap);
   moss_wd.theq = theq; moss_wd.intercept = o.intercept; moss_wd.drain = o.drain; moss_wd.rise = o.rise;
-  moss_wd.evap = o.evap; moss_wd.resid = resid;
+  moss_wd.evap = o.evap; moss_wd.resid = resid; moss_wd.frzin = frzin;
   moss_resid_max = fmax(moss_resid_max, fabs(resid));
   if (fabs(resid) > 1.0e-9 && moss_resid_warn < 5) {
     moss_resid_warn++;

@@ -1086,7 +1086,7 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
       static long moss_day = 0;
       std::ofstream mf((md->output_dir + "moss_daily.csv").c_str(), std::ios::app);
       if (moss_day == 0) {
-        mf << "day,doy,dz,tem,liq,ice,frozen,k_unf,k_frz,theq,intercept,drain,rise,evap,resid,fib_liq,fib_ice,fib_tem\n";
+        mf << "day,doy,dz,tem,liq,ice,frozen,k_unf,k_frz,theq,intercept,drain,rise,evap,resid,fib_liq,fib_ice,fib_tem,frzin,frz_runoff\n";
       }
       Layer* m = ground.fstmossl; Layer* f = m->nextl;
       const Soil_Env::MossWaterDiag& d = soilenv.moss_wd;
@@ -1094,7 +1094,7 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
       mf << moss_day << "," << doy << "," << m->dz << "," << m->tem << "," << m->liq << "," << m->ice << ","
          << m->frozen << "," << m->getUnfThermCond() << "," << m->getFrzThermCond() << "," << d.theq << ","
          << d.intercept << "," << d.drain << "," << d.rise << "," << d.evap << "," << d.resid << ","
-         << f->liq << "," << f->ice << "," << f->tem << "\n";
+         << f->liq << "," << f->ice << "," << f->tem << "," << d.frzin << "," << d.frz_runoff << "\n";
       moss_day++;
     }
     // Phase 3 v2: ch4_daily 1 = CH4Flux sees today's soil T, liquid/ice and water table.

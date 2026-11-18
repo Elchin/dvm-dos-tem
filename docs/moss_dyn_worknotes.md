@@ -28,7 +28,7 @@ with the dynamic one coupled to carbon. Background review: ~/tem-dev/notes/moss_
 | `moss_tc_kdry`, `moss_tc_ksat` | 0.06, 0.5 | Chadburn 2015 dry / saturated moss conductivity (W/m/K), k_sat used only with `moss_tc_scheme` 1; k_dry with 1 and 2 |
 | `moss_tc_ksolid` | 0.25 | `moss_tc_scheme` 2: moss/peat solids conductivity (W/m/K), Farouki 1981 organic matter (section 7.2) |
 | `moss_water_scheme` | 0 | 0 legacy daily copy of the fibric liquid; 1 the moss keeps its own liquid + ice (section 7.1; needs `thermal_solver` 1) |
-| `moss_bsw`, `moss_psisat`, `moss_thetasat` | 1, 0.12 m, 0.9 | `moss_water_scheme` 1 Brooks-Corey moss parameters (Beringer et al. 2001 via Chadburn et al. 2015) |
+| `moss_bsw`, `moss_psisat`, `moss_thetasat` | 1, 0.12 m, -1 | `moss_water_scheme` 1 Brooks-Corey moss parameters (Beringer et al. 2001 via Chadburn et al. 2015); `moss_thetasat` -1 = layer porosity (section 8), or a value in (0, 1] |
 
 - Mode 1: `d = clamp(dmax * t / (t + t_half), dmin, dmax)`, `t = cd.yrsdist` (years since fire/RTS; reset to 0 by both, already in
   the restart file). DOS-TEM form (Yi et al. 2009, doi:10.1029/2008JG000841; Jafarov et al. 2013 Eq. 1, doi:10.1088/1748-9326/8/3/035030).
@@ -350,3 +350,63 @@ Moss layer 1986-2015 means: summer = Jul-Aug, winter = Jan-Feb; k = conductivity
 2. Evaporation comes from the moss first (no separate moss surface resistance). An alternative is a moss evaporation fraction.
 3. `moss_tc_kdry` 0.06 (Chadburn/Soudzilovskaia) is shared by schemes 1 and 2; CLM uses 0.05 for organic matter (Farouki 1981).
 4. Sensitivity used the short spin-up test settings, not the accepted Gydan calibration (rhmoistfrozen_override 0.05, kdc multiplier).
+
+## 8. Task 5: θsat = porosity, frozen-moss refreeze / runoff, and the Gydan setting (binary `dvmdostem_moss_v4`, md5 20d66fb171a2b37ab6725f7b8df749e9)
+Elchin (2026-11-18): "Saturation: cap match porosity"; "When moss is frozen, snowmelt becomes a runoff or freezes at the ground surface
+depends on conditions"; "Yes. Make new scheme Gydan setting".
+
+### 8.1 Changes (moss_water_scheme 1 only; legacy unchanged)
+- **`moss_thetasat` default -1 = the moss layer porosity** (CMT70 0.95), used for the wetting cap and as θsat in Chadburn Eq. 1.
+  A value in (0, 1] (e.g. Beringer's 0.9) is still accepted (capped at porosity).
+- **Frozen moss (`frozen == 1`)**: before, nothing entered fully frozen moss. Now today's surface water — the infiltration and, because
+  `getRunoff` sends everything to surface runoff when the ground is frozen, that runoff — is taken by the moss and frozen in place, up to
+  1. the pore space left (as ice, 917 kg/m3) and
+  2. the cold content `C_moss (0 - T_moss) / (L_f + h_in)` (`C_moss` = solids + liquid + ice heat capacity, J/m2/K; h_in = specific
+     enthalpy of the incoming water, 0 for snow melt) (`mossdyn::refreeze_take`, `Soil_Env::mossWaterStep`).
+  The rest follows the existing frozen-ground path unchanged: magic puddle (ponding; with run-on energy on it freezes there) or surface
+  runoff (QRUNOFF). So whether melt refreezes in the moss, ponds/freezes at the ground surface or runs off depends on the moss
+  temperature, its ice content and the puddle space. The added ice is booked in the enthalpy water remap (mass in at the inflow
+  enthalpy, so the moss warms by L_f per kg refrozen and stays at or below 0 C); runoff taken is subtracted from `qover`.
+  New `moss_daily.csv` columns `frzin` (kg/m2/day refrozen) and `frz_runoff` (part of it taken from surface runoff).
+- A first version took only the infiltration and **never fired** at Gydan: on frozen ground `getRunoff` already turns all melt into
+  runoff, so infiltration was 0. That build was moved aside (`bin/_aside/dvmdostem_moss_v4_pre_runoffaccess`, runs in `runs/_aside2/*_v4pre`).
+
+### 8.2 Tests
+| test | result |
+|---|---|
+| unit tests, full suite | 450/450 cases pass (1 new: `refreeze_take` supply / pore space / cold content limits, warm-rain case, T stays <= 0 C); same 8 known failing assertions |
+| `moss_thetasat` parse: default -1, accepts 0.9, rejects -0.5 and 1.5 | pass |
+| bit identity, all new switches off (v4 vs v3: T0g vs T0f, G0g vs G0f; v4 vs 7b6a629a: T0g vs T0ref, G0g vs G0ref) | 486/486 identical (all 4) |
+| moss water closure (daily, all stages, P runs) | max 1.2e-14 kg/m2 |
+| energy closure (all stages, P runs) | max abs resday 0.0046 J/m2/day (5.4e-08 W/m2); unattr 0 |
+| C balance | max monthly residual 8.5e-04 gC/m2 |
+| moss_dyn 0 (kit default, static 0.01 m) vs moss_dyn 1 static 1 cm, both water 1 + tc 2 (first v4 build) | 486/486 identical |
+
+### 8.3 Gydan sensitivity (A3b_snow300_otc, settings as 7.4; Fig. 6, 7)
+![moss seasonal cycle v4](figures/moss_water5_seasonal.png)
+![ALD v4](figures/moss_water5_ald.png)
+
+| moss | scheme | summer θliq | winter θliq / θice | max θ (liq+ice) | k summer | k winter | ALD 1986-2015 m (below moss) | ALD 2022-26 m | wetting mm/yr | refrozen mm/yr |
+|---|---|---|---|---|---|---|---|---|---|---|
+| 1 cm | legacy | 0.250 | 0.000 / 0.000 | 0.569 | 0.510 | 0.086 | 0.562 (0.552) | 1.993 | 0.0 | 0.00 |
+| 1 cm | v3: θsat 0.9, no frozen uptake | 0.210 | 0.047 / 0.310 | 0.864 | 0.196 | 0.706 | 0.503 (0.493) | 1.680 | 53.6 | 0.00 |
+| 1 cm | v4: θsat = porosity + refreeze | 0.236 | 0.047 / 0.303 | 0.914 | 0.213 | 0.689 | 0.508 (0.498) | 1.720 | 54.4 | 1.68 |
+| 3 cm | legacy | 0.243 | 0.000 / 0.000 | 0.671 | 0.495 | 0.086 | 0.565 (0.535) | 2.018 | 0.0 | 0.00 |
+| 3 cm | v3: θsat 0.9, no frozen uptake | 0.186 | 0.047 / 0.078 | 0.837 | 0.194 | 0.216 | 0.439 (0.409) | 1.113 | 76.4 | 0.00 |
+| 3 cm | v4: θsat = porosity + refreeze | 0.188 | 0.047 / 0.053 | 0.714 | 0.197 | 0.157 | 0.460 (0.430) | 1.177 | 76.9 | 2.14 |
+| 10 cm | legacy | 0.276 | 0.000 / 0.000 | 0.940 | 0.531 | 0.086 | 0.674 (0.574) | 2.376 | 0.0 | 0.00 |
+| 10 cm | v3: θsat 0.9, no frozen uptake | 0.126 | 0.047 / 0.098 | 0.639 | 0.131 | 0.266 | 0.310 (0.210) | 0.456 | 61.8 | 0.00 |
+| 10 cm | v4: θsat = porosity + refreeze | 0.164 | 0.047 / 0.079 | 0.603 | 0.168 | 0.220 | 0.353 (0.253) | 0.459 | 61.6 | 6.06 |
+
+- θsat = porosity raises the wetting cap and θ_eq by 0.95/0.9: summer liquid +0.026 / +0.002 / +0.038 (1 / 3 / 10 cm); max θ rises for
+  1 cm (0.914 vs 0.864) but not for 3 and 10 cm (0.714, 0.603), where the wettest days are set by drainage to θ_eq, not by the cap.
+- Refreezing is small: 1.7 / 2.1 / 6.1 mm/yr for 1 / 3 / 10 cm. The moss cold content is small (thin, 95 % porous layer) and most melt
+  arrives when the moss is already at 0 C (partly frozen, `frozen == 0`), where it is wetted the normal way.
+- ALD change v4 vs v3: +0.005 / +0.021 / +0.043 m (1 / 3 / 10 cm), still well below legacy (0.562 / 0.565 / 0.674 m).
+- With 3 cm moss the winter ice is lower (0.053 vs 0.078) and the winter k lower (0.157 vs 0.216); not traced further.
+
+### 8.4 Gydan setting (prepared, not run)
+`~/cal-gydan/kit_v9_moss/` (copy of kit_v9; only kit.json differs + MOSS_SETTING.md + seed/): binary `dvmdostem_moss_v4`,
+`model_settings_set` = {moss_water_scheme 1, moss_tc_scheme 2} for every case, new W `~/cal-gydan/rmf2_moss`, ledger carried 5.33141.
+Estimates in MOSS_SETTING.md: T re-check of the accepted case 0.25 core-h, T top 3 0.49, + A3c thermal re-check 0.68, + reduced
+B1 1.44 (to 6.77 of 7.0); the full B1 grid does not fit.

@@ -163,7 +163,7 @@ double mass(const mossdyn::WaterIn& w, const mossdyn::WaterOut& o) {   // residu
 TEST_CASE("moss_water_scheme / moss_tc_scheme 2: parse, defaults, rejection") {
   mossdyn::Params p;
   CHECK(mossdyn::parse(Json::Value(Json::objectValue), p) == "");
-  CHECK(p.water_scheme == 0); CHECK(p.w_bsw == 1.0); CHECK(p.w_psisat == 0.12); CHECK(p.w_thetasat == 0.9);
+  CHECK(p.water_scheme == 0); CHECK(p.w_bsw == 1.0); CHECK(p.w_psisat == 0.12); CHECK(p.w_thetasat == -1.0);
   CHECK(p.tc_ksolid == 0.25);
   CHECK(mossdyn::parse(ms({{"moss_water_scheme", 1}, {"moss_tc_scheme", 2}, {"moss_tc_ksolid", 0.3}}), p) == "");
   CHECK(p.water_scheme == 1); CHECK(p.tc_scheme == 2); CHECK(p.tc_ksolid == 0.3);
@@ -172,6 +172,8 @@ TEST_CASE("moss_water_scheme / moss_tc_scheme 2: parse, defaults, rejection") {
   CHECK(mossdyn::parse(ms({{"moss_tc_ksolid", 0.0}}), p) != "");
   CHECK(mossdyn::parse(ms({{"moss_psisat", -1.0}}), p) != "");
   CHECK(mossdyn::parse(ms({{"moss_thetasat", 1.5}}), p) != "");
+  CHECK(mossdyn::parse(ms({{"moss_thetasat", -0.5}}), p) != "");
+  CHECK(mossdyn::parse(ms({{"moss_thetasat", 0.9}}), p) == ""); CHECK(p.w_thetasat == 0.9);
   CHECK(mossdyn::parse(ms({{"moss_bsw", 0.0}}), p) != "");
 }
 
@@ -240,4 +242,26 @@ TEST_CASE("moss_tc_scheme 2: moss layer only, S21H (org_tc_scheme 1) not applied
   CHECK(fz.getFrzThermCond() == doctest::Approx(std::pow(0.25, 0.05) * std::pow((double)TCICE, 0.95)).epsilon(1e-3));
   CHECK(moss_at(0.25, 0.0, false).getUnfThermCond() == fib_u);     // fibric keeps S21H
   CHECK(moss_at(0.25, 1.0, false).getFrzThermCond() == fib_f);
+}
+
+TEST_CASE("refreeze_take (moss_water_scheme 1, frozen moss): supply, pore space and cold content limits") {
+  const double lf = 3.337e5;
+  // 3 cm moss, poro 0.95: 28.5 mm pores; hcap 1e5 J/m2/K at -5 C -> cold 1.498 kg
+  CHECK(mossdyn::refreeze_take(10.0, 0.03, 0.95, 1.0, 5.0, 1.0e5, -5.0, 0.0, lf) == doctest::Approx(5.0e5 / lf));
+  CHECK(mossdyn::refreeze_take(1.0, 0.03, 0.95, 1.0, 5.0, 1.0e5, -5.0, 0.0, lf) == doctest::Approx(1.0));   // supply
+  // nearly full of ice: room 28.5 - 1 - 25*1000/917 = 0.2370 mm -> 0.2173 kg as ice
+  CHECK(mossdyn::refreeze_take(10.0, 0.03, 0.95, 1.0, 25.0, 1.0e6, -20.0, 0.0, lf)
+        == doctest::Approx((28.5 - 1.0 - 25.0 * 1000.0 / 917.0) * 0.917));
+  CHECK(mossdyn::refreeze_take(10.0, 0.03, 0.95, 1.0, 30.0, 1.0e6, -20.0, 0.0, lf) == 0.0);   // no room
+  CHECK(mossdyn::refreeze_take(10.0, 0.03, 0.95, 1.0, 5.0, 1.0e5, 0.0, 0.0, lf) == 0.0);      // no cold content
+  CHECK(mossdyn::refreeze_take(0.0, 0.03, 0.95, 1.0, 5.0, 1.0e5, -5.0, 0.0, lf) == 0.0);      // no supply
+  // warm rain (h_in = 4188 * 2 C) needs more cold per kg
+  CHECK(mossdyn::refreeze_take(10.0, 0.03, 0.95, 1.0, 5.0, 1.0e5, -5.0, 8376.0, lf) == doctest::Approx(5.0e5 / (lf + 8376.0)));
+  // refreezing the take at Lf + h_in uses at most the cold content: the layer stays at <= 0 C
+  for (double T : {-0.01, -1.0, -10.0})
+    for (double sup : {0.5, 5.0, 50.0}) {
+      const double hcap = 6.0e4, t = mossdyn::refreeze_take(sup, 0.03, 0.95, 0.5, 3.0, hcap, T, 0.0, lf);
+      CHECK(t * lf <= hcap * (-T) * (1.0 + 1e-12));
+      CHECK(t <= sup);
+    }
 }
