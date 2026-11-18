@@ -111,7 +111,40 @@ differs in 29 of 63 restart variables (lai, vegc, soil T, toptA, prvltrfcnA, ...
   dead-moss maximum, not a live-moss thickness (caveat 5.3).
 - ALD in dvmdostem is measured from the top of the moss layer (Soil_Env.cpp:733-740), so a thicker moss adds its own thickness to ALD.
 
-## 4. Gydan sensitivity (see section added with the sensitivity commit)
+## 4. Gydan sensitivity: ALD vs moss thickness (8 cases + 1 control, `tests/moss_dyn/plot_sens.py`)
+Gydan c55 (CMT70), mode 1, same short test settings as section 3 (not the calibrated A0/A2 set in ~/cal-gydan, so absolute
+ALD is not comparable to the 0.78 m CALM target). Two thermal options: legacy ln-Kersten (L) and `org_tc_scheme` 1 with the
+S21H values (O: kunf 0.27, kfrz 0.5134, dry 0.08571, thre_f 0.1795, thre_h 0.5638). Moss: static 0.1 / 3 / 10 cm (`moss_t_half` 0),
+and regrowth to 5 cm with `moss_t_half` 5 (thinned to 0.1 cm by the Aug 2021 slump). Controls: L = G0 (legacy 1 cm), O = 1 cm.
+ALD is from the moss top.
+
+| thermal | moss | ALD 1986-2015 (m) | ALD below moss | ALD 2022-26 | ALD 2036-45 | max abs C resid |
+|---|---|---|---|---|---|---|
+| L | 1 cm (legacy) | 0.144 | 0.134 | 2.05 | 4.54 | 7.8e-4 |
+| L | 0.1 cm | 0.127 | 0.126 | 2.16 | 4.71 | 6.8e-4 |
+| L | 3 cm | 0.151 | 0.121 | 1.51 | 3.68 | 7.5e-4 |
+| L | 10 cm | 0.104 | 0.004 | 0.32 | 0.34 | 6.6e-4 |
+| L | regrow 5 cm | 0.180 | 0.131 | 1.61 | 3.42 | 7.2e-4 |
+| O | 1 cm | 0.802 | 0.792 | 3.90 | 5.26 | 9.1e-4 |
+| O | 0.1 cm | 0.763 | 0.762 | 3.54 | 5.25 | 6.5e-4 |
+| O | 3 cm | 1.064 | 1.034 | 4.28 | 5.28 | 7.1e-4 |
+| O | 10 cm | 3.748 | 3.648 | 5.35 | 5.36 | 6.5e-4 |
+| O | regrow 5 cm | 1.306 | 1.257 | 4.76 | 5.30 | 7.1e-4 |
+
+![Gydan moss sensitivity](figures/moss_dyn_gydan_sens.png)
+
+What it shows (test settings, so read the signs, not the numbers):
+- **The sign of the moss effect depends on the moss thermal scheme.** Legacy: more moss = shallower thaw below the moss
+  (0.134 → 0.121 → 0.004 m for 1 / 3 / 10 cm), the insulation Elchin expected; with 10 cm the thaw stays at ~0.3 m even after the slump.
+  S21H: more moss = much deeper thaw (0.79 → 1.03 → 3.65 m). In Feb 2000 the 10 cm S21H moss is −2.8 °C at its centre and −0.9 °C
+  just below (1 cm case: −2.3 / −2.1 °C), and the 1995-2004 mean soil T is +1.4 °C just below the moss and still +0.4 °C at 0.5 m, versus +0.2 °C and −1.4 °C at the same depths with 1 cm.
+  So the S21H moss insulates in winter more than in summer, which warms the soil. The likely reason is the moss hydrology
+  shortcut: the moss copies only the fibric layer's *liquid* water each day, so it is wet when thawed (summer Sr ≈ 0.28, above
+  thre_f, k well above dry) and has little ice when frozen (k near the dry value). Real moss is the opposite (dry in summer, icy
+  in winter: the thermal offset). The legacy ln-Kersten puts summer moss at k = tcdry because Sr < 1/e, so it insulates in summer.
+- Removal and regrowth (regrow 5 cm): with legacy thermal, ALD 2022-26 is 1.6 m vs 2.0 m with the static 1 cm moss (the two also
+  differ before the slump: 5 vs 1 cm). The slump itself (organic and mineral removal, excess ice) dominates both.
+- C balance stays at round-off in every case.
 
 ## 5. Caveats and open points
 1. Mode 2 needs nonvascular PFTs. CMT70 (Gydan) has none: its "Omoss" PFT is flagged nonvasculartype 0. Using mode 2 at Gydan
@@ -121,6 +154,7 @@ differs in 29 of 63 restart variables (lai, vegc, soil T, toptA, prvltrfcnA, ...
 3. `cmt_dimground` maxdmossthick values were set for the removed dead-moss layer (CMT05 0.30 m). Set `moss_dmax` explicitly
    (DOS-TEM used 0.04/0.06 m upland/lowland).
 4. Moss thermal properties: with the legacy ln-Kersten at the summer saturations of these sites the moss conductivity is
-   ~tcdry 0.025 W/m/K, so each extra cm of moss is a strong insulator. Results are sensitive to `kersten_form` / `org_tc_scheme`.
-5. Moss hydrology is unchanged: the moss copies the fibric layer's volumetric water daily.
+   ~tcdry 0.025 W/m/K, so each extra cm of moss is a strong summer insulator. With `org_tc_scheme` 1 the sign reverses (section 4).
+5. Moss hydrology is unchanged: the moss copies the fibric layer's liquid water daily (no own wetting/drying, little winter ice).
+   Before using dynamic moss for ALD work, the moss moisture (or a moss-specific conductivity, e.g. Chadburn 2015 linear form) needs a decision.
 6. The moss water change on a thickness change is not routed to runoff; it is summed in `moss_dz_water_mm` only.
