@@ -19,11 +19,13 @@ with the dynamic one coupled to carbon. Background review: ~/tem-dev/notes/moss_
 | key | default | meaning |
 |---|---|---|
 | `moss_dyn` | 0 | 0 legacy static 0.01 m (bit-identical); 1 prescribed regrowth; 2 moss-PFT-carbon coupled |
-| `moss_dmax` | -1 | maximum thickness (m); < 0 = `cmt_dimground` maxdmossthick (CMT05 0.30, CMT70 0.035; see caveat 5.3) |
+| `moss_dmax` | -1 | maximum thickness (m); < 0 = DOS-TEM default by drainage class: 0.04 upland (well drained, 0) / 0.06 lowland (poorly drained, 1); section 6.1 |
 | `moss_min_thick` | 0.001 | floor (m), in (0, 0.05]. The layer is never removed: `fstmossl` is dereferenced without guards (Soil_Bgc.cpp:508, Soil_Env.cpp:966/1046) |
 | `moss_t_half` | 5 | mode 1 half-recovery time (yr), Yi et al. 2009; 0 = always dmax (static prescribed thickness) |
 | `moss_bulkden` | 25 | mode 2 live-moss dry bulk density (kg/m3) |
 | `moss_cfrac` | 0.45 | mode 2 C fraction of moss dry mass (gC/g) |
+| `moss_tc_scheme` | 0 | moss-layer conductivity, any `moss_dyn` mode: 0 legacy; 1 Chadburn et al. 2015 linear form (section 6.2) |
+| `moss_tc_kdry`, `moss_tc_ksat` | 0.06, 0.5 | Chadburn 2015 dry / saturated moss conductivity (W/m/K), used only with `moss_tc_scheme` 1 |
 
 - Mode 1: `d = clamp(dmax * t / (t + t_half), dmin, dmax)`, `t = cd.yrsdist` (years since fire/RTS; reset to 0 by both, already in
   the restart file). DOS-TEM form (Yi et al. 2009, doi:10.1029/2008JG000841; Jafarov et al. 2013 Eq. 1, doi:10.1088/1748-9326/8/3/035030).
@@ -58,7 +60,7 @@ Test runs: one cell, two-stage RTS driver of the v4 bench (`run_rts_two_stage.py
 n_safetynet_conserve 2, thermokarst_regrow, rhmoistfrozen_override {"70": 0}). Sites: T = Toolik MAT (CMT05, moss PFTs 5-7),
 G = Gydan c55 (CMT70). Parameters from a scratch copy of 7b6a629a parameters/. These are mechanics tests, not calibrated runs.
 
-### 3.1 Unit tests (`tests/unit/test_moss_dyn.cpp`, 5 cases)
+### 3.1 Unit tests (`tests/unit/test_moss_dyn.cpp`, 5 cases; 9 since section 6)
 `make unittest`: 440/440 test cases pass (5 new, 1542 new assertions). The 8 failing assertions are the known pre-existing ones
 (test_climate, test_richards_water_energy, test_seb, test_stefan_water; 2 each), unchanged from 7b6a629a.
 
@@ -151,10 +153,93 @@ What it shows (test settings, so read the signs, not the numbers):
    would need a parameter change (flag the PFT as moss), which is a physics/parameter decision for Elchin.
 2. Removal is only by fire or RTS. There is no imposed moss-only removal (e.g. a list of years), because in mode 2 that would have
    to move moss PFT C somewhere (litter or emission) and in mode 1 needs a new restart field. Can be added if wanted.
-3. `cmt_dimground` maxdmossthick values were set for the removed dead-moss layer (CMT05 0.30 m). Set `moss_dmax` explicitly
-   (DOS-TEM used 0.04/0.06 m upland/lowland).
+3. ~~`cmt_dimground` maxdmossthick as the dmax default~~ — replaced in section 6.1 by the DOS-TEM 0.04/0.06 m upland/lowland default.
 4. Moss thermal properties: with the legacy ln-Kersten at the summer saturations of these sites the moss conductivity is
    ~tcdry 0.025 W/m/K, so each extra cm of moss is a strong summer insulator. With `org_tc_scheme` 1 the sign reverses (section 4).
 5. Moss hydrology is unchanged: the moss copies the fibric layer's liquid water daily (no own wetting/drying, little winter ice).
    Before using dynamic moss for ALD work, the moss moisture (or a moss-specific conductivity, e.g. Chadburn 2015 linear form) needs a decision.
 6. The moss water change on a thickness change is not routed to runoff; it is summed in `moss_dz_water_mm` only.
+
+## 6. Task 2: DOS-TEM dmax default and Chadburn et al. 2015 moss conductivity (binary `dvmdostem_moss_v2`, md5 cf5c4142ed6e4765c030dab6d5031cd9)
+Elchin: "Yes use the upland and lowland defaults. Use the one from chadburn et al." Moss-only removal: not implemented (undecided).
+Omoss is not re-flagged (parameter change, not approved).
+
+### 6.1 dmax default (modes 1 and 2 only; mode 0 never reads it)
+`moss_dmax` < 0 (default) now means `mossdyn::default_dmax(cd.drainage_type)`: **0.04 m for drainage class 0 (well drained, upland)
+and 0.06 m for class 1 (poorly drained, lowland)**; any other value is treated as upland. An explicit `moss_dmax` > 0 still overrides.
+- Where it comes from: Jafarov et al. 2013 (ERL 8 035030, doi:10.1088/1748-9326/8/3/035030), sec. 2 after Eq. 1: DOS-TEM moss thickness
+  `dmoss = dmoss,max * ysf/(ysf + yhalf)` (Yi et al. 2009b), yhalf = 5, and "for the upland and the lowland sites we assigned dmoss,max
+  equal to 4 and 6 cm correspondingly, according to our observations" (also their Table 1, moss thickness 0.04 / 0.06 m). The PDF text
+  extraction of the paper's Eq. 1 shows ysf/(ysf − yhalf); the + form (half of dmax at ysf = yhalf, as the text says) is implemented.
+  Upland/lowland in the paper are two Interior Alaska sites; mapping them to the dvmdostem drainage class is my choice.
+- In the code: `include/MossDyn.h` (`DMAX_UPLAND`, `DMAX_LOWLAND`, `default_dmax`), used in `Cohort::mossTargetThick`.
+  The DOS-TEM values are not in this repo's history (the old `maxdmossthick` was the dead-moss maximum, CMT05 0.30 m).
+- `cd.drainage_type` is read when the thickness is computed, so after an RTS with `thermokarst_post_drainage` 1 the regrowing moss
+  targets the lowland 0.06 m. Seen in the runs: G (class 0) pre-RTS max 0.0395 m = 0.04·411/416; after the 2021 slump it regrows
+  towards 0.06 (0.0497 m in 2045). T (class 1) reaches 0.0594 m before its slump.
+
+### 6.2 `moss_tc_scheme` 1: Chadburn et al. 2015 moss conductivity
+Source: Chadburn et al. 2015, GMD 8, 1493–1508, doi:10.5194/gmd-8-1493-2015, sec. 2.2.1 (read from the paper): moss saturated
+conductivity 0.5 W m⁻¹ K⁻¹, dry 0.06 W m⁻¹ K⁻¹ (Soudzilovskaia et al. 2013, doi:10.1111/1365-2435.12127), and the conductivity is
+found by linearly interpolating between the two with the moss moisture content.
+
+Implemented (`SoilLayer::getUnfThermCond` and `getFrzThermCond`, first branch, moss layer only):
+
+    k_moss = k_dry + (k_sat - k_dry) * S,   S = clamp((theta_liq + theta_ice) / porosity_moss, 0, 1)
+    k_dry = moss_tc_kdry = 0.06, k_sat = moss_tc_ksat = 0.5 W/m/K; same formula for the frozen and unfrozen conductivity
+
+- Applies only to the layer with `isMoss`. Fibric/humic/mineral layers keep their scheme. With `org_tc_scheme` 1 the moss layer
+  uses Chadburn and the organic layers keep the S21H/Côté-Konrad form; with `org_tc_scheme` 0 the organic layers keep legacy Kersten.
+- The Stefan front, the Crank-Nicolson solver (TemperatureUpdator) and the enthalpy solver all read these two functions, so both
+  thermal solvers see it.
+- Choices to confirm: (a) theta_sat = the dvmdostem moss porosity (CMT70 0.95), not the paper's θsat,moss = 0.9; (b) ice counts as
+  moisture (the paper gives no frozen form; JULES applies the same k); (c) no moss fractional cover weighting (JULES weights by cover).
+- Not implemented (moss hydrology, needs a decision): the paper's Eq. 1 sets moss moisture from the top-soil suction,
+  Brooks-Corey with exponent −bmoss; bmoss = 1, so θmoss/θsat,moss = ψsat,moss/ψ, with ψsat,moss = 0.12 m, θsat,moss = 0.9 (Beringer et al. 2001). Here S uses the
+  dvmdostem moss water, which is the daily copy of the fibric liquid water (caveat 5.5).
+
+### 6.3 Tests (`tests/unit/test_moss_dyn.cpp`, now 9 cases; runs in `~/tem-dev/moss-work/runs`)
+| test | result |
+|---|---|
+| unit tests, full suite | 444/444 cases pass; 8 failing assertions are the known pre-existing expected-fail ones (climate, richards_water_energy, seb, stefan_water) |
+| new unit: `default_dmax` 0.04/0.06, regrowth at t_half and asymptote | pass |
+| new unit: `moss_tc_scheme` parse/defaults/rejects (2, 0.5, true, kdry>ksat, kdry 0) and ModelData | pass |
+| new unit: `chadburn_k` endpoints, mid-point 0.28, clamping | pass |
+| new unit: SoilLayer moss k frozen/unfrozen = Chadburn under org_tc_scheme 0 and 1; non-moss layer unchanged | pass |
+| bit identity, all new keys absent: T0c vs T0ref, G0c vs G0ref (7b6a629a binary) | 486/486 variables identical, 62 files each |
+| bit identity vs 459686a8 code (mode 0): T0c vs T0, G0c vs G0 (`dvmdostem_moss_v1`; 459686a8 only adds docs to the v1 source 3d58d4c4) | 486/486 identical |
+| explicit `moss_dyn` 0 + `moss_tc_scheme` 0: G0z vs G0ref | 486/486 identical |
+| S21H control (org_tc_scheme 1, new keys absent): S_O_ctl_v2 vs S_O_ctl (v1) | 486/486 identical |
+| switch has an effect: C_L_d01 vs G0 | 183/486 differ (expected) |
+| C balance, all 14 new runs | max monthly residual ≤ 8.5e-4 gC/m² (round-off, same as before) |
+
+### 6.4 Gydan sensitivity with Chadburn moss k (Fig. 3, `tests/moss_dyn/plot_sens_tc.py`)
+![moss_tc sensitivity](figures/moss_dyn_gydan_sens_tc.png)
+
+Mean ALD 1986–2015 (m from moss top; below the moss in brackets). Same short spin-up test settings as section 4, mode 1, t_half 0
+except regrow (dmax 0.05, t_half 5). moss_tc 0 runs are the section 4 runs.
+
+| moss | legacy, moss_tc 0 | legacy, Chadburn | S21H, moss_tc 0 | S21H, Chadburn |
+|---|---|---|---|---|
+| 1 cm | 0.144 (0.134) | 0.143 (0.133) | 0.802 (0.792) | 0.803 (0.793) |
+| 3 cm | 0.151 (0.121) | 0.196 (0.166) | 1.064 (1.034) | 1.063 (1.033) |
+| 10 cm | 0.104 (0.004) | 0.276 (0.176) | 3.748 (3.648) | 1.319 (1.219) |
+| regrow 5 cm | 0.180 (0.131) | 0.249 (0.200) | 1.306 (1.257) | 1.119 (1.070) |
+
+- **Key question — does thicker moss now make ALD shallower under S21H? No.** With Chadburn the S21H 10 cm runaway is cut from
+  3.75 to 1.32 m, but ALD still deepens with moss thickness (0.80 → 1.06 → 1.32 m for 1/3/10 cm). Under legacy thermal Chadburn makes
+  thicker moss deepen ALD too (0.14 → 0.20 → 0.28 m), because legacy moss k was ~tcdry 0.025 W/m/K (a strong insulator) and Chadburn
+  raises it to ~0.17.
+- Why (from `tests/moss_dyn/moss_wc.py`, monthly moss layer 1986–2015): the moss liquid water in thawed months is 0.22–0.26 m³/m³
+  (S ≈ 0.23–0.27 of porosity 0.95), so Chadburn k ≈ 0.16–0.18 W/m/K in summer; frozen-month liquid is ~0.005 and the ice is the
+  frozen summer water, so the winter k is about the same. Same k in both seasons means no thermal offset, so thick moss insulates
+  summer and winter alike and the winter effect wins (as in section 4). Moss that is drier in summer and icier in winter (the
+  paper's Eq. 1 hydrology, or wetter winter moss) is what would make thick moss cool the ground.
+- 2022–2026 / 2036–2045 ALD after the slump: 2.0–4.5 / 4.5–5.4 m; the slump dominates (see the JSON next to the figure).
+
+### 6.5 Open questions for Elchin
+1. Implement Chadburn Eq. 1 moss moisture (from top-soil suction; bmoss 1, ψsat 0.12 m, θsat 0.9)? It changes moss hydrology.
+2. θsat for S: moss porosity 0.95 (now) or the paper's 0.9?
+3. Count ice in S (now yes)?
+4. JULES weights moss properties by moss cover; dvmdostem has no moss cover here. Leave out?
+5. After an RTS that switches the cohort to poorly drained, the default dmax becomes 0.06 m. Keep, or use the pre-disturbance class?

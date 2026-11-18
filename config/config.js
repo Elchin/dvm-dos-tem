@@ -219,7 +219,7 @@
                                         //   2 = L1 + exact double-precision soil accumulation). docs/WORK_NOTES_safetynet_conserve2.md
     "deep_carbon": 1,                   // deep soil C burial (deep_carbon_v2 scheme; default 1; 0 = legacy v5q burial, bit-identical)
     "rhmoistfrozen_override": {},     // per-CMT override of cmt_bgcsoil rhmoistfrozen, e.g. {"70": 0.0}; {} (default) = parameter files. docs/WORK_NOTES_rhmoistfrozen_override.md
-    "moss_dyn": 0,                    // live moss: 0 legacy static 0.01 m (default), 1 regrowth dmax*t/(t+moss_t_half) after fire/RTS, 2 from moss PFT C / (moss_bulkden*moss_cfrac); moss_dmax -1 = cmt maxdmossthick, moss_min_thick 0.001. docs/moss_dyn_worknotes.md
+    "moss_dyn": 0,                    // live moss: 0 legacy static 0.01 m (default), 1 regrowth dmax*t/(t+moss_t_half) after fire/RTS, 2 from moss PFT C / (moss_bulkden*moss_cfrac); moss_dmax -1 = DOS-TEM 0.04 upland / 0.06 lowland by drainage class, moss_min_thick 0.001; moss_tc_scheme 1 = Chadburn 2015 moss conductivity (0 default). docs/moss_dyn_worknotes.md
     "n_nonvasc_extract": 1,             // N3 fix (v5o default 1; 0 = legacy: moss N uptake not extracted from soil)
     "daily_c_split": 0,                 // v5p: statistical daily split of the monthly C fluxes, output only (0 off, 1 on; the *_DS outputs need 1)
     "baseline_start": 1901,  //start year for baseline EQ climate

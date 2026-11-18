@@ -2,6 +2,7 @@
  *
  */
 #include "../include/SoilLayer.h"
+#include "../include/MossDyn.h"
 
 int SoilLayer::kersten_form = 0; // DRAFT (tvc-summer), set from model_settings.kersten_form
 // Option 1 (v5h): see SoilLayer.h; set from model_settings in Cohort.
@@ -12,6 +13,9 @@ double SoilLayer::org_tc_dry    = -1.0;
 double SoilLayer::org_tc_thre_f = 0.275;
 double SoilLayer::org_tc_thre_h = 0.62;
 double SoilLayer::org_tc_depth  = 10.0;
+int    SoilLayer::moss_tc_scheme = 0;    // moss_tc_scheme, set in Cohort
+double SoilLayer::moss_tc_kdry   = 0.06;
+double SoilLayer::moss_tc_ksat   = 0.5;
 // Option 3 (v5h): see SoilLayer.h
 double SoilLayer::mineral_tcsolid    = -1.0;
 double SoilLayer::mineral_vhcsolid   = -1.0;
@@ -66,6 +70,9 @@ double SoilLayer::getOrgThermCond(const bool frozen_case) {
 
 // get frozen layer thermal conductivity
 double SoilLayer::getFrzThermCond() {
+  if (moss_tc_scheme == 1 && isMoss) { // Chadburn et al. 2015
+    return mossdyn::chadburn_k((getVolIce() + getVolLiq()) / poro, moss_tc_kdry, moss_tc_ksat);
+  }
   if (org_tc_scheme == 1) { // Option 1 (v5h)
     double tco = getOrgThermCond(true);
     if (tco >= 0.0) { return tco; }
@@ -88,6 +95,9 @@ double SoilLayer::getFrzThermCond() {
 
 // get unfrozen layer thermal conductivity
 double SoilLayer::getUnfThermCond() {
+  if (moss_tc_scheme == 1 && isMoss) { // Chadburn et al. 2015
+    return mossdyn::chadburn_k((getVolIce() + getVolLiq()) / poro, moss_tc_kdry, moss_tc_ksat);
+  }
   if (org_tc_scheme == 1) { // Option 1 (v5h)
     double tco = getOrgThermCond(false);
     if (tco >= 0.0) { return tco; }

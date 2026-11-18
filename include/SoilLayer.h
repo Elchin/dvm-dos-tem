@@ -58,6 +58,12 @@ public:
                 org_tc_thre_h, org_tc_depth;
                 // Refs: Cote & Konrad 2005, doi:10.1139/t04-106; Letts et al. 2000, doi:10.1080/07055900.2000.9649643; Chadburn et al. 2015, doi:10.5194/gmd-8-1493-2015.
   double getOrgThermCond(const bool frozen_case); // < 0 if not applicable
+  // model_settings.moss_tc_scheme (0 = legacy, default): 1 = Chadburn et al. 2015 linear moss
+  // conductivity for the moss layer only, k = kdry + (ksat-kdry)*min(1,(theta_liq+theta_ice)/porosity),
+  // frozen and unfrozen; overrides org_tc_scheme for moss. See include/MossDyn.h.
+  // Refs: Chadburn et al. 2015, doi:10.5194/gmd-8-1493-2015; Soudzilovskaia et al. 2013, doi:10.1111/1365-2435.12127.
+  static int    moss_tc_scheme;
+  static double moss_tc_kdry, moss_tc_ksat;
 
   // Option 3 (v5h, OFF by default): mineral-layer thermal
   // properties as settable values instead of texture-derived/hard-coded ones.

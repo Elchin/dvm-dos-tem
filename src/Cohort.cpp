@@ -334,6 +334,9 @@ void Cohort::initialize_state_parameters() {
   soilenv.frozen_infil_eice = md->frozen_infil_eice; // DRAFT (daily-structural)
   SoilLayer::kersten_form = md->kersten_form; // DRAFT (tvc-summer)
   SoilLayer::org_tc_scheme = md->org_tc_scheme; // Option 1 (v5h)
+  SoilLayer::moss_tc_scheme = md->moss.tc_scheme; // moss_tc_scheme (0 = legacy); include/MossDyn.h
+  SoilLayer::moss_tc_kdry = md->moss.tc_kdry;
+  SoilLayer::moss_tc_ksat = md->moss.tc_ksat;
   SoilLayer::org_tc_kunf   = md->org_tc_kunf;
   SoilLayer::org_tc_kfrz   = md->org_tc_kfrz;
   SoilLayer::org_tc_dry    = md->org_tc_dry;
@@ -1580,7 +1583,7 @@ void Cohort::updateMonthly_DIMgrd(const int & currmind, const bool & dslmodule) 
 double Cohort::mossTargetThick(const bool just_disturbed) {
   const mossdyn::Params & p = md->moss;
   if (p.mode == 0) { return -1.0; }
-  double dmax = (p.dmax < 0.0) ? chtlu.maxdmossthick : p.dmax;
+  double dmax = (p.dmax < 0.0) ? mossdyn::default_dmax(cd.drainage_type) : p.dmax; // DOS-TEM 4/6 cm
   if (!(dmax >= p.dmin)) { dmax = p.dmin; }
   if (p.mode == 1) {
     const double ysf = just_disturbed ? 0.0 : (double)cd.yrsdist;

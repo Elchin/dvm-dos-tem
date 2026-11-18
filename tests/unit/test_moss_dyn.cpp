@@ -67,3 +67,79 @@ TEST_CASE("moss_dyn mode 2: thickness from moss C, floored and capped") {
   CHECK(mossdyn::carbon_thick(-5.0, 25.0, 0.45, 0.001, 0.05) == 0.001);
   CHECK(mossdyn::carbon_thick(1.0e4, 25.0, 0.45, 0.001, 0.05) == 0.05);
 }
+
+// ---- moss/dyn-moss task 2: DOS-TEM dmax default and Chadburn et al. 2015 moss conductivity ----
+#include "../../include/SoilLayer.h"
+#include "../../include/physicalconst.h"
+namespace {
+struct MossTcGuard {
+  int s = SoilLayer::moss_tc_scheme, o = SoilLayer::org_tc_scheme;
+  double kd = SoilLayer::moss_tc_kdry, ks = SoilLayer::moss_tc_ksat;
+  ~MossTcGuard() { SoilLayer::moss_tc_scheme = s; SoilLayer::org_tc_scheme = o;
+                   SoilLayer::moss_tc_kdry = kd; SoilLayer::moss_tc_ksat = ks; }
+};
+// Moss-flagged layer, poro 0.95, water theta_liq + theta_ice = sat*poro split by frac_ice.
+SoilLayer moss_at(double sat, double frac_ice = 0.0, bool moss = true) {
+  SoilLayer l; l.isMoss = moss; l.isOrganic = !moss; l.isFibric = !moss;
+  l.dz = 0.04; l.z = 0.0; l.poro = 0.95;
+  const double w = sat * l.poro * DENLIQ * l.dz;
+  l.liq = (1.0 - frac_ice) * w; l.ice = frac_ice * w * DENICE / DENLIQ;
+  l.tcsatunf = 1.0; l.tcsatfrz = 2.0; l.tcdry = 0.05; l.tcmin = 0.05;
+  return l;
+}
+}
+
+TEST_CASE("moss_dyn dmax default: DOS-TEM 4 cm upland, 6 cm lowland (Jafarov et al. 2013)") {
+  CHECK(mossdyn::default_dmax(0) == 0.04);
+  CHECK(mossdyn::default_dmax(1) == 0.06);
+  CHECK(mossdyn::default_dmax(-1) == 0.04);   // unknown -> upland
+  mossdyn::Params p;
+  CHECK(mossdyn::parse(Json::Value(Json::objectValue), p) == "");
+  CHECK(p.dmax < 0.0);                        // absent key = use the default
+  // regrowth with the default: half of dmax at t = t_half
+  CHECK(mossdyn::regrow_thick(mossdyn::default_dmax(1), 0.001, 5.0, 5.0) == doctest::Approx(0.03));
+  CHECK(mossdyn::regrow_thick(mossdyn::default_dmax(0), 0.001, 1e6, 5.0) == doctest::Approx(0.04).epsilon(1e-4));
+}
+
+TEST_CASE("moss_tc_scheme: parse, defaults and rejection") {
+  mossdyn::Params p;
+  CHECK(mossdyn::parse(Json::Value(Json::objectValue), p) == "");
+  CHECK(p.tc_scheme == 0); CHECK(p.tc_kdry == 0.06); CHECK(p.tc_ksat == 0.5);
+  CHECK(mossdyn::parse(ms({{"moss_tc_scheme", 1}}), p) == ""); CHECK(p.tc_scheme == 1);
+  CHECK(mossdyn::parse(ms({{"moss_tc_scheme", 2}}), p) != "");
+  CHECK(mossdyn::parse(ms({{"moss_tc_scheme", 0.5}}), p) != "");
+  CHECK(mossdyn::parse(ms({{"moss_tc_scheme", true}}), p) != "");
+  CHECK(mossdyn::parse(ms({{"moss_tc_kdry", 0.6}}), p) != "");   // kdry > ksat
+  CHECK(mossdyn::parse(ms({{"moss_tc_kdry", 0.0}}), p) != "");
+  Json::Value c; c["model_settings"]["moss_tc_scheme"] = 1;
+  ModelData md(c); CHECK(md.moss.tc_scheme == 1);
+}
+
+TEST_CASE("chadburn_k: linear 0.06 -> 0.5 W/m/K in theta/theta_sat, clamped") {
+  CHECK(mossdyn::chadburn_k(0.0, 0.06, 0.5) == doctest::Approx(0.06));
+  CHECK(mossdyn::chadburn_k(1.0, 0.06, 0.5) == doctest::Approx(0.5));
+  CHECK(mossdyn::chadburn_k(0.5, 0.06, 0.5) == doctest::Approx(0.28));
+  CHECK(mossdyn::chadburn_k(-0.2, 0.06, 0.5) == doctest::Approx(0.06));
+  CHECK(mossdyn::chadburn_k(1.3, 0.06, 0.5) == doctest::Approx(0.5));
+}
+
+TEST_CASE("moss_tc_scheme 1: moss layer only, frozen and unfrozen, over org_tc_scheme 0 and 1") {
+  MossTcGuard g;
+  for (int ots : {0, 1}) {
+    SoilLayer::org_tc_scheme = ots;
+    SoilLayer::moss_tc_scheme = 0;
+    const double leg_u = moss_at(0.5).getUnfThermCond(), leg_f = moss_at(0.5, 1.0).getFrzThermCond();
+    const double fib_u = moss_at(0.5, 0.0, false).getUnfThermCond(), fib_f = moss_at(0.5, 1.0, false).getFrzThermCond();
+    SoilLayer::moss_tc_scheme = 1; SoilLayer::moss_tc_kdry = 0.06; SoilLayer::moss_tc_ksat = 0.5;
+    CHECK(moss_at(0.0).getUnfThermCond() == doctest::Approx(0.06));
+    CHECK(moss_at(1.0).getUnfThermCond() == doctest::Approx(0.5));
+    CHECK(moss_at(0.5).getUnfThermCond() == doctest::Approx(0.28));
+    CHECK(moss_at(0.5, 1.0).getFrzThermCond() == doctest::Approx(0.28));   // ice counts as water content
+    CHECK(moss_at(0.5, 0.5).getFrzThermCond() == doctest::Approx(0.28));
+    CHECK(moss_at(0.5).getUnfThermCond() != doctest::Approx(leg_u));
+    (void)leg_f;
+    // non-moss organic layer unchanged
+    CHECK(moss_at(0.5, 0.0, false).getUnfThermCond() == fib_u);
+    CHECK(moss_at(0.5, 1.0, false).getFrzThermCond() == fib_f);
+  }
+}
