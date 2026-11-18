@@ -264,6 +264,31 @@ std::string Ground::layer_report_string(const std::string& colunm_groups) {
 }
 
 
+// moss_dyn (modes 1/2): see include/Ground.h and include/MossDyn.h
+double Ground::setMossThickness(const double dz_new) {
+  setFstLstMossLayers();
+  if (fstmossl == NULL || !(dz_new > 0.0)) { return 0.0; }
+  MossLayer* ml = dynamic_cast<MossLayer*>(fstmossl);
+  if (ml == NULL) { return 0.0; }
+  const double dz_old = ml->dz;
+  const double ddz = dz_new - dz_old;
+  if (fabs(ddz) < 1.0e-12) { return 0.0; }
+  const double f = dz_new / dz_old;      // keep volumetric liquid/ice
+  const double w_old = ml->liq + ml->ice;
+  ml->liq *= f;
+  ml->ice *= f;
+  ml->dz = dz_new;
+  // fronts below the moss top move with the surface of the column below the moss
+  adjustFrontsAfterThickchange(ml->z, ddz);
+  ml->derivePhysicalProperty();
+  updateLayerZ();
+  resortGroundLayers();
+  updateSoilHorizons();
+  const double dw = (ml->liq + ml->ice) - w_old;
+  moss_dz_water_mm += dw;
+  return dw;
+};
+
 //
 void Ground::initParameter() {
   //parameters for snow dimension

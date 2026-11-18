@@ -1457,6 +1457,7 @@ void Cohort::updateMonthly_Fir(const int & year, const int & midx, std::string s
       BOOST_LOG_SEV(glg, debug) << "Post-burn, update cd, ground, fine root fraction...";
       cd.yrsdist = 0;
       cd.mthsdist = 0;
+      if (md->moss.mode != 0) { updateMossThickness(true); } // moss_dyn: thin moss after the burn
       ground.retrieveSnowDimension(&cd.d_snow);
       ground.retrieveSoilDimension(&cd.m_soil);
       cd.d_soil = cd.m_soil;
@@ -1559,6 +1560,9 @@ void Cohort::updateMonthly_DIMgrd(const int & currmind, const bool & dslmodule) 
     if (md->layer_n_remap_fix == 1) { soilbgc.assignNitrogenLayer2BdMonthly(); }
   }
 
+  // moss_dyn (modes 1/2): yearly live-moss thickness (mode 0: nothing runs)
+  if (md->moss.mode != 0 && currmind == 0) { updateMossThickness(false); }
+
   // update soil dimension
   ground.retrieveSoilDimension(&cd.m_soil);
 
@@ -1570,6 +1574,41 @@ void Cohort::updateMonthly_DIMgrd(const int & currmind, const bool & dslmodule) 
   assignSoilBd2pfts_monthly();
   BOOST_LOG_SEV(glg, debug) << "END of updateMonthly_DIMgrd((midx=" << currmind << "):" << ground.layer_report_string("depth CN desc");
 
+}
+
+// moss_dyn: see include/MossDyn.h and docs/moss_dyn_worknotes.md
+double Cohort::mossTargetThick(const bool just_disturbed) {
+  const mossdyn::Params & p = md->moss;
+  if (p.mode == 0) { return -1.0; }
+  double dmax = (p.dmax < 0.0) ? chtlu.maxdmossthick : p.dmax;
+  if (!(dmax >= p.dmin)) { dmax = p.dmin; }
+  if (p.mode == 1) {
+    const double ysf = just_disturbed ? 0.0 : (double)cd.yrsdist;
+    return mossdyn::regrow_thick(dmax, p.dmin, ysf, p.t_half);
+  }
+  // mode 2: live C of the nonvascular PFTs (gC/m2 ground)
+  double cmoss = 0.0;
+  bool any = false;
+  for (int ip=0; ip<NUM_PFT; ip++) {
+    if (cd.m_veg.vegcov[ip] > 0.0 && cd.m_veg.nonvascular[ip] > 0) {
+      any = true;
+      for (int i=0; i<NUM_PFT_PART; i++) { cmoss += bd[ip].m_vegs.c[i]; }
+    }
+  }
+  if (!any) {
+    if (!moss_fallback_warned) {
+      std::cerr << "moss_dyn 2: " << chtlu.cmtcode << " has no nonvascular PFT with cover; "
+                << "keeping the legacy 0.01 m moss layer for this cohort" << std::endl;
+      moss_fallback_warned = true;
+    }
+    return -1.0;
+  }
+  return mossdyn::carbon_thick(cmoss, p.bulkden, p.cfrac, p.dmin, dmax);
+}
+
+void Cohort::updateMossThickness(const bool just_disturbed) {
+  const double d = mossTargetThick(just_disturbed);
+  if (d > 0.0) { ground.setMossThickness(d); }
 }
 
 /** Adjusting fine root fraction in soil */
@@ -2459,6 +2498,7 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
 
       // May need to rename the below function as it is generic to soil removal
       ground.adjustSoilAfterburn(true); // RTS: also drop emptied mineral layers; after Bd2Layer
+      if (md->moss.mode != 0) { updateMossThickness(true); } // moss_dyn: thin moss after the slump (water booked in tk_wrm)
       tk_wrm = tk_colwater();
       tkdata->thermokarst_soid.water_removed = tk_wpre - tk_wrm;
 

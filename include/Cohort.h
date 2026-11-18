@@ -170,6 +170,12 @@ private:
 
   void updateMonthly_DIMveg(const int & currmind, const bool & dynamic_lai_module);
   void updateMonthly_DIMgrd(const int & currmind, const bool & dslmodule);
+  // moss_dyn (modes 1/2; include/MossDyn.h): target live-moss thickness (m) and applying it.
+  // just_disturbed = true right after a fire/RTS removal (mode 1 then uses t = 0).
+  // Returns < 0 when the cohort keeps the legacy layer (mode 0, or mode 2 without a nonvascular PFT).
+  double mossTargetThick(const bool just_disturbed);
+  void updateMossThickness(const bool just_disturbed);
+  bool moss_fallback_warned = false;
 
   void updateMonthly_Env(const int & currmind, const int & dinmcurr);
   void updateMonthly_Bgc(const int & currmind, const int & dinmcurr);

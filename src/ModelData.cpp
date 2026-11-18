@@ -399,6 +399,14 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
       exit(EXIT_FAILURE);
     }
   }
+  // moss_dyn (absent/0 = legacy static 0.01 m moss, default). See include/MossDyn.h.
+  {
+    std::string err = mossdyn::parse(controldata["model_settings"], moss);
+    if (!err.empty()) {
+      std::cerr << "FATAL: " << err << std::endl;
+      exit(EXIT_FAILURE);
+    }
+  }
   // v5q-layern-fix: layer_n_remap_fix (0 = legacy, default). Refs: see Ground.h.
   {
     Json::Value lf = controldata["model_settings"].get("layer_n_remap_fix", 0);

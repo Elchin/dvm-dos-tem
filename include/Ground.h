@@ -115,6 +115,12 @@ public :
   // shrinkage). Booked as subsurface drainage on the next Soil_Env::updateDailySM
   // instead of being deleted (mm).
   double expelled_water_mm = 0.0;
+  // moss_dyn (modes 1/2 only): set the single live-moss layer to dz_new (m), keeping its
+  // volumetric water/ice and temperature. Returns the water mass change (kg/m2); the running
+  // sum is kept in moss_dz_water_mm (diagnostic; the daily moss<-fibric copy in Soil_Env
+  // overwrites moss liquid anyway, as in the legacy code). No-op if no moss layer or |change| < 1e-12 m.
+  double setMossThickness(const double dz_new);
+  double moss_dz_water_mm = 0.0;
   // keep_expelled_water (wetland, default 0): set by Cohort when the switch is 1, the cell is
   // poorly drained (drainage_type 1) and thermal_solver = 1. Then water squeezed out of a
   // shrinking organic layer leaves it as 0 C liquid and the layer keeps the difference (pays Lf
