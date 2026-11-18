@@ -1999,7 +1999,7 @@ void Soil_Bgc::initializeParameter() {
   calpar.oxidVmax_ch4 = chtlu->oxidVmax_ch4;
 
   bgcpar.rhq10 = chtlu->rhq10;
-  bgcpar.rhmoistfrozen = chtlu->rhmoistfrozen;  
+  bgcpar.rhmoistfrozen = rmf_override_on ? rmf_override_val : chtlu->rhmoistfrozen;  // rhmoistfrozen_override
   bgcpar.moistmin = chtlu->moistmin;
   bgcpar.moistmax = chtlu->moistmax;
   bgcpar.moistopt = chtlu->moistopt;

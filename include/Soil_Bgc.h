@@ -173,6 +173,9 @@ public:
   //   motivating the deeper column: Hugelius et al. 2014, doi:10.5194/bg-11-6573-2014;
   //   active-layer-only transport (gate 1): Koven et al. 2013, doi:10.5194/bg-10-7109-2013.
   int deep_carbon = 0;
+  // model_settings.rhmoistfrozen_override for this cohort CMT (set by Cohort; 0 = file value, default).
+  int rmf_override_on = 0;
+  double rmf_override_val = 0.0;
   double deepc_s2df[4] = {0.5, 1.0, 1.0, 1.0};   // rawc, soma, sompr, somcr (deep_carbon_v2 s2df_*)
   double deepc_d2mf[4] = {0.5, 1.0, 1.0, 1.0};   // rawc, soma, sompr, somcr (deep_carbon_v2 d2mf_*)
   double deepc_xtopmlthick = 5.2;                // m (deep_carbon_v2 xtopmlthick)

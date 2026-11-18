@@ -27,6 +27,7 @@
 #include "../include/TEMUtilityFunctions.h"
 
 #include "../include/Cohort.h"
+#include "../include/RhmoistfrozenOverride.h"
 #include "../include/NFactorSelect.h"
 #include "../include/DailyWaterOut.h"
 #include <limits>
@@ -409,6 +410,15 @@ void Cohort::initialize_state_parameters() {
   soilbgc.n_leach_fix = md->n_leach_fix;               // v5q-ndrain (0 = legacy)
   soilbgc.d2m_transfer_gate = md->d2m_transfer_gate;   // v5q-d2m-gate (0 = legacy)
   soilbgc.deep_carbon = md->deep_carbon;               // wetland_deep_C phase 2 (1 = deep C, default)
+  { // rhmoistfrozen_override (empty = file value, default). See include/RhmoistfrozenOverride.h.
+    double rv = 0.0;
+    soilbgc.rmf_override_on = rmfo::lookup(md->rhmoistfrozen_override, temutil::cmtcode2num(chtlu.cmtcode), rv) ? 1 : 0;
+    soilbgc.rmf_override_val = rv;
+    if (soilbgc.rmf_override_on) {
+      std::cerr << "rhmoistfrozen_override: " << chtlu.cmtcode << " rhmoistfrozen " << chtlu.rhmoistfrozen
+                << " (parameter file) -> " << rv << std::endl;
+    }
+  }
   soilbgc.thawfrac_decomp = md->thawfrac_decomp;       // v5q-thawfrac-decomp (0 = legacy)
   soilbgc.thawfrac_moist_mode = md->thawfrac_moist_mode; // v5q-thawfrac-lmoist (0 = sws/f)
   soilbgc.rh_frozen_mode = md->rh_frozen_mode;           // v5q-rh-frozen (0 = legacy)

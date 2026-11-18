@@ -218,6 +218,7 @@
     "n_safetynet_conserve": 2,          // soil safety net conserves C and N (C++ default 0 = legacy; 1 = L1 root-N debit;
                                         //   2 = L1 + exact double-precision soil accumulation). docs/WORK_NOTES_safetynet_conserve2.md
     "deep_carbon": 1,                   // deep soil C burial (deep_carbon_v2 scheme; default 1; 0 = legacy v5q burial, bit-identical)
+    "rhmoistfrozen_override": {},     // per-CMT override of cmt_bgcsoil rhmoistfrozen, e.g. {"70": 0.0}; {} (default) = parameter files. docs/WORK_NOTES_rhmoistfrozen_override.md
     "n_nonvasc_extract": 1,             // N3 fix (v5o default 1; 0 = legacy: moss N uptake not extracted from soil)
     "daily_c_split": 0,                 // v5p: statistical daily split of the monthly C fluxes, output only (0 off, 1 on; the *_DS outputs need 1)
     "baseline_start": 1901,  //start year for baseline EQ climate

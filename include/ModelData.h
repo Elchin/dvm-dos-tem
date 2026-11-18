@@ -5,6 +5,7 @@
 #include "RTSFloor.h"
 #include "RTSRegrow.h"
 #include <string>
+#include <map>
 #include <vector>
 #include <iostream>
 #include <fstream>
@@ -297,6 +298,9 @@ public:
   // deep_carbon_v2, DEFAULT per E. Jafarov; 0 = v5q-gpp-fleaf2 burial path, bit-identical). Integers
   // 0/1 only; see Soil_Bgc.h (deep_carbon) for the scheme and references.
   int deep_carbon;
+  // model_settings.rhmoistfrozen_override: per-CMT override of cmt_bgcsoil rhmoistfrozen (CMT number -> value in [0,1]);
+  // empty (default) = parameter-file values, bit-identical. See include/RhmoistfrozenOverride.h.
+  std::map<int, double> rhmoistfrozen_override;
   // v5q-layern-fix: model_settings.layer_n_remap_fix (0 = legacy, default, bit-identical;
   // 1 = layer organic N (orgn) and inorganic N (avln) follow the C pools through the
   // dynamic-soil-layer split/combine/remap, so per-layer C:N stays aligned and column N is

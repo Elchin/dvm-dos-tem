@@ -4,6 +4,7 @@
 #include <json/value.h>
 #include <boost/filesystem.hpp>
 #include "../include/ModelData.h"
+#include "../include/RhmoistfrozenOverride.h"
 #include "../include/DailyCSplit.h"
 #include "../include/timeconst.h"
 
@@ -389,6 +390,14 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
       exit(EXIT_FAILURE);
     }
     deep_carbon = dc.asInt();
+  }
+  // rhmoistfrozen_override (absent/{} = none, default). See include/RhmoistfrozenOverride.h.
+  {
+    std::string err;
+    if (!rmfo::parse(controldata["model_settings"].get("rhmoistfrozen_override", Json::Value()), rhmoistfrozen_override, err)) {
+      std::cerr << "FATAL: " << err << std::endl;
+      exit(EXIT_FAILURE);
+    }
   }
   // v5q-layern-fix: layer_n_remap_fix (0 = legacy, default). Refs: see Ground.h.
   {
