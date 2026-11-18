@@ -337,6 +337,15 @@ void Cohort::initialize_state_parameters() {
   SoilLayer::moss_tc_scheme = md->moss.tc_scheme; // moss_tc_scheme (0 = legacy); include/MossDyn.h
   SoilLayer::moss_tc_kdry = md->moss.tc_kdry;
   SoilLayer::moss_tc_ksat = md->moss.tc_ksat;
+  SoilLayer::moss_tc_ksolid = md->moss.tc_ksolid;   // moss_tc_scheme 2
+  soilenv.moss_water_scheme = md->moss.water_scheme; // moss_water_scheme (0 = legacy)
+  soilenv.moss_bsw = md->moss.w_bsw; soilenv.moss_psisat = md->moss.w_psisat; soilenv.moss_thetasat = md->moss.w_thetasat;
+  ground.moss_water_scheme = md->moss.water_scheme;
+  if (md->moss.water_scheme == 1 && md->thermal_solver != 1) {
+    std::cerr << "FATAL: model_settings.moss_water_scheme 1 needs thermal_solver 1 (the enthalpy solver freezes the "
+              << "moss water and the water-window remap books its enthalpy)" << std::endl;
+    exit(EXIT_FAILURE);
+  }
   SoilLayer::org_tc_kunf   = md->org_tc_kunf;
   SoilLayer::org_tc_kfrz   = md->org_tc_kfrz;
   SoilLayer::org_tc_dry    = md->org_tc_dry;
@@ -1071,6 +1080,22 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
       if (md->thermal_solver == 1) { soilenv.enthSnap(es); }
       soilenv.updateDailySM(weighted_veg_tran);  //soil moisture
       if (md->thermal_solver == 1) { soilenv.enthRemapWater(es); }
+    }
+    if (md->energy_diag == 1 && ground.fstmossl != NULL && ground.fstmossl->nextl != NULL) {
+      // moss layer daily state (output only, with energy_diag 1; any moss_water_scheme)
+      static long moss_day = 0;
+      std::ofstream mf((md->output_dir + "moss_daily.csv").c_str(), std::ios::app);
+      if (moss_day == 0) {
+        mf << "day,doy,dz,tem,liq,ice,frozen,k_unf,k_frz,theq,intercept,drain,rise,evap,resid,fib_liq,fib_ice,fib_tem\n";
+      }
+      Layer* m = ground.fstmossl; Layer* f = m->nextl;
+      const Soil_Env::MossWaterDiag& d = soilenv.moss_wd;
+      mf.precision(9);
+      mf << moss_day << "," << doy << "," << m->dz << "," << m->tem << "," << m->liq << "," << m->ice << ","
+         << m->frozen << "," << m->getUnfThermCond() << "," << m->getFrzThermCond() << "," << d.theq << ","
+         << d.intercept << "," << d.drain << "," << d.rise << "," << d.evap << "," << d.resid << ","
+         << f->liq << "," << f->ice << "," << f->tem << "\n";
+      moss_day++;
     }
     // Phase 3 v2: ch4_daily 1 = CH4Flux sees today's soil T, liquid/ice and water table.
     // soil_endOfDay still accumulates daily CH4 into the monthly totals used by updateMonthlySbgc.

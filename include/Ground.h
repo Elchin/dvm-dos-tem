@@ -121,6 +121,7 @@ public :
   // overwrites moss liquid anyway, as in the legacy code). No-op if no moss layer or |change| < 1e-12 m.
   double setMossThickness(const double dz_new);
   double moss_dz_water_mm = 0.0;
+  int moss_water_scheme = 0;   // model_settings.moss_water_scheme (1: thickening keeps the moss water mass)
   // keep_expelled_water (wetland, default 0): set by Cohort when the switch is 1, the cell is
   // poorly drained (drainage_type 1) and thermal_solver = 1. Then water squeezed out of a
   // shrinking organic layer leaves it as 0 C liquid and the layer keeps the difference (pays Lf

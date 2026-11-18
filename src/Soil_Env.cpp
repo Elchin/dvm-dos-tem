@@ -30,6 +30,7 @@
  */
 
 #include "../include/Soil_Env.h"
+#include "../include/MossDyn.h"
 #include "../include/Climate.h" // Option 4 (v5j) SEB: Climate::vp_hpa_fix
 #include "../include/Snow_Env.h"
 
@@ -940,6 +941,9 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
     infil_h_spec = (from_src * h_src + from_puddle * h_liq) / infil;
   }
 
+  // moss_water_scheme 1: the moss layer's own interception / drainage / rise / evaporation (mm/day)
+  if (moss_water_scheme == 1) { mossWaterStep(fstsoill, infil, evap); }
+
   //Soil water dynamics at daily time step
 
   // root_water_up has MAX_SOI_LAY elements; the old bound (MAX_SOI_LAY+1) wrote one element
@@ -1048,11 +1052,13 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   }
   //for moss layers excluded from hydrological process, match
   //water to first shallow layer.
+  if (moss_water_scheme != 1) { // moss_water_scheme 1: the moss keeps its own water (mossWaterStep)
   currl = fstsoill->prevl;
   while (currl!=NULL && currl->isMoss) {
     double lwc = fstsoill->getVolLiq();
     currl->liq = currl->dz*(1.0-currl->frozenfrac) * lwc * DENLIQ;
     currl=currl->prevl;
+  }
   }
   if(ed->d_soi2l.qdrain < 0){
    BOOST_LOG_SEV(glg, warn) << "qdrain is negative!";
@@ -2011,3 +2017,44 @@ double  Soil_Env::updateLayerTemp5Lat(Layer* currl, const double & infil) {
 };
 
 
+
+
+// moss_water_scheme 1 (include/MossDyn.h mossdyn::water_step). Called in updateDailySM before Richards with
+// infiltration and soil evaporation in mm/day. Moves only liquid: rain/melt into the moss, moss liquid into
+// the soil infiltration, top-soil liquid into the moss (capillary rise to the Chadburn et al. 2015 Eq. 1
+// equilibrium), moss liquid to soil evaporation. The enthalpy of every moved kg is booked by the water-window
+// remap (enthRemapWater, thermal_solver 1); the enthalpy solver freezes / thaws the moss water.
+// Refs: Chadburn et al. 2015, doi:10.5194/gmd-8-1493-2015 (Eq. 1); Beringer et al. 2001, doi:10.1016/S0168-1923(01)00271-0 (moss b, psi_sat, theta_sat).
+void Soil_Env::mossWaterStep(Layer* fib, double& infil, double& evap) {
+  moss_wd = MossWaterDiag();
+  Layer* m = ground->fstmossl;
+  if (m == NULL || !m->isMoss || fib == NULL || fib == m || !fib->isSoil) { return; }
+  SoilLayer* fs = dynamic_cast<SoilLayer*>(fib);
+  const double tsat = fmin(moss_thetasat, (double)m->poro);
+  const bool fib_thawed = (fs != NULL && fib->frozen == -1 && fib->tem > 0.0);
+  double theq = tsat;                       // top soil frozen: the moss only holds up to theta_sat
+  if (fib_thawed) {
+    const double psi_m = fmax(-fs->getMatricPotential() / 1000.0, 0.0);   // mm (negative) -> m suction
+    theq = mossdyn::theta_eq(psi_m, tsat, moss_psisat, moss_bsw);
+  }
+  mossdyn::WaterIn w;
+  w.liq = fmax(m->liq, 0.0); w.ice = fmax(m->ice, 0.0); w.dz = m->dz; w.poro = m->poro; w.thetasat = tsat;
+  w.theq = theq; w.minliq = fmax(m->minliq, 0.0); w.infil = infil; w.evap = evap;
+  w.fib_avail = fib_thawed ? fmax(fib->liq - fib->minliq, 0.0) : 0.0;
+  w.active = (m->frozen != 1);
+  const double w0 = fmax(m->liq, 0.0) + fmax(m->ice, 0.0) + fib->liq;
+  const mossdyn::WaterOut o = mossdyn::water_step(w);
+  m->liq = o.liq;
+  fib->liq -= o.rise;
+  infil += o.drain - o.intercept;
+  evap -= o.evap;
+  const double w1 = fmax(m->liq, 0.0) + fmax(m->ice, 0.0) + fib->liq;
+  const double resid = (w1 - w0) - (o.intercept - o.drain - o.evap);
+  moss_wd.theq = theq; moss_wd.intercept = o.intercept; moss_wd.drain = o.drain; moss_wd.rise = o.rise;
+  moss_wd.evap = o.evap; moss_wd.resid = resid;
+  moss_resid_max = fmax(moss_resid_max, fabs(resid));
+  if (fabs(resid) > 1.0e-9 && moss_resid_warn < 5) {
+    moss_resid_warn++;
+    std::cerr << "WARNING: moss_water_scheme 1: moss water residual " << resid << " kg/m2" << std::endl;
+  }
+}

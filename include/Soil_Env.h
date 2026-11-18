@@ -228,6 +228,14 @@ public:
 
   void updateDailyGroundT(const double & tdrv, const double & dayl);
   void updateDailySM(double weighted_veg_tran);
+  // model_settings.moss_water_scheme 1 (include/MossDyn.h): own moss water; infil/evap in mm/day
+  int moss_water_scheme = 0;
+  double moss_bsw = 1.0, moss_psisat = 0.12, moss_thetasat = 0.9;
+  struct MossWaterDiag { double theq = 0.0, intercept = 0.0, drain = 0.0, rise = 0.0, evap = 0.0, resid = 0.0; };
+  MossWaterDiag moss_wd;
+  double moss_resid_max = 0.0;   // max |daily moss water residual| (kg/m2), must be round-off
+  long moss_resid_warn = 0;
+  void mossWaterStep(Layer* fib, double& infil, double& evap);
 
   double getSoilTransFactor(double r_e_ij[MAX_SOI_LAY], Layer* fstsoill,
                             const double vrootfr[MAX_SOI_LAY]);

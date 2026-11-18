@@ -16,6 +16,7 @@ double SoilLayer::org_tc_depth  = 10.0;
 int    SoilLayer::moss_tc_scheme = 0;    // moss_tc_scheme, set in Cohort
 double SoilLayer::moss_tc_kdry   = 0.06;
 double SoilLayer::moss_tc_ksat   = 0.5;
+double SoilLayer::moss_tc_ksolid = 0.25;
 // Option 3 (v5h): see SoilLayer.h
 double SoilLayer::mineral_tcsolid    = -1.0;
 double SoilLayer::mineral_vhcsolid   = -1.0;
@@ -73,6 +74,9 @@ double SoilLayer::getFrzThermCond() {
   if (moss_tc_scheme == 1 && isMoss) { // Chadburn et al. 2015
     return mossdyn::chadburn_k((getVolIce() + getVolLiq()) / poro, moss_tc_kdry, moss_tc_ksat);
   }
+  if (moss_tc_scheme == 2 && isMoss) { // Johansen / Farouki; S21H (org_tc_scheme) not applied to moss
+    return mossdyn::johansen_k((getVolIce() + getVolLiq()) / poro, poro, moss_tc_ksolid, TCLIQ, TCICE, moss_tc_kdry, true);
+  }
   if (org_tc_scheme == 1) { // Option 1 (v5h)
     double tco = getOrgThermCond(true);
     if (tco >= 0.0) { return tco; }
@@ -97,6 +101,9 @@ double SoilLayer::getFrzThermCond() {
 double SoilLayer::getUnfThermCond() {
   if (moss_tc_scheme == 1 && isMoss) { // Chadburn et al. 2015
     return mossdyn::chadburn_k((getVolIce() + getVolLiq()) / poro, moss_tc_kdry, moss_tc_ksat);
+  }
+  if (moss_tc_scheme == 2 && isMoss) { // Johansen / Farouki; S21H (org_tc_scheme) not applied to moss
+    return mossdyn::johansen_k((getVolIce() + getVolLiq()) / poro, poro, moss_tc_ksolid, TCLIQ, TCICE, moss_tc_kdry, false);
   }
   if (org_tc_scheme == 1) { // Option 1 (v5h)
     double tco = getOrgThermCond(false);

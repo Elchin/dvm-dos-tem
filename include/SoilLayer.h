@@ -63,7 +63,7 @@ public:
   // frozen and unfrozen; overrides org_tc_scheme for moss. See include/MossDyn.h.
   // Refs: Chadburn et al. 2015, doi:10.5194/gmd-8-1493-2015; Soudzilovskaia et al. 2013, doi:10.1111/1365-2435.12127.
   static int    moss_tc_scheme;
-  static double moss_tc_kdry, moss_tc_ksat;
+  static double moss_tc_kdry, moss_tc_ksat, moss_tc_ksolid;   // moss_tc_scheme 2: Johansen/Farouki (MossDyn.h)
 
   // Option 3 (v5h, OFF by default): mineral-layer thermal
   // properties as settable values instead of texture-derived/hard-coded ones.

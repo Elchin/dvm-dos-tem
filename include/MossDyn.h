@@ -43,7 +43,63 @@ struct Params {
   int    tc_scheme = 0;      // moss_tc_scheme
   double tc_kdry   = 0.06;   // moss_tc_kdry (W/m/K), Chadburn et al. 2015
   double tc_ksat   = 0.5;    // moss_tc_ksat (W/m/K), Chadburn et al. 2015
+  //   2 Johansen (1975) / Farouki (1981) form as in CLM (Lawrence & Slater 2008) and GIPL (Nicolsky et al.
+  //     2007 Eq. 6): saturated thawed/frozen k = ks^(1-eta) * k_liq^eta / ks^(1-eta) * k_ice^eta (eta = moss
+  //     porosity), unsaturated k = Ke*k_sat + (1-Ke)*k_dry with Ke = max(0, log10(Sr)+1) thawed, Ke = Sr frozen,
+  //     Sr = (theta_liq+theta_ice)/eta. The enthalpy solver blends the two as lam_u^(1-f) lam_f^f (f = ice/W).
+  //     k_dry = moss_tc_kdry. Like scheme 1 it replaces org_tc_scheme (S21H) for the moss layer only.
+  double tc_ksolid = 0.25;   // moss_tc_ksolid (W/m/K): organic matter solids, Farouki 1981 (CLM5, Lawrence & Slater 2008)
+  // model_settings.moss_water_scheme:
+  //   0 (default) legacy: the moss liquid is overwritten daily by the first non-moss layer's liquid
+  //     (Soil_Env::updateDailySM), the moss holds no ice of its own.
+  //   1 the moss layer keeps its own liquid + ice. Daily (Soil_Env::mossWaterStep): it intercepts
+  //     infiltration up to moss_thetasat, drains liquid above the Chadburn et al. 2015 Eq. 1 equilibrium
+  //     theta_eq = theta_sat (psi / psi_sat)^(-1/b) (psi = suction of the top soil layer; Brooks-Corey,
+  //     Beringer et al. 2001 moss values) into the soil infiltration, is refilled from the top soil layer up
+  //     to theta_eq, and supplies soil evaporation first. Freezing by the enthalpy solver (thermal_solver 1).
+  int    water_scheme = 0;   // moss_water_scheme
+  double w_bsw      = 1.0;   // moss_bsw (-), Beringer et al. 2001 via Chadburn et al. 2015
+  double w_psisat   = 0.12;  // moss_psisat (m suction), Beringer et al. 2001 via Chadburn et al. 2015
+  double w_thetasat = 0.9;   // moss_thetasat (-), Beringer et al. 2001 via Chadburn et al. 2015 (capped at porosity)
 };
+
+// Chadburn et al. 2015 Eq. 1 (Brooks-Corey): equilibrium moss water content for a soil suction psi (m, >= 0).
+inline double theta_eq(double psi, double thetasat, double psisat, double b) {
+  if (!(psi > psisat)) { return thetasat; }
+  return thetasat * std::pow(psi / psisat, -1.0 / b);
+}
+
+// One day of moss_water_scheme 1 (all mm = kg/m2). Pure function so the mass balance is testable.
+struct WaterIn  { double liq, ice, dz, poro, thetasat, theq, minliq, infil, evap, fib_avail; bool active; };
+struct WaterOut { double intercept = 0.0, drain = 0.0, rise = 0.0, evap = 0.0, liq = 0.0; };
+inline WaterOut water_step(const WaterIn& w) {
+  WaterOut o; o.liq = w.liq;
+  if (!w.active || !(w.dz > 0.0)) { return o; }
+  const double icevol = std::fmax(w.ice, 0.0) * (1000.0 / 917.0);            // mm of pore volume taken by ice
+  const double tsat = std::fmin(w.thetasat, w.poro);
+  const double cap = std::fmax(0.0, tsat * w.dz * 1000.0 - icevol - o.liq);   // room up to theta_sat
+  o.intercept = std::fmin(std::fmax(w.infil, 0.0), cap);
+  o.liq += o.intercept;
+  // liquid target; residual water (minliq) does not drain
+  const double eq = std::fmax(std::fmax(0.0, w.minliq), std::fmin(w.theq, tsat) * w.dz * 1000.0 - icevol);
+  if (o.liq > eq) {
+    o.drain = o.liq - eq; o.liq = eq;
+  } else if (w.fib_avail > 0.0) {
+    o.rise = std::fmin(eq - o.liq, w.fib_avail); o.liq += o.rise;
+  }
+  o.evap = std::fmin(std::fmax(w.evap, 0.0), std::fmax(0.0, o.liq - w.minliq));
+  o.liq -= o.evap;
+  return o;
+}
+
+// moss_tc_scheme 2: Johansen / Farouki moss conductivity (see Params). sr = (theta_liq+theta_ice)/eta.
+inline double johansen_k(double sr, double eta, double ks, double kliq, double kice, double kdry, bool frozen) {
+  sr = std::fmin(std::fmax(sr, 0.0), 1.0);
+  if (sr < 1.0e-7) { return kdry; }
+  const double ksat = std::pow(ks, 1.0 - eta) * std::pow(frozen ? kice : kliq, eta);
+  const double ke = frozen ? sr : std::fmax(0.0, std::log10(sr) + 1.0);
+  return ke * ksat + (1.0 - ke) * kdry;
+}
 
 // DOS-TEM maximum live-moss thickness (m) by drainage class: 1 (poorly drained) = lowland 0.06,
 // anything else (0 = well drained) = upland 0.04. Jafarov et al. 2013, doi:10.1088/1748-9326/8/3/035030.
@@ -83,11 +139,12 @@ inline std::string parse(const Json::Value& ms, Params& p) {
   if (!(p.bulkden > 0.0 && p.bulkden <= 500.0)) { return "model_settings.moss_bulkden must be in (0, 500] kg/m3"; }
   if (!(p.cfrac > 0.0 && p.cfrac <= 1.0)) { return "model_settings.moss_cfrac must be in (0, 1]"; }
   Json::Value t = ms.get("moss_tc_scheme", 0);
-  if (!num_(t) || t.asDouble() != std::floor(t.asDouble()) || t.asInt() < 0 || t.asInt() > 1) {
-    return "model_settings.moss_tc_scheme must be 0 (legacy, default) or 1 (Chadburn et al. 2015 linear moss conductivity)";
+  if (!num_(t) || t.asDouble() != std::floor(t.asDouble()) || t.asInt() < 0 || t.asInt() > 2) {
+    return "model_settings.moss_tc_scheme must be 0 (legacy, default), 1 (Chadburn et al. 2015 linear) or 2 (Johansen/Farouki geometric mean)";
   }
   p.tc_scheme = t.asInt();
-  K tk[] = {{"moss_tc_kdry", &p.tc_kdry}, {"moss_tc_ksat", &p.tc_ksat}};
+  K tk[] = {{"moss_tc_kdry", &p.tc_kdry}, {"moss_tc_ksat", &p.tc_ksat}, {"moss_tc_ksolid", &p.tc_ksolid},
+            {"moss_bsw", &p.w_bsw}, {"moss_psisat", &p.w_psisat}, {"moss_thetasat", &p.w_thetasat}};
   for (auto& k : tk) {
     if (ms.isMember(k.k)) {
       if (!num_(ms[k.k])) { return std::string("model_settings.") + k.k + " must be a finite number"; }
@@ -97,6 +154,15 @@ inline std::string parse(const Json::Value& ms, Params& p) {
   if (!(p.tc_kdry > 0.0 && p.tc_kdry <= p.tc_ksat && p.tc_ksat <= 5.0)) {
     return "model_settings.moss_tc_kdry / moss_tc_ksat must satisfy 0 < kdry <= ksat <= 5 W/m/K";
   }
+  if (!(p.tc_ksolid > 0.0 && p.tc_ksolid <= 5.0)) { return "model_settings.moss_tc_ksolid must be in (0, 5] W/m/K"; }
+  Json::Value w = ms.get("moss_water_scheme", 0);
+  if (!num_(w) || w.asDouble() != std::floor(w.asDouble()) || w.asInt() < 0 || w.asInt() > 1) {
+    return "model_settings.moss_water_scheme must be 0 (legacy copy of the fibric liquid, default) or 1 (own moss water and ice)";
+  }
+  p.water_scheme = w.asInt();
+  if (!(p.w_bsw > 0.0 && p.w_bsw <= 20.0)) { return "model_settings.moss_bsw must be in (0, 20]"; }
+  if (!(p.w_psisat > 0.0 && p.w_psisat <= 10.0)) { return "model_settings.moss_psisat must be in (0, 10] m"; }
+  if (!(p.w_thetasat > 0.0 && p.w_thetasat <= 1.0)) { return "model_settings.moss_thetasat must be in (0, 1]"; }
   return "";
 }
 

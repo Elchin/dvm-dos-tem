@@ -273,7 +273,8 @@ double Ground::setMossThickness(const double dz_new) {
   const double dz_old = ml->dz;
   const double ddz = dz_new - dz_old;
   if (fabs(ddz) < 1.0e-12) { return 0.0; }
-  const double f = dz_new / dz_old;      // keep volumetric liquid/ice
+  // keep volumetric liquid/ice; moss_water_scheme 1: new moss is dry (keep the mass when thickening)
+  const double f = (moss_water_scheme == 1 && dz_new > dz_old) ? 1.0 : dz_new / dz_old;
   const double w_old = ml->liq + ml->ice;
   ml->liq *= f;
   ml->ice *= f;

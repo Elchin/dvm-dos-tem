@@ -34,7 +34,7 @@ def main():
     ap.add_argument('ms', nargs='?', default='{}')
     for k, d in (('pr', 10), ('eq', 300), ('sp', 30), ('sc', 30)): ap.add_argument('--' + k, type=int, default=d)
     ap.add_argument('--hist', type=int, default=None); ap.add_argument('--mode', default='rts')
-    ap.add_argument('--fri', type=int, default=0); ap.add_argument('--stop-after', default='stage2b')
+    ap.add_argument('--params', default='params'); ap.add_argument('--fri', type=int, default=0); ap.add_argument('--stop-after', default='stage2b')
     a = ap.parse_args()
     wd = os.path.join(W, 'runs', a.name)
     if os.path.exists(wd): sys.exit('exists: ' + wd)
@@ -43,7 +43,7 @@ def main():
     ov = json.load(open(os.path.join(inp, 'two_stage_overrides.json')))
     for k, v in list(ov['IO'].items()):
         if k.endswith('_file'): ov['IO'][k] = os.path.join(inp, v)
-    ov['IO']['parameter_dir'] = os.path.join(W, 'params') + '/'
+    ov['IO']['parameter_dir'] = os.path.join(W, a.params) + '/'
     spec = os.path.join(wd, 'output_spec.csv'); outspec(spec); ov['IO']['output_spec_file'] = spec
     ov['IO']['output_nc_tr'] = 1; ov['IO']['output_nc_sc'] = 1
     ov['model_settings'].update({'thermal_solver': 1, 'n_safetynet_conserve': 2, 'thermokarst_regrow': True,

@@ -106,7 +106,7 @@ TEST_CASE("moss_tc_scheme: parse, defaults and rejection") {
   CHECK(mossdyn::parse(Json::Value(Json::objectValue), p) == "");
   CHECK(p.tc_scheme == 0); CHECK(p.tc_kdry == 0.06); CHECK(p.tc_ksat == 0.5);
   CHECK(mossdyn::parse(ms({{"moss_tc_scheme", 1}}), p) == ""); CHECK(p.tc_scheme == 1);
-  CHECK(mossdyn::parse(ms({{"moss_tc_scheme", 2}}), p) != "");
+  CHECK(mossdyn::parse(ms({{"moss_tc_scheme", 3}}), p) != "");
   CHECK(mossdyn::parse(ms({{"moss_tc_scheme", 0.5}}), p) != "");
   CHECK(mossdyn::parse(ms({{"moss_tc_scheme", true}}), p) != "");
   CHECK(mossdyn::parse(ms({{"moss_tc_kdry", 0.6}}), p) != "");   // kdry > ksat
@@ -142,4 +142,102 @@ TEST_CASE("moss_tc_scheme 1: moss layer only, frozen and unfrozen, over org_tc_s
     CHECK(moss_at(0.5, 0.0, false).getUnfThermCond() == fib_u);
     CHECK(moss_at(0.5, 1.0, false).getFrzThermCond() == fib_f);
   }
+}
+
+// ---- moss/dyn-moss task 4: moss_water_scheme 1 (Chadburn 2015 Eq. 1) and moss_tc_scheme 2 (Johansen/Farouki) ----
+namespace {
+struct MossTc2Guard {
+  int s = SoilLayer::moss_tc_scheme, o = SoilLayer::org_tc_scheme;
+  double kd = SoilLayer::moss_tc_kdry, ks = SoilLayer::moss_tc_ksolid;
+  double tf = SoilLayer::org_tc_thre_f, ku = SoilLayer::org_tc_kunf, kf = SoilLayer::org_tc_kfrz, od = SoilLayer::org_tc_dry,
+         dep = SoilLayer::org_tc_depth;
+  ~MossTc2Guard() { SoilLayer::moss_tc_scheme = s; SoilLayer::org_tc_scheme = o; SoilLayer::moss_tc_kdry = kd;
+                    SoilLayer::moss_tc_ksolid = ks; SoilLayer::org_tc_thre_f = tf; SoilLayer::org_tc_kunf = ku;
+                    SoilLayer::org_tc_kfrz = kf; SoilLayer::org_tc_dry = od; SoilLayer::org_tc_depth = dep; }
+};
+double mass(const mossdyn::WaterIn& w, const mossdyn::WaterOut& o) {   // residual of the moss balance
+  return (o.liq - w.liq) - (o.intercept - o.drain + o.rise - o.evap);
+}
+}
+
+TEST_CASE("moss_water_scheme / moss_tc_scheme 2: parse, defaults, rejection") {
+  mossdyn::Params p;
+  CHECK(mossdyn::parse(Json::Value(Json::objectValue), p) == "");
+  CHECK(p.water_scheme == 0); CHECK(p.w_bsw == 1.0); CHECK(p.w_psisat == 0.12); CHECK(p.w_thetasat == 0.9);
+  CHECK(p.tc_ksolid == 0.25);
+  CHECK(mossdyn::parse(ms({{"moss_water_scheme", 1}, {"moss_tc_scheme", 2}, {"moss_tc_ksolid", 0.3}}), p) == "");
+  CHECK(p.water_scheme == 1); CHECK(p.tc_scheme == 2); CHECK(p.tc_ksolid == 0.3);
+  CHECK(mossdyn::parse(ms({{"moss_water_scheme", 2}}), p) != "");
+  CHECK(mossdyn::parse(ms({{"moss_tc_scheme", 3}}), p) != "");
+  CHECK(mossdyn::parse(ms({{"moss_tc_ksolid", 0.0}}), p) != "");
+  CHECK(mossdyn::parse(ms({{"moss_psisat", -1.0}}), p) != "");
+  CHECK(mossdyn::parse(ms({{"moss_thetasat", 1.5}}), p) != "");
+  CHECK(mossdyn::parse(ms({{"moss_bsw", 0.0}}), p) != "");
+}
+
+TEST_CASE("theta_eq: Chadburn 2015 Eq. 1 Brooks-Corey, b = 1, psi_sat 0.12 m, theta_sat 0.9") {
+  CHECK(mossdyn::theta_eq(0.0, 0.9, 0.12, 1.0) == 0.9);
+  CHECK(mossdyn::theta_eq(0.12, 0.9, 0.12, 1.0) == 0.9);
+  CHECK(mossdyn::theta_eq(0.24, 0.9, 0.12, 1.0) == doctest::Approx(0.45));
+  CHECK(mossdyn::theta_eq(1.2, 0.9, 0.12, 1.0) == doctest::Approx(0.09));
+  CHECK(mossdyn::theta_eq(0.48, 0.9, 0.12, 2.0) == doctest::Approx(0.45));   // (4)^(-1/2)
+}
+
+TEST_CASE("water_step: mass balance closes and limits hold") {
+  // 3 cm moss, poro 0.95, theta_sat 0.9 -> 27 mm capacity; minliq 0.05*0.95*30 = 1.425 mm
+  for (double liq : {0.0, 3.0, 10.0, 26.0})
+    for (double ice : {0.0, 5.0})
+      for (double infil : {0.0, 2.0, 40.0})
+        for (double theq : {0.05, 0.3, 0.9})
+          for (double fav : {0.0, 3.0, 50.0})
+            for (double ev : {0.0, 1.0, 30.0}) {
+              mossdyn::WaterIn w{liq, ice, 0.03, 0.95, 0.9, theq, 1.425, infil, ev, fav, true};
+              mossdyn::WaterOut o = mossdyn::water_step(w);
+              CHECK(std::fabs(mass(w, o)) < 1e-12);
+              CHECK(o.intercept >= 0.0); CHECK(o.intercept <= infil + 1e-12);
+              CHECK(o.drain >= 0.0); CHECK(o.rise >= 0.0); CHECK(o.rise <= fav + 1e-12);
+              CHECK(o.evap >= 0.0); CHECK(o.evap <= ev + 1e-12);
+              CHECK(o.liq + ice * 1000.0 / 917.0 <= std::max(27.0, liq + ice * 1000.0 / 917.0) + 1e-9);
+              CHECK(o.liq >= std::min(liq, 1.425) - 1e-12);
+              CHECK(!(o.drain > 0.0 && o.rise > 0.0));
+            }
+  mossdyn::WaterIn w{5.0, 0.0, 0.03, 0.95, 0.9, 0.3, 1.425, 10.0, 1.0, 10.0, false};   // frozen: nothing
+  mossdyn::WaterOut o = mossdyn::water_step(w);
+  CHECK(o.liq == 5.0); CHECK(o.intercept == 0.0); CHECK(o.drain == 0.0); CHECK(o.rise == 0.0); CHECK(o.evap == 0.0);
+  // rain fills to theta_sat then drains to theta_eq: 0 -> intercept 27, drain 18, liq 9 (theta 0.3)
+  mossdyn::WaterIn r{0.0, 0.0, 0.03, 0.95, 0.9, 0.3, 1.425, 40.0, 0.0, 0.0, true};
+  o = mossdyn::water_step(r);
+  CHECK(o.intercept == doctest::Approx(27.0)); CHECK(o.drain == doctest::Approx(18.0)); CHECK(o.liq == doctest::Approx(9.0));
+}
+
+TEST_CASE("johansen_k (moss_tc_scheme 2): saturated end members, dry, Kersten") {
+  const double eta = 0.95, ks = 0.25, kl = 0.6, ki = 2.29, kd = 0.06;
+  const double ku = std::pow(ks, 1 - eta) * std::pow(kl, eta), kf = std::pow(ks, 1 - eta) * std::pow(ki, eta);
+  CHECK(mossdyn::johansen_k(1.0, eta, ks, kl, ki, kd, false) == doctest::Approx(ku));
+  CHECK(mossdyn::johansen_k(1.0, eta, ks, kl, ki, kd, true) == doctest::Approx(kf));
+  CHECK(kf / ku == doctest::Approx(std::pow(ki / kl, eta)));           // GIPL (Nicolsky 2007) ratio, ~3.6
+  CHECK(kf / ku > 3.0);
+  CHECK(mossdyn::johansen_k(0.0, eta, ks, kl, ki, kd, false) == kd);
+  CHECK(mossdyn::johansen_k(0.1, eta, ks, kl, ki, kd, false) == doctest::Approx(kd));   // Ke = 0 at Sr = 0.1
+  CHECK(mossdyn::johansen_k(0.5, eta, ks, kl, ki, kd, false) == doctest::Approx((std::log10(0.5) + 1) * ku + (-std::log10(0.5)) * kd));
+  CHECK(mossdyn::johansen_k(0.5, eta, ks, kl, ki, kd, true) == doctest::Approx(0.5 * kf + 0.5 * kd));
+}
+
+TEST_CASE("moss_tc_scheme 2: moss layer only, S21H (org_tc_scheme 1) not applied to moss") {
+  MossTc2Guard g;
+  SoilLayer::org_tc_scheme = 1; SoilLayer::org_tc_kunf = 0.27; SoilLayer::org_tc_kfrz = 0.5134;
+  SoilLayer::org_tc_dry = 0.08571; SoilLayer::org_tc_thre_f = 0.1795; SoilLayer::org_tc_depth = 10.0;
+  SoilLayer::moss_tc_scheme = 0;
+  const double s21h_moss = moss_at(0.25).getUnfThermCond();
+  const double fib_u = moss_at(0.25, 0.0, false).getUnfThermCond(), fib_f = moss_at(0.25, 1.0, false).getFrzThermCond();
+  CHECK(s21h_moss == doctest::Approx(moss_at(0.25).getOrgThermCond(false)));   // S21H on moss with scheme 0
+  SoilLayer::moss_tc_scheme = 2; SoilLayer::moss_tc_ksolid = 0.25; SoilLayer::moss_tc_kdry = 0.06;
+  SoilLayer l = moss_at(0.25);
+  const double sr = (l.getVolLiq() + l.getVolIce()) / l.poro;
+  CHECK(l.getUnfThermCond() == doctest::Approx(mossdyn::johansen_k(sr, 0.95, 0.25, TCLIQ, TCICE, 0.06, false)));
+  CHECK(l.getUnfThermCond() != doctest::Approx(s21h_moss));
+  SoilLayer fz = moss_at(1.0, 1.0);
+  CHECK(fz.getFrzThermCond() == doctest::Approx(std::pow(0.25, 0.05) * std::pow((double)TCICE, 0.95)).epsilon(1e-3));
+  CHECK(moss_at(0.25, 0.0, false).getUnfThermCond() == fib_u);     // fibric keeps S21H
+  CHECK(moss_at(0.25, 1.0, false).getFrzThermCond() == fib_f);
 }

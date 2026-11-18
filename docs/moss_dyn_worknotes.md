@@ -25,7 +25,10 @@ with the dynamic one coupled to carbon. Background review: ~/tem-dev/notes/moss_
 | `moss_bulkden` | 25 | mode 2 live-moss dry bulk density (kg/m3) |
 | `moss_cfrac` | 0.45 | mode 2 C fraction of moss dry mass (gC/g) |
 | `moss_tc_scheme` | 0 | moss-layer conductivity, any `moss_dyn` mode: 0 legacy; 1 Chadburn et al. 2015 linear form (section 6.2) |
-| `moss_tc_kdry`, `moss_tc_ksat` | 0.06, 0.5 | Chadburn 2015 dry / saturated moss conductivity (W/m/K), used only with `moss_tc_scheme` 1 |
+| `moss_tc_kdry`, `moss_tc_ksat` | 0.06, 0.5 | Chadburn 2015 dry / saturated moss conductivity (W/m/K), k_sat used only with `moss_tc_scheme` 1; k_dry with 1 and 2 |
+| `moss_tc_ksolid` | 0.25 | `moss_tc_scheme` 2: moss/peat solids conductivity (W/m/K), Farouki 1981 organic matter (section 7.2) |
+| `moss_water_scheme` | 0 | 0 legacy daily copy of the fibric liquid; 1 the moss keeps its own liquid + ice (section 7.1; needs `thermal_solver` 1) |
+| `moss_bsw`, `moss_psisat`, `moss_thetasat` | 1, 0.12 m, 0.9 | `moss_water_scheme` 1 Brooks-Corey moss parameters (Beringer et al. 2001 via Chadburn et al. 2015) |
 
 - Mode 1: `d = clamp(dmax * t / (t + t_half), dmin, dmax)`, `t = cd.yrsdist` (years since fire/RTS; reset to 0 by both, already in
   the restart file). DOS-TEM form (Yi et al. 2009, doi:10.1029/2008JG000841; Jafarov et al. 2013 Eq. 1, doi:10.1088/1748-9326/8/3/035030).
@@ -243,3 +246,107 @@ except regrow (dmax 0.05, t_half 5). moss_tc 0 runs are the section 4 runs.
 3. Count ice in S (now yes)?
 4. JULES weights moss properties by moss cover; dvmdostem has no moss cover here. Leave out?
 5. After an RTS that switches the cohort to poorly drained, the default dmax becomes 0.06 m. Keep, or use the pre-disturbance class?
+
+## 7. Task 4: the moss layer's own water and ice, and a Johansen/Farouki moss conductivity (binary `dvmdostem_moss_v3`, md5 a3da783f0079d56fcfe6ad2e1c63ff14)
+Elchin (2026-11-18), on the three questions of the conductivity analysis: "it's own" (the moss gets its own wetting and
+freezing, Chadburn et al. 2015 moss moisture, not the fibric ice); "solid conductivity grab from literature"; "yes, stop
+applying s21h once new scheme is in."
+
+Why: in every legacy Gydan run the moss layer held **no water and no ice in winter** (December restarts: liquid 0, ice 0), so its
+frozen conductivity was the dry value whatever the scheme. The legacy moss water is set only by the daily copy `liq = dz (1 - frozenfrac) theta_liq(fibric)`
+(Soil_Env.cpp, end of `updateDailySM`), which never writes ice. (The exact step that loses the little ice formed at freeze-up was not traced.) The formulas themselves already use liquid and ice, and the enthalpy
+solver already blends thawed and frozen conductivity as `lam_u^(1-f) lam_f^f`, f = ice / (liquid + ice) (EnthalpySolver.cpp:113-119),
+i.e. the GIPL form of Nicolsky et al. 2007 Eq. 6 (doi:10.5194/tc-1-41-2007) that Jafarov et al. 2012 (doi:10.5194/tc-6-613-2012) use.
+
+### 7.1 `moss_water_scheme` 1 (Soil_Env::mossWaterStep, mossdyn::water_step)
+The legacy copy is switched off and the moss keeps its liquid and ice. Once a day, inside `updateDailySM` just before Richards
+(infiltration and soil evaporation in mm/day; nothing happens while the moss is fully frozen):
+1. **wetting**: the moss takes infiltration (rain/throughfall + snow melt + puddle) up to `moss_thetasat` (0.9, capped at porosity)
+   minus its ice;
+2. **drainage**: liquid above the Chadburn et al. 2015 Eq. 1 equilibrium goes on to the soil infiltration (Richards, or the
+   frozen-ground branch / puddle):
+   `theta_eq = theta_sat,moss (psi / psi_sat,moss)^(-1/b_moss)`, psi = suction of the top soil (fibric) layer
+   (`SoilLayer::getMatricPotential`), Brooks-Corey with Beringer et al. 2001 moss values b = 1, psi_sat = 0.12 m, theta_sat = 0.9.
+   While the top soil layer is frozen, theta_eq = theta_sat (the moss can hold water over frozen ground). The residual
+   (`minliq` = 0.05 porosity) does not drain;
+3. **capillary rise**: below theta_eq the moss is refilled from the thawed top soil layer (its liquid above `minliq`) — the
+   same equilibrium seen from below, so moss and soil share the suction as in Chadburn's Eq. 1;
+4. **evaporation**: soil evaporation is taken from the moss liquid first (above `minliq`); the rest from the soil as before.
+
+Freezing and thawing of the moss water are done by the enthalpy solver (the moss is an ordinary SOIL cell there), so the moss now
+carries ice through the winter. The enthalpy of every kg moved (in at the infiltration enthalpy, between layers at the source
+temperature, out with the ET) is booked by the existing water-window remap (`enthRemapWater`), so the scheme needs `thermal_solver` 1
+(FATAL otherwise). With moss_dyn the thickening keeps the moss water mass (new moss is dry); thinning (fire/RTS) removes water
+with the removed moss (summed in `moss_dz_water_mm`).
+
+Chadburn's JULES moss is a diagnostic layer (θ from the suction of the top soil layer every step). Here it is prognostic (it can
+be wetter after rain or drier after evaporation for a day) and relaxes to that equilibrium daily through steps 2-3, so mass closes.
+
+### 7.2 `moss_tc_scheme` 2 (mossdyn::johansen_k, SoilLayer::getUnfThermCond / getFrzThermCond)
+    k_sat,thawed = ks^(1-eta) k_liq^eta     k_sat,frozen = ks^(1-eta) k_ice^eta     (eta = moss porosity, 0.95 for CMT70)
+    k = Ke k_sat + (1 - Ke) k_dry,   Sr = (theta_liq + theta_ice)/eta
+    Ke = max(0, log10 Sr + 1) thawed,  Ke = Sr frozen         (Johansen 1975; CLM / Lawrence & Slater 2008)
+    the enthalpy solver uses lam_u^(1-f) lam_f^f with f = ice / (liq + ice)
+- k_liq = TCLIQ 0.6, k_ice = TCICE 2.29 (physicalconst.h, same as the other layers), k_dry = `moss_tc_kdry` 0.06 (Chadburn et al.
+  2015 / Soudzilovskaia et al. 2013 dry moss).
+- **ks = `moss_tc_ksolid` = 0.25 W/m/K**: thermal conductivity of organic-matter solids from Farouki (1981, CRREL Monograph 81-1,
+  doi:10.21236/ADA111734), the value used for organic soil by Lawrence & Slater (2008, Clim. Dyn. 30, 145-160,
+  doi:10.1007/s00382-007-0278-1) and CLM5 (Tech. Note eq. 2.6.80: lambda_s,om = 0.25 W m-1 K-1, Farouki 1981; read 2026-11-18).
+  It is a model_settings key; `parameters/` is not changed. (The CMT70 `tcsolid` of moss is 0.1.)
+- Saturated end members for eta 0.95: thawed 0.55, frozen 1.96 W/m/K, ratio (k_ice/k_liq)^eta = 3.6 (GIPL/Nicolsky).
+- Like scheme 1 this branch comes before the `org_tc_scheme` branch, so **S21H is not applied to the moss layer** with scheme 2;
+  fibric and humic keep S21H (unit test). With all switches off the code path is unchanged.
+
+### 7.3 Tests
+| test | result |
+|---|---|
+| unit tests, full suite | 449/449 cases pass (5 new); the 8 failing assertions are the known pre-existing ones |
+| new: parse/defaults/rejection of `moss_water_scheme`, `moss_tc_scheme` 2, `moss_tc_ksolid`, `moss_bsw/psisat/thetasat` | pass |
+| new: `theta_eq` (Eq. 1) values; `water_step` mass balance over 648 state combinations (|residual| < 1e-12 kg/m2) and limits | pass |
+| new: `johansen_k` saturated end members, ratio, dry, Kersten; SoilLayer: moss uses scheme 2 and not S21H, fibric keeps S21H | pass |
+| bit identity, all new switches off (`dvmdostem_moss_v3` vs `dvmdostem_moss_v2` at 22ad8d35): T0f vs T0c, G0f vs G0c | 486/486 identical |
+| bit identity vs 7b6a629a: T0f vs T0ref, G0f vs G0ref | 486/486 identical |
+| `moss_tc_scheme` 1 unchanged (C_O_d03_v3 vs C_O_d03) | 486/486 identical |
+| moss water closure (daily, `moss_daily.csv` resid, all stages, 9 runs) | max 1.5e-14 kg/m2 |
+| energy closure (`energy_daily.csv`, all stages, 9 runs) | max abs resday 0.0057 J/m2/day (6.6e-08 W/m2; legacy runs the same size); unattr 0 |
+| offline k check: `k_unf`/`k_frz` written by the model vs Python Johansen form from the logged moss state (N runs) | agree to 3e-8 W/m/K |
+| C balance | max monthly residual 1.0e-03 gC/m2 |
+
+### 7.4 Gydan sensitivity, thermal set A3b_snow300_otc (Fig. 4, 5; `tests/moss_dyn/plot_moss_water.py`)
+A3b_snow300_otc = org_tc_scheme 1 with the S21H values (kunf 0.27, kfrz 0.5134, dry 0.08571, thre_f 0.1795, thre_h 0.5638) and CMT70
+snwdenmax 300 (scratch parameter copy `~/tem-dev/moss-work/params_A3b`, only that line changed from 225). Other settings as the
+earlier sections (short spin-up, rhmoistfrozen_override 70: 0, not the accepted calibration set). moss_dyn 1 with t_half 0 (static
+thickness), energy_diag 1 for the daily moss/energy logs. L = legacy, W = `moss_water_scheme` 1 (S21H still on moss),
+N = `moss_water_scheme` 1 + `moss_tc_scheme` 2.
+
+![moss seasonal cycle](figures/moss_water_seasonal.png)
+![ALD](figures/moss_water_ald.png)
+
+Moss layer 1986-2015 means: summer = Jul-Aug, winter = Jan-Feb; k = conductivity as the solver uses it (lam_u^(1-f) lam_f^f).
+
+| moss | scheme | summer θliq / θice | winter θliq / θice | k summer | k winter | ALD 1986-2015 m (below moss) | ALD 2022-26 m |
+|---|---|---|---|---|---|---|---|
+| 1 cm | legacy | 0.250 / 0.000 | 0.000 / 0.000 | 0.510 | 0.086 | 0.562 (0.552) | 1.993 |
+| 1 cm | water 1, S21H k | 0.212 / 0.000 | 0.047 / 0.269 | 0.322 | 1.140 | 0.512 (0.502) | 1.706 |
+| 1 cm | water 1 + tc 2 | 0.210 / 0.000 | 0.047 / 0.310 | 0.196 | 0.706 | 0.503 (0.493) | 1.680 |
+| 3 cm | legacy | 0.243 / 0.000 | 0.000 / 0.000 | 0.495 | 0.086 | 0.565 (0.535) | 2.018 |
+| 3 cm | water 1, S21H k | 0.173 / 0.000 | 0.047 / 0.078 | 0.344 | 0.664 | 0.479 (0.449) | 1.415 |
+| 3 cm | water 1 + tc 2 | 0.186 / 0.000 | 0.047 / 0.078 | 0.194 | 0.216 | 0.439 (0.409) | 1.113 |
+| 10 cm | legacy | 0.276 / 0.000 | 0.000 / 0.000 | 0.531 | 0.086 | 0.674 (0.574) | 2.376 |
+| 10 cm | water 1, S21H k | 0.136 / 0.000 | 0.047 / 0.042 | 0.309 | 0.411 | 0.440 (0.340) | 0.898 |
+| 10 cm | water 1 + tc 2 | 0.126 / 0.000 | 0.047 / 0.098 | 0.131 | 0.266 | 0.310 (0.210) | 0.456 |
+
+- **The moss now freezes**: winter ice 0.04-0.31 m3/m3 (0 in legacy) plus the freezing-curve residual liquid 0.047.
+- **Winter k is now higher than summer k** with scheme N (1 cm 0.71 vs 0.20; 3 cm 0.22 vs 0.19; 10 cm 0.27 vs 0.13), the right
+  thermal offset; legacy is the reverse (S21H: 0.50-0.53 in summer, the dry 0.086 in winter).
+- **Thicker moss now makes ALD shallower**: N 0.50 / 0.44 / 0.31 m for 1 / 3 / 10 cm (legacy 0.56 / 0.57 / 0.67 m); W alone already
+  reverses the sign (0.51 / 0.48 / 0.44 m). The scheme N 10 cm case also keeps a shallow active layer for ~8 years after the 2021 slump.
+- Thick moss holds less water per volume (10 cm: summer θliq 0.13, winter ice 0.04-0.10) because the equilibrium with the fibric
+  suction is dry for b = 1, psi_sat 0.12 m, and evaporation is taken from the moss first.
+
+### 7.5 Open points
+1. The Eq. 1 parameters are Beringer et al. 2001 values via Chadburn; with b = 1 the equilibrium is dry (theta_eq = 0.9 · 0.12 m / psi).
+   Gydan moss moisture observations would constrain this.
+2. Evaporation comes from the moss first (no separate moss surface resistance). An alternative is a moss evaporation fraction.
+3. `moss_tc_kdry` 0.06 (Chadburn/Soudzilovskaia) is shared by schemes 1 and 2; CLM uses 0.05 for organic matter (Farouki 1981).
+4. Sensitivity used the short spin-up test settings, not the accepted Gydan calibration (rhmoistfrozen_override 0.05, kdc multiplier).
