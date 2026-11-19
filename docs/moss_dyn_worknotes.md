@@ -559,3 +559,113 @@ rts-ch4-b replaces scheme (a) by scheme (b); here scheme (a) stays the default a
 - Restart: `tk_ch4pool` is serial-only and in the RTS-state group, unlike rts-ch4-b (soil vars + MPI).
 
 ![moss_rts_integration](figures/moss_rts_integration.png)
+
+## 12. moss/rts-int-m2d: mean-preserving monthly->daily forcing switch + scheme (b) kfrac recalibration (2026-11-19)
+
+Approved by Elchin ("Ok, go ahead on both", 2026-11-19), follow-up to the CH4 diagnostic (rts-ch4-b 5.41 vs merged
+3.02 gC/m2 on the RTS synthetic cell: same CH4 code, different host model; about half of the gap was the
+mean-preserving forcing that rts-ch4-b has on by default and this lineage never had). Local only (not pushed).
+
+**Branch** `moss/rts-int-m2d` (worktree `~/tem-dev/moss-rts-m2d-wt`) from `moss/rts-integration` cf09f898
+(that branch is not moved). Work dir `~/tem-dev/moss-work/m2d/` (logs, runs, scripts `cal.py`, `idrts_m2d*.py`,
+`eff*.py`, `plot_*.py`). VM, ≤2 cores, no Gydan ledger runs, no restart reuse, repo `parameters/` read only.
+
+| commit | content |
+|---|---|
+| `21877bad` | `monthly2daily_mean_preserving` switch (default off), port of 5f387b4c, + `tests/rts/test_m2d_units.cpp` |
+| `f9694b5e` | `scripts/run_rts_two_stage.py`: thermokarst written as int 0/1 (the bool version fails with FATAL on this lineage; same as rts-work/v4 script) |
+| `79dd887e` | scheme (b) `kfrac` default 0.29 -> 0.114 in `applySchemeBDefaults`, docs_src/rts_ch4.md |
+| (this) | this section and figures |
+
+### 12.1 Switch `monthly2daily_mean_preserving` (false/0 = default)
+- Code from 5f387b4c (Killworth 1996): `Climate::monthly2daily_mp` (36-month window, Thomas solve of month-midpoint
+  pseudo values so the daily mean of every month equals its monthly input, 365-day calendar, correct "next Jan",
+  non-negative month rescale for vapo/nirr/par/girr), `mp_window`, `mp_window_clim`. In 5f387b4c/rts-ch4-b it was
+  default ON; here it is opt-in. Wired ModelData -> Cohort -> `Climate::prepare_daily_driving_data`
+  (eq: periodic climatology window; sp/tr/sc: per-year window). Daily-input mode (`daily_series_loaded`) untouched.
+- Off path is the unchanged legacy code (linear between month midpoints, incl. the `curr_jan+13` = next-Feb quirk;
+  month-mean errors up to ~3 C in winter months for Gydan tair, Fig. 8 left).
+- Unit tests `tests/rts/test_m2d_units.cpp` (`tests/rts/run_m2d_units.sh`): 4 groups ported from 23322af0 (monthly
+  means to 1e-6, non-negativity, year continuity, legacy bit-identity vs a verbatim copy of the old routine) + a
+  switch group through `prepare_daily_driving_data` (off: tair_d/par_d == legacy interpolation exactly; on: monthly
+  means of tair/vapo/nirr/par preserved, eq and tr stages, 3 years each): **72 passed, 0 failed**.
+  RTS CH4 unit tests (scheme a + b, standalone): 1858 passed. `make unittest`: 450/450 (8 known failing assertions).
+- Identity, switch off, vs the cf09f898 binary (`dvmdostem_rtsint`), all variables incl. restarts:
+  harness T0, G0 (stages 1/2a/2b: 190/145/151 each), D (moss on, 190/145), Tch4b (scheme 2: 190/145/152) all identical;
+  RTS synthetic cell M_base 340/340, M_rts 364/364, M_ch4a 388/388, M_ch4b 392/392 identical.
+
+**Effect (on - off)** (Fig. 8):
+
+| case | ALD | GPP (gC/m2/yr) | SOC end (gC/m2) | CH4 |
+|---|---|---|---|---|
+| RTS synthetic cell, RTS off (CMT05, 30-yr tr) | 0.275 -> 0.281 m | 163.9 -> 171.4 | +26 | - |
+| RTS synthetic cell, RTS on (V01_OFF) | 0.563 -> 0.591 m | 143.0 -> 143.1 | +31 | - |
+| RTS synthetic cell, RTS + CH4 (b), kfrac 0.29 | 0.561 -> 0.591 m | 139.8 -> 145.4 | +44 | emis 3.02 -> 3.33, prod 11.0 -> 11.9 gC/m2 (30 yr) |
+| Gydan bench G (CMT70), 2a hist, last 30 yr | 0.144 -> 0.140 m | 206.6 -> 211.9 | +41 | - |
+| Gydan bench G, 2b RTS 2021, 30 yr | 2.896 -> 2.882 m | 374.4 -> 373.8 | +40 | - |
+| bench T, 2a / 2b | 0.143 = / 1.162 -> 1.450 m | 146.5 -> 150.7 / 245.5 -> 244.8 | +46 / -27 | - |
+| CMT06 wet sedge (calibration case, 12.2), kfrac 0.29 | | 67 -> 97 | | emis 11.9 -> 12.4 gC/m2/yr |
+
+For comparison, in the rts-ch4-b binary switching it off moves the synthetic-cell CH4 from 5.41 to 4.16 gC/m2.
+On this lineage the effect is about +10 %: the rest of the old gap comes from other base-model differences (s.11.4).
+
+### 12.2 Scheme (b) kfrac recalibration
+**Target and protocol** (rts-ch4-b 6d49ad57 `docs_src/rts_ch4.md` parameter table + `tests/rts/test_rts_ch4.py`):
+"kfrac 0.29, calibrated to the same target" as ch4_frac, i.e. **5.0 gC/m2/yr for wet sedge tundra (CMT06, Gydan
+cell, bg_sat = 1)** (FLUXNET-CH4 / Arctic wet tundra 1-10 gC/m2/yr). The calibration script itself is not kept;
+the metric/window used here is the prototype's own test setup: Gydan CMT70 inputs
+(`~/box_archive/russia-inputs/inputs/gydan_cmt70`) with veg_class = 6, `thermokarst_ch4_bg_sat 1`,
+`run_rts_two_stage.py --hist 76 --sc 30 --mode baseline` (default pr 100 / eq 1000 / sp 200, no slump), repo config
+and repo parameters, **metric = mean annual TKCH4EMIS over stage 2b (30 scenario years)**.
+Check: the rts-ch4-b binary with its own repo gives **4.94 gC/m2/yr** at 0.29 (m2d on, its default), so this
+protocol reproduces the original calibration.
+
+| binary | m2d | kfrac | emis | prod | oxid | plant | GPP (gC/m2/yr) |
+|---|---|---|---|---|---|---|---|
+| rts-ch4-b 6d49ad57 | on | 0.29 | 4.94 | 9.49 | 4.56 | 4.43 | 303 |
+| merged (this branch) | off | 0.29 | 11.88 | 17.64 | 5.75 | 3.71 | 67 |
+| | off | 0.122 | 5.52 | 8.49 | 2.97 | 2.12 | 85 |
+| | off | 0.109 | 4.66 | 6.96 | 2.30 | 1.51 | 69 |
+| | off | **0.114** | **5.05** | **7.66** | 2.60 | 1.78 | 81 |
+| | on | 0.29 | 12.43 | 19.25 | 6.81 | 4.93 | 97 |
+| | on | 0.117 | 5.26 | 8.04 | 2.78 | 1.96 | 89 |
+| | on | 0.111 | 5.12 | 7.78 | 2.65 | 1.82 | 77 |
+| | on | 0.105 | 4.81 | 7.52 | 2.71 | 2.00 | 101 |
+| | on | **0.109** | **5.04** | **7.65** | 2.61 | 1.80 | 77 |
+
+(gC/m2/yr, 30-yr means; secant / local power-law steps, tolerance ±0.1. The response is not smooth at the 0.05 level
+because CMT06 GPP on this base moves between 67 and 101 gC/m2/yr from run to run of kfrac.)
+
+**Setting:** scheme (b) is opt-in, so the calibrated default-off value is set in code:
+`RTSMethaneParams::applySchemeBDefaults` (called only for `thermokarst_ch4_scheme 2`) now sets
+`kfrac = 0.114` unless `thermokarst_ch4_kfrac` is given (struct default stays 0.29 = the prototype value; unused by
+scheme a). With m2d on use `"thermokarst_ch4_kfrac": 0.109`.
+Checks with the rebuilt binary: calibration case with no kfrac key == the explicit 0.114 run (158/158 identical);
+scheme 1 / CH4 off unchanged: harness T0, G0 (all stages), RTS cell M_base/M_rts/M_ch4a identical to cf09f898;
+scheme 2 outputs change as intended (harness Tch4b stage 2b 57/152 vars, RTS cell M_ch4b 59/392).
+**RTS synthetic cell (CMT05) with scheme 2 and the new default: emission 1.18, production 4.32 gC/m2 over 30 yr**
+(was 3.02 / 10.99 at 0.29; rts-ch4-b binary 5.41 / 18.04).
+
+### 12.3 Caveats
+- The wet-sedge target case is very different on this base: CMT06 GPP 67-101 vs 303 gC/m2/yr in rts-ch4-b, and
+  emission per unit kfrac is about 2.6x higher (production ~2x, and a smaller oxidized share; cause not investigated), so kfrac drops 2.5x. The RTS
+  synthetic cell (CMT05) moves the other way (1.18 vs 5.41 gC/m2): the recalibration matches the documented wet
+  sedge target, not the old RTS-cell number. Worth a look at the CMT06 vegetation on this base before relying on it.
+- The original calibration script/window is not in the repo; the window above is inferred from the prototype test
+  setup and confirmed only by reproducing 4.94 (vs the documented 5.0) with the prototype binary.
+- `monthly2daily_mean_preserving` changes the eq/sp climate too, so turning it on needs a fresh spin-up (no restart
+  reuse across the switch).
+- `tests/rts/test_rts_units.cpp` still does not compile on this lineage (s.11.3); the m2d tests live in their own file.
+
+### 12.4 Tests summary
+Build -Werror clean (both builds). m2d unit tests 72/72, RTS CH4 unit tests 1858/1858. `make unittest`: 450/450 test cases, 8 known failing assertions (same as s.11.3).
+
+![moss_m2d_forcing](figures/moss_m2d_forcing.png)
+
+Fig. 8. Left: Gydan tair, one historic year, legacy vs mean-preserving daily forcing and the monthly input.
+Middle/right: on - off effect on the RTS synthetic cell and the Gydan bench case G.
+
+![moss_ch4b_kfrac_cal](figures/moss_ch4b_kfrac_cal.png)
+
+Fig. 9. Scheme (b) kfrac calibration (CMT06 wet sedge, Gydan cell, bg_sat 1, baseline): emission vs kfrac,
+annual emission of the calibrated runs and the prototype, 30-yr mean fluxes.
