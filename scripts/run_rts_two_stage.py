@@ -113,7 +113,7 @@ def main():
         sp_restart = os.path.abspath(a.stage1_restart)
     else:
         c = json.loads(json.dumps(cfg0)); c['IO']['restart_from'] = ''
-        c['model_settings']['thermokarst'] = False
+        c['model_settings']['thermokarst'] = 0   # v4: integer switch (b29caa0c ModelData)
         times['stage1'] = run_step(a.binary, c, os.path.join(w, 'stage1'),
                                    ['-p', str(a.pr), '-e', str(a.eq), '-s', str(a.sp), '-t', '0', '-n', '0'],
                                    a.log_level, 'stage1 pr/eq/sp')
@@ -126,7 +126,7 @@ def main():
         tr_restart = os.path.abspath(a.stage2a_restart)
     else:
         c = json.loads(json.dumps(cfg0)); c['IO']['restart_from'] = sp_restart
-        c['model_settings']['thermokarst'] = False
+        c['model_settings']['thermokarst'] = 0   # v4: integer switch (b29caa0c ModelData)
         times['stage2a'] = run_step(a.binary, c, os.path.join(w, 'stage2a_hist'),
                                     ['-p', '0', '-e', '0', '-s', '0', '-t', str(a.hist), '-n', '0'],
                                     a.log_level, 'stage2a historical')
@@ -137,7 +137,7 @@ def main():
     # ---- Stage 2b: ice init + short spin-up + RTS (scenario stage)
     c = json.loads(json.dumps(cfg0))
     c['IO']['restart_from'] = tr_restart
-    c['model_settings']['thermokarst'] = True
+    c['model_settings']['thermokarst'] = 1   # v4: integer switch
     c['model_settings']['thermokarst_initiation'] = (a.mode == 'rts')
     if a.ch4: c['model_settings']['thermokarst_ch4'] = True
     c['stage_settings']['sc']['dsb'] = True   # thermokarst runs in the disturbance step
