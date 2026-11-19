@@ -103,6 +103,7 @@ Cohort::Cohort(int y, int x, ModelData* modeldatapointer):
 
   this->climate.baseline_start = modeldatapointer->baseline_start;
   this->climate.baseline_end = modeldatapointer->baseline_end;
+  this->climate.m2d_mean_preserving = modeldatapointer->m2d_mean_preserving; // m2d (default off)
   this->climate.eq_co2_mode = modeldatapointer->eq_co2_mode;   // phase 3 (0 = pre-merge)
   // Opt-in daily climate mode: projected climate file is daily.
   this->climate.daily_proj = modeldatapointer->daily_proj_climate;

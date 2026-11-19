@@ -206,6 +206,8 @@
                                         //   really enters top-layer soil ORGN. docs/WORK_NOTES_fire_balance.md
     "fire_c_bookkeep_fix": 0,           // 0 (default) = legacy; 1 = standing-dead C/N fall/burn bookkeeping fixes (C, N close).
                                         //   See docs/WORK_NOTES_reburn.md.
+    "monthly2daily_mean_preserving": false, // false (default) = legacy monthly->daily interpolation (bit-identical);
+                                        //   true = mean-preserving (Killworth 1996), daily means == monthly input. docs/moss_dyn_worknotes.md s.12
     "thermokarst": 0,                   // RTS master switch: 0 (default) = off, legacy (nothing RTS read, run or written);
                                         //   1 = retrogressive thaw slumps from IO.hist/proj_exp_thermokarst_file (tr, sc).
                                         //   Sub-keys thermokarst_* / rts_* read only when 1. docs/WORK_NOTES_rts.md

@@ -126,6 +126,19 @@ public:
   
   std::vector<float> monthly2daily(const std::vector<float>& mly_vals);
 
+  // Mean-preserving monthly->daily (Killworth 1996), ported from 5f387b4c (rts-light-m2d,
+  // ancestor of rts-ch4-b). model_settings.monthly2daily_mean_preserving: false (DEFAULT) =
+  // legacy linear-midpoint interpolation, bit-identical to cf09f898; true = mean-preserving.
+  bool m2d_mean_preserving = false;
+  // m36: 36 monthly means (Jan..Dec of prev, target, next year; 365-day calendar). Returns
+  // 365 daily values for the middle year whose monthly means equal m36[12..23]. nonneg: clip
+  // negatives and rescale the month so its mean is preserved (radiation, vapour pressure).
+  static std::vector<float> monthly2daily_mp(const std::vector<float>& m36, bool nonneg);
+  // 36-month window for year `year` of a monthly series (ends padded by repeating first/last year).
+  static std::vector<float> mp_window(const std::vector<float>& data, int year);
+  // 36-month window for a 12-month climatology (periodic).
+  static std::vector<float> mp_window_clim(const std::vector<float>& clim12);
+
   void prepare_eq_daily_driving_data(int iy, const std::string& stage);
   void prepare_daily_driving_data(int, const std::string&);
 

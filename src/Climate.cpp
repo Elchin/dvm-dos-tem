@@ -1017,6 +1017,111 @@ std::vector<float> Climate::monthly2daily(const std::vector<float>& mly_vals) {
   return cal_yr_daily;
 }
 
+// ---------------------------------------------------------------------------
+// Mean-preserving monthly -> daily interpolation (Killworth 1996, JPO 26:136).
+// Daily values are piecewise linear between month-midpoint "pseudo values" p_k
+// chosen so that the average of the (discrete, day-centred) daily values over
+// each month equals that month's mean. The constraint is tridiagonal in p and
+// is solved with the Thomas algorithm over a 36-month window centred on the
+// target year (the influence of the window edges decays like 0.17^12 ~ 1e-9,
+// so consecutive years join continuously). 365-day (noleap) calendar, which is
+// what the rest of the model uses (DINY = 365, temutil::day_of_year).
+// ---------------------------------------------------------------------------
+namespace {
+  const int M2D_N = 36;
+  const int M2D_DIM[12] = {31,28,31,30,31,30,31,31,30,31,30,31};
+
+  struct M2DCal {
+    double start[M2D_N], mid[M2D_N];
+    double a[M2D_N], b[M2D_N], c[M2D_N]; // tridiagonal: a*p[k-1] + b*p[k] + c*p[k+1]
+    M2DCal() {
+      double s = 0;
+      for (int k = 0; k < M2D_N; ++k) {
+        int L = M2D_DIM[k % 12];
+        start[k] = s; mid[k] = s + 0.5 * L; s += L;
+      }
+      for (int k = 0; k < M2D_N; ++k) {
+        a[k] = b[k] = c[k] = 0.0;
+        if (k == 0 || k == M2D_N - 1) { b[k] = 1.0; continue; } // p = mean at edges
+        int L = M2D_DIM[k % 12];
+        for (int j = 0; j < L; ++j) {
+          double t = start[k] + j + 0.5;
+          if (t < mid[k]) {
+            double w = (t - mid[k-1]) / (mid[k] - mid[k-1]);
+            a[k] += (1 - w) / L; b[k] += w / L;
+          } else {
+            double w = (t - mid[k]) / (mid[k+1] - mid[k]);
+            b[k] += (1 - w) / L; c[k] += w / L;
+          }
+        }
+      }
+    }
+  };
+  const M2DCal& m2dcal() { static const M2DCal cal; return cal; }
+}
+
+std::vector<float> Climate::monthly2daily_mp(const std::vector<float>& m36, bool nonneg) {
+  assert(m36.size() == M2D_N && "monthly2daily_mp needs 36 monthly values");
+  const M2DCal& K = m2dcal();
+  // Thomas algorithm (diagonally dominant: b ~ 0.75, a,c ~ 0.125)
+  double cp[M2D_N], dp[M2D_N], p[M2D_N];
+  cp[0] = K.c[0] / K.b[0]; dp[0] = m36[0] / K.b[0];
+  for (int k = 1; k < M2D_N; ++k) {
+    double den = K.b[k] - K.a[k] * cp[k-1];
+    cp[k] = K.c[k] / den;
+    dp[k] = (m36[k] - K.a[k] * dp[k-1]) / den;
+  }
+  p[M2D_N-1] = dp[M2D_N-1];
+  for (int k = M2D_N - 2; k >= 0; --k) p[k] = dp[k] - cp[k] * p[k+1];
+
+  std::vector<float> out; out.reserve(DINY);
+  for (int k = 12; k < 24; ++k) {
+    int L = M2D_DIM[k % 12];
+    double v[31];
+    for (int j = 0; j < L; ++j) {
+      double t = K.start[k] + j + 0.5;
+      if (t < K.mid[k]) {
+        double w = (t - K.mid[k-1]) / (K.mid[k] - K.mid[k-1]);
+        v[j] = p[k-1] + w * (p[k] - p[k-1]);
+      } else {
+        double w = (t - K.mid[k]) / (K.mid[k+1] - K.mid[k]);
+        v[j] = p[k] + w * (p[k+1] - p[k]);
+      }
+    }
+    if (nonneg) {
+      bool neg = false;
+      for (int j = 0; j < L; ++j) if (v[j] < 0) { neg = true; break; }
+      if (neg) {
+        double target = std::max(0.0, (double)m36[k]) * L, pos = 0;
+        for (int j = 0; j < L; ++j) { if (v[j] < 0) v[j] = 0; pos += v[j]; }
+        double f = pos > 0 ? target / pos : 0.0;
+        for (int j = 0; j < L; ++j) v[j] = (pos > 0) ? v[j] * f : target / L;
+      }
+    }
+    for (int j = 0; j < L; ++j) out.push_back((float)v[j]);
+  }
+  return out;
+}
+
+std::vector<float> Climate::mp_window(const std::vector<float>& data, int year) {
+  const int nyr = data.size() / 12;
+  assert(nyr >= 1);
+  std::vector<float> w(M2D_N);
+  for (int i = 0; i < M2D_N; ++i) {
+    int y = year - 1 + i / 12;
+    if (y < 0) y = 0;
+    if (y > nyr - 1) y = nyr - 1;
+    w[i] = data.at(y * 12 + i % 12);
+  }
+  return w;
+}
+
+std::vector<float> Climate::mp_window_clim(const std::vector<float>& clim12) {
+  std::vector<float> w(M2D_N);
+  for (int i = 0; i < M2D_N; ++i) w[i] = clim12.at(i % 12);
+  return w;
+}
+
 // rough draft method to get "prev" Dec, this year, and "next" Jan that are
 // needed for monthly2daily interpolation...
 std::vector<float> Climate::eq_range(const std::vector<float>& data) {
@@ -1106,12 +1211,20 @@ void Climate::prepare_daily_driving_data(int iy, const std::string& stage) {
     ch4_d = avgX_ch4;
 
     // Create daily data by interpolating
+    if (m2d_mean_preserving) {
+      // mean-preserving (Killworth) path, 365 days, periodic climatology window
+      tair_d = monthly2daily_mp(mp_window_clim(avgX_tair), false);
+      vapo_d = monthly2daily_mp(mp_window_clim(avgX_vapo), true);
+      nirr_d = monthly2daily_mp(mp_window_clim(avgX_nirr), true);
+      par_d  = monthly2daily_mp(mp_window_clim(par), true);
+    } else {
     tair_d = monthly2daily(eq_range(avgX_tair));
     vapo_d = monthly2daily(eq_range(avgX_vapo));
     nirr_d = monthly2daily(eq_range(avgX_nirr));
 
     // Not totally sure if this is right to interpolate (girr and par) 
     par_d = monthly2daily(eq_range(par));
+    }
 
   } else {
 
@@ -1125,6 +1238,13 @@ void Climate::prepare_daily_driving_data(int iy, const std::string& stage) {
     }
 
     // Create daily data by interpolating
+    if (m2d_mean_preserving) {
+      // mean-preserving (Killworth) path; correct 'next Jan' (legacy uses curr_jan+13 = next Feb)
+      tair_d = monthly2daily_mp(mp_window(tair, iy), false);
+      vapo_d = monthly2daily_mp(mp_window(vapo, iy), true);
+      nirr_d = monthly2daily_mp(mp_window(nirr, iy), true);
+      par_d  = monthly2daily_mp(mp_window(par, iy), true);
+    } else {
     // straight up interpolated....
     tair_d = monthly2daily(interpolation_range(tair, iy));
     vapo_d = monthly2daily(interpolation_range(vapo, iy));
@@ -1132,13 +1252,16 @@ void Climate::prepare_daily_driving_data(int iy, const std::string& stage) {
 
     // Not totally sure if this is right to interpolate (girr and par) 
     par_d = monthly2daily(interpolation_range(par, iy));
+    }
   }
 
   //BOOST_LOG_SEV(glg, debug) << stage << " tair_d = [" << temutil::vec2csv(tair_d) << "]";
 
   // Not totally sure if this is right to interpolate (girr and par)
   // GIRR is passed to eq_range for all stages as it has only twelve values.
-  girr_d = monthly2daily(eq_range(girr));
+  // (mean-preserving path: girr too, so the nirr/girr cloudiness ratio stays consistent)
+  girr_d = m2d_mean_preserving ? monthly2daily_mp(mp_window_clim(girr), true)
+                               : monthly2daily(eq_range(girr));
 
   // The interpolation is slightly broken, so it 'overshoots' when the
   // slope is negative, and can result in negative values.

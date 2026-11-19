@@ -290,6 +290,15 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     groundwater_enabled = wetland_enabled && wetland_groundwater;
   }
   stefan_fronts_fix  = controldata["model_settings"].get("stefan_fronts_fix", 0).asInt();
+  // m2d: mean-preserving monthly->daily forcing (Killworth 1996), port of 5f387b4c; default off
+  {
+    Json::Value v = controldata["model_settings"].get("monthly2daily_mean_preserving", false);
+    if (!(v.isBool() || bnf::valid_int(v, 0, 1))) {
+      std::cerr << "FATAL: model_settings.monthly2daily_mean_preserving must be false/0 (legacy interpolation, default) or true/1 (mean-preserving)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    m2d_mean_preserving = v.asBool();
+  }
   snow_albedo_fix    = controldata["model_settings"].get("snow_albedo_fix", 0).asInt();
   // Fix C1 (v5k), default 0 = off (legacy)
   soil_nmin_tol_fix  = controldata["model_settings"].get("soil_nmin_tol_fix", 0).asInt();
@@ -782,6 +791,7 @@ ModelData::ModelData():force_cmt(-1) {
   snow_empty_cleanup = 0; // emptied snow layer removal (off)
   wetland_enabled = false; wetland_ch4 = true; wetland_runon = false; wetland_groundwater = false; // phase 3 (off)
   { const int wc[] = {6, 31, 32, 55, 61, 75, 92, 93}; wetland_cmts.assign(wc, wc + 8); }
+  m2d_mean_preserving = false; // m2d (off)
   interception_scheme = 0; wetland_diag = 0; eq_co2_mode = 0; runon_energy_mode = 0; ch4_conserve = 0; ch4_daily = 0; reco_ch4ox_output = 0; keep_expelled_water = 0;
   ch4_module = false; runon_enabled = false; groundwater_enabled = false;
   et_fpc_once_fix = 0; nv_snow_bury_fix = 0; rain_int_lai_fix = 0; nv_rain_surface = 0; // v5l (off)

@@ -224,6 +224,7 @@ public:
   std::vector<int> wetland_cmts;
   int interception_scheme;
   int wetland_diag;
+  bool m2d_mean_preserving = false; // model_settings.monthly2daily_mean_preserving (default false = legacy interpolation)
   int eq_co2_mode;   // model_settings.eq_co2_mode: 0 = first co2 value in EQ/pre-run (default), 1 = baseline mean (upstream)
   // Phase 3 v2 (Elchin 2026-11-11: "1 agree, 2 fix it, 3 agree"). All default 0 = bit-identical.
   // runon_energy_mode: (a) run-on/ponded water carry energy at max(Tair, 0 C); puddle freeze/thaw
