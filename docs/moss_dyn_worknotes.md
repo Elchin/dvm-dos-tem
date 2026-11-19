@@ -445,3 +445,41 @@ B1 1.44 (to 6.77 of 7.0); the full B1 grid does not fit.
 - Ledger: 5.83731 + 0.10484 = **5.94215 core-h** of the 6.1 stop (`rmf2_moss/fix7/logs/ledger.json`).
 
 **Caveats.** Tref (rmf 1) and T2/T3 were not re-run with the fixed binary, so the veg ratio is against an un-fixed reference. Legacy runs keep R1/B2 unless `richards_dt_fix` / `richards_infil_fix` are set (unchanged default by design).
+
+## 10. Gydan with the fixed binary: P3 (fair reference, A3c snow density) and P4 (T2/T3 re-run)
+
+Binary `dvmdostem_moss_v5` (md5 cfbbfaa3, commit 2e39cc40), moss_water_scheme 1 + moss_tc_scheme 2, otc (S21H org_tc) thermal set, kdc ×0.5, CMT70 cell G. Kit copies `~/cal-gydan/kit_v9_moss_p3ref`, `kit_v9_moss_p3`, `kit_v9_moss_p4` (hard stop 7.0); results `~/cal-gydan/rmf2_moss/{p3_ref300,p3,p4}` with `P3_RESULT.md`, `P3_T_eval.json`, `P4_RESULT.md`, `P4_T_eval.json`. Approvals: Elchin 2026-11-18 19:35 EST "yes" (P3), 20:52 EST "Let's rerun rmf, then commit moss and Richards fix and push it" (P4).
+
+**P3 A3c (rmf 0.05, stages A).** Combined score = zALD² + zT10proxy² (ALD 0.78 ± 0.2 m, column-bottom T −7.5 ± 1.5 °C).
+
+| snwdenmax | ALD (m) | deep T (°C) | combined | ALD-only | SOC100 | closure |
+|---|---|---|---|---|---|---|
+| 300 | 0.531 | −6.26 | **2.23 (1st)** | 1.55 (3rd) | 12.73 | pass |
+| 250 | 0.673 | −4.02 | 5.67 | 0.29 (2nd) | 12.24 | pass |
+| 225 | 0.760 | −2.32 | 11.94 | **0.010 (1st)** | 11.90 | pass |
+| 200 | 2.246 | 0.00 (talik) | 78.75 | 53.7 | 10.00 | pass |
+
+Pre-fix (v4) sd300 was 0.542 m / −6.28 °C (2.07): the leak fix barely changes the thermal stage. sd300 stays the combined winner, so the winner transient is the fix7 T1 and no new snow-density transients were needed.
+
+![A3c snow density](figures/moss_P3_A3c_snowdensity.png)
+
+*Figure: A3c ALD, deep-T proxy and scores vs snwdenmax, pre-fix (v4) vs fixed (v5).*
+
+**T1/T2/T3 vs the fixed reference** (2000–2020 means for GPP/VEGC; veg gate = T / Tref ≥ 0.8 for both):
+
+| run | rmf | ALD | T10 | SOC30 | SOC100 | Rh Oct–Apr share | GPP | VEGC | veg ratio GPP / VEGC | J | water tr / sc (% P) | closure W/C/N/E |
+|---|---|---|---|---|---|---|---|---|---|---|---|---|
+| T2 (P4) | 0.02 | 0.575 | −5.97 | 6.48 | 14.51 | 0.194 | 224.1 | 215.8 | **0.837 / 0.828 PASS** | 3.80 | +0.05 / +0.60 | pass |
+| T1 (fix7) | 0.05 | 0.582 | −6.00 | 6.49 | 13.07 | 0.230 | 170.2 | 165.1 | 0.636 / 0.633 fail | 3.94 | +0.03 / +0.79 | pass |
+| T3 (P4) | 0.1 | 0.580 | −5.96 | 6.49 | 12.29 | 0.298 | 169.8 | 165.4 | 0.634 / 0.634 fail | 3.89 | +0.04 / +0.93 | pass |
+| Tref (P3) | 1.0 | 0.595 | −6.03 | 6.31 | 8.64 | 0.621 | 267.9 | 260.8 | reference | 8.08 | +0.05 / +0.66 | pass |
+
+Closure, tr: C mean ≤ 8.2e-5 g/m²/yr (max annual ≤ 2.4e-3), N mean ≤ 1.1e-5 (max annual ≤ 2.9e-4), energy relative ≤ 3.0e-11. Safety-net events: T2 1902, T1 1351, T3 1889, all ≤ Tref 3292. T2 is the only rmf < 1 case that passes every hard gate, and it also has the lowest J.
+
+For comparison: pre-fix P2 (v4, vs its own Tref) T2 0.667/0.695, T1 0.627/0.650, T3 0.785/0.792, all failing water closure (−1.07 to −1.18 % of P). Legacy moss rmf1: T2 0.709/0.710, T1 0.628/0.610, T3 0.709/0.716. The vegetation response to rmf is not monotonic (T2 > T1 ≈ T3, with a different ordering pre-fix and in rmf1). That points to sensitivity in the soil-N / vegetation coupling rather than a smooth rmf effect, so check it before taking T2 as final.
+
+![T1/T2/T3](figures/moss_P4_T123_fixed_vs_ref.png)
+
+*Figure: veg ratios, SOC 0–100, cold-season Rh share and water closure vs rmf, fixed (v5) against the fixed reference, pre-fix P2 and legacy-moss rmf1.*
+
+**Ledger:** 5.94215 (after fix7) + P3 0.23427 (Tref 0.11402, A3c ×4 0.12025) = 6.17642; + P4 T2 0.10459 + T3 0.10819 = **6.38920 core-h** of 7.0 (`rmf2_moss/p4/logs/ledger.json`).
