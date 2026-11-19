@@ -134,7 +134,7 @@ with no RTS fluxes TKNETC reduces exactly to `NEE_month`.
 | name | (a) | (b) | basis |
 |---|---|---|---|
 | ch4_frac | **0.135** | - | calibrated: 5.0 gC/m2/yr for wet sedge tundra (CMT06, Gydan cell, bg_sat=1) |
-| kfrac | - | **0.29** | calibrated to the same target |
+| kfrac | - | **0.114** | calibrated to the same target; 0.29 on the rts-ch4-b base (6d49ad57), recalibrated on moss/rts-int-m2d (docs/moss_dyn_worknotes.md s.12; 0.109 with monthly2daily_mean_preserving on). Scheme 2 default set in applySchemeBDefaults |
 | rel_q10 / prodq10 | 1.5 | 3.0 | methanogenesis is more temperature sensitive than RH. Q10 ~2.8 in the BAWLD-CH4 wetland synthesis (Kuhn et al. 2021); Yvon-Durocher et al. 2014 |
 | tref | 10 °C | 10 °C | upstream prodTref |
 | oxid_min / oxid_max / oxid_zscale | 0.2 / 0.95 / 0.1 m | same (transit) | 20-90%+ of produced CH4 is oxidized, increasing with WT depth (Le Mer & Roger 2001; Preuss et al. 2013) |

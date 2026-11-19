@@ -27,6 +27,11 @@ void RTSMethaneParams::load(const Json::Value & ms) {
 void RTSMethaneParams::applySchemeBDefaults(const Json::Value & ms) {
   if (!ms.isMember("thermokarst_ch4_pond_sat0")) { pond_sat0 = 0.5; }
   if (!ms.isMember("thermokarst_ch4_pond_tau"))  { pond_tau = 10.0; }
+  // kfrac recalibrated on the merged base (moss/rts-int-m2d, docs/moss_dyn_worknotes.md s.12) with the
+  // rts-ch4-b protocol: CMT06 wet sedge, Gydan cell, bg_sat = 1, baseline two-stage run (hist 76, sc 30),
+  // mean annual TKCH4EMIS over stage 2b = 5.0 gC/m2/yr -> 0.114 (monthly2daily_mean_preserving off, the
+  // default; 0.109 with it on). The prototype value 0.29 (struct default) gives 11.9 on this base.
+  if (!ms.isMember("thermokarst_ch4_kfrac"))     { kfrac = 0.114; }
 }
 
 double RTSMethane::saturatedFraction(const double ztop, const double dz, const double wtd) {
