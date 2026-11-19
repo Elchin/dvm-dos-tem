@@ -279,6 +279,8 @@ void RestartData::reinitValue() {
   tk_drainage_type = MISSING_I; tk_init = MISSING_I; tk_exinit = MISSING_I; tk_subsidence = MISSING_D;
   for (int il = 0; il < MAX_SOI_LAY; il++) { tk_exice[il] = MISSING_D; }
   has_tk_rg_state = false;
+  write_tk_ch4pool = false; has_tk_ch4pool = false;   // RTS CH4 scheme (b)
+  for (int il = 0; il < MAX_SOI_LAY; il++) { tk_ch4pool[il] = MISSING_D; }
   for (int k = 0; k < TK_RG_NSTATE; k++) { tk_rg_state[k] = MISSING_D; }
   for (int ip = 0; ip < NUM_PFT; ip++) { deadc0[ip] = MISSING_D; deadn0[ip] = MISSING_D; }
   // atmosphere
@@ -600,6 +602,14 @@ void RestartData::read_px_tk_vars(const std::string& fname, const int rowidx, co
       has_tk_rg_state = (tk_rg_state[0] != MISSING_D);
     }
   }
+  has_tk_ch4pool = false;   // RTS CH4 scheme (b) pool: optional
+  int vp;
+  if (nc_inq_varid(ncid, "tk_ch4pool", &vp) == NC_NOERR) {
+    size_t s3p[3] = {(size_t)rowidx, (size_t)colidx, 0};
+    size_t c3p[3] = {1, 1, MAX_SOI_LAY};
+    temutil::nc( nc_get_vara_double(ncid, vp, s3p, c3p, &tk_ch4pool[0]) );
+    has_tk_ch4pool = true;
+  }
   temutil::nc( nc_close(ncid) );
 }
 
@@ -658,6 +668,18 @@ void RestartData::write_px_tk_vars(const std::string& fname, const int rowidx, c
   temutil::nc( nc_put_var1_int(ncid, v[2], s2, &tk_exinit) );
   temutil::nc( nc_put_var1_double(ncid, v[3], s2, &tk_subsidence) );
   temutil::nc( nc_put_vara_double(ncid, v[4], s3, c3, &tk_exice[0]) );
+  if (write_tk_ch4pool) {   // RTS CH4 scheme (b) pool
+    int vp;
+    if (nc_inq_varid(ncid, "tk_ch4pool", &vp) != NC_NOERR) {
+      int dv; temutil::nc( nc_inq_varid(ncid, "DZsoil", &dv) );
+      int d3[3]; temutil::nc( nc_inq_vardimid(ncid, dv, d3) );
+      temutil::nc( nc_redef(ncid) );
+      temutil::nc( nc_def_var(ncid, "tk_ch4pool", NC_DOUBLE, 3, d3, &vp) );
+      temutil::nc( nc_put_att_double(ncid, vp, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
+      temutil::nc( nc_enddef(ncid) );
+    }
+    temutil::nc( nc_put_vara_double(ncid, vp, s3, c3, &tk_ch4pool[0]) );
+  }
   temutil::nc( nc_close(ncid) );
 #endif
 }

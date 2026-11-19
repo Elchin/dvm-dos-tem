@@ -531,6 +531,7 @@ public:
   double tk_excess_fraction = 0.0; // excess-ice volume fraction (0 <= f < 0.8); 0 = off
   double tk_excess_top = 0.5;      // m below soil surface
   double tk_excess_bottom = 2.0;   // m below soil surface
+  int tk_ch4_scheme = 1;   // thermokarst_ch4_scheme: 1 = scheme (a) (default), 2 = scheme (b) (rts-ch4-b)
   bool tk_ch4 = false;
   RTSMethaneParams tk_ch4par;
   RTSRegrowParams tk_regrow;  // post-slump vegetation recovery

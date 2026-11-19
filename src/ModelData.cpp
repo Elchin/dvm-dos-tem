@@ -1555,8 +1555,16 @@ void ModelData::parse_thermokarst_settings(const Json::Value & ms, ModelData & m
   if (ms.isMember("thermokarst_excess_bottom"))   md.tk_excess_bottom = ms["thermokarst_excess_bottom"].asDouble();
   if (ms.isMember("thermokarst_initiation")) md.tk_initiation = ms["thermokarst_initiation"].asBool();
   if (ms.isMember("thermokarst_ch4")) md.tk_ch4 = ms["thermokarst_ch4"].asBool();
+  if (ms.isMember("thermokarst_ch4_scheme")) {   // 1 = (a) reduced form (default), 2 = (b) per-layer pool
+    if (!bnf::valid_int(ms["thermokarst_ch4_scheme"], 1, 2)) {
+      std::cerr << "FATAL: model_settings.thermokarst_ch4_scheme must be 1 (scheme a) or 2 (scheme b)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    md.tk_ch4_scheme = ms["thermokarst_ch4_scheme"].asInt();
+  }
   if (ms.isMember("thermokarst_safetynet_conserve")) md.tk_safetynet_conserve = ms["thermokarst_safetynet_conserve"].asBool();
   md.tk_ch4par.load(ms);
+  if (md.tk_ch4_scheme == 2) { md.tk_ch4par.applySchemeBDefaults(ms); }
   md.tk_floor.load(ms);
   md.tk_regrow.load(ms);
   for (const char * k : {"thermokarst_folr", "thermokarst_c_resp_frac", "thermokarst_veg_remove_frac"}) {

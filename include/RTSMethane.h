@@ -52,12 +52,33 @@ struct RTSMethaneParams {
   // background anoxic/inundated fraction of the cell (0 = model water table only;
   // 1 = wet tundra with WT at the surface; e.g. from a wetland map such as BAWLD)
   double bg_sat = 0.0;
+  // ---- scheme (b) (rts-ch4-b, thermokarst_ch4_scheme = 2): per-layer CH4 pool, production
+  // from the SOM pools. Unused by scheme (a). Sources in docs_src/rts_ch4.md.
+  double kfrac = 0.29;        // CH4 share of the anaerobic decomposition potential; CALIBRATED (5 gC/m2/yr)
+  double prodq10 = 3.0;       // production Q10
+  double avail_frac = 0.05;   // cap: production <= avail_frac * layer SOM C per month
+  double oxid_vmax = 5.76;    // gC/m3/d (upstream, converted)
+  double oxid_km = 0.06;      // gC/m3
+  double oxidq10 = 1.9;
+  double plant_k = 0.1;       // 1/d
+  double froot_ref = 0.1;
+  double rhizo_ox = 0.5;      // oxidized share of plant-transported CH4
+  double tau_sat = 20.0;      // d, escape time scale (saturated layer)
+  double tau_unsat = 1.0;     // d
   void load(const Json::Value & ms); // thermokarst_ch4_<name> keys in model_settings
+  // scheme (b) keeps its own ponding defaults (pond_sat0 0.5, pond_tau 10 yr) unless the keys are given
+  void applySchemeBDefaults(const Json::Value & ms);
 };
 
 struct RTSMethaneLayer {
   double ztop = 0.0, dz = 0.1, tem = 0.0;
   double rh = 0.0;          // heterotrophic respiration of this layer (gC/m2/month)
+  // scheme (b) only
+  double c[4] = {0.0, 0.0, 0.0, 0.0};   // rawc, soma, sompr, somcr (gC/m2)
+  double kd[4] = {0.0, 0.0, 0.0, 0.0};  // monthly decomposition constants
+  double froot = 0.0;                   // vegcov-weighted fine-root fraction
+  double pool = 0.0;                    // CH4 pool (gC/m2), in/out
+  double dc[4] = {0.0, 0.0, 0.0, 0.0};  // out: C removed from each SOM pool
 };
 
 struct RTSMethaneFluxes {
@@ -73,5 +94,9 @@ public:
   static RTSMethaneFluxes compute(const std::vector<RTSMethaneLayer> & col,
                                   const RTSMethaneParams & p, const double wtd,
                                   const double pond, const double lai);
+  // scheme (b): updates col[i].pool and col[i].dc; days = days in the month
+  static RTSMethaneFluxes computeB(std::vector<RTSMethaneLayer> & col,
+                                   const RTSMethaneParams & p, const double wtd,
+                                   const double pond, const double lai, const double days);
 };
 #endif

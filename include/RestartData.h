@@ -99,6 +99,11 @@ public :
                                   + 60 + 60 + 2 + 10 * 12 + 12 + 12;
   bool has_tk_rg_state = false;
   double tk_rg_state[TK_RG_NSTATE];
+  // RTS CH4 scheme (b) pool (thermokarst_ch4 with thermokarst_ch4_scheme = 2 only; write_tk_ch4pool
+  // set by Cohort). NetCDF: tk_ch4pool (Y,X,soillayer) double; optional on read (missing => 0).
+  bool write_tk_ch4pool = false;
+  bool has_tk_ch4pool = false;
+  double tk_ch4pool[MAX_SOI_LAY];
   void read_px_tk_vars(const std::string& fname, const int rowidx, const int colidx);
   void write_px_tk_vars(const std::string& fname, const int rowidx, const int colidx);
 

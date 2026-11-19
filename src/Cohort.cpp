@@ -2223,6 +2223,10 @@ void Cohort::set_restartdata_from_state() {
       restartdata.tk_exice[il] = l->excess_ice;
     }
     tk_rg_pack(restartdata.tk_rg_state);
+    if (md->tk_ch4 && md->tk_ch4_scheme == 2) {   // RTS CH4 scheme (b) pool (only then written)
+      restartdata.write_tk_ch4pool = true;
+      for (int k = 0; k < MAX_SOI_LAY; k++) { restartdata.tk_ch4pool[k] = ground.tk_ch4pool[k]; }
+    }
   }
 
   for (int ip = 0; ip < NUM_PFT; ip++) {
@@ -2645,6 +2649,7 @@ void Cohort::updateMonthly_Thermokarst(const int & year, const int & midx, std::
 /** RTS CH4 scheme (a): reduced-form partition of this month's RH (RTSMethane.h).
  *  No model state changes: C pools are identical with CH4 on or off. */
 void Cohort::updateMonthly_RTSMethane(const int & midx) {
+  if (md->tk_ch4_scheme == 2) { updateMonthly_RTSMethaneB(midx); return; }
   std::vector<RTSMethaneLayer> col;
   int il = 0;
   for (Layer* l = ground.fstsoill; l != NULL && l->isSoil && il < cd.m_soil.numsl; l = l->nextl, il++) {
@@ -2667,6 +2672,64 @@ void Cohort::updateMonthly_RTSMethane(const int & midx) {
   d.ch4_prod = f.prod; d.ch4_oxid = f.oxid; d.ch4_emis = f.emis; d.ch4_plant = f.plant;
   d.ch4_pool = 0.0; d.pond_sat = pond;
   d.rh_co2 = bdall->m_soi2a.rhsom - f.prod + f.oxid;   // = RHSOM - emis
+}
+
+/** RTS CH4 scheme (b): monthly production/oxidation/plant transport with a
+ *  per-layer CH4 pool (ground.tk_ch4pool, in restart). Production is an extra
+ *  anaerobic decomposition pathway removed from the SOM pools (C conserved:
+ *  the C leaves the soil into the CH4 pool, then as CO2 or CH4). */
+void Cohort::updateMonthly_RTSMethaneB(const int & midx) {
+  const int nsl = std::min(cd.m_soil.numsl, (int)MAX_SOI_LAY);
+  // keep the column CH4 if the layer count shrank (layer combination)
+  for (int il = std::max(nsl, 1); il < MAX_SOI_LAY; il++) {
+    if (nsl > 0 && ground.tk_ch4pool[il] != 0.0) {
+      ground.tk_ch4pool[nsl - 1] += ground.tk_ch4pool[il];
+      ground.tk_ch4pool[il] = 0.0;
+    }
+  }
+  std::vector<RTSMethaneLayer> col;
+  std::vector<Layer*> lay;
+  int il = 0;
+  for (Layer* l = ground.fstsoill; l != NULL && l->isSoil && il < nsl; l = l->nextl, il++) {
+    RTSMethaneLayer c;
+    c.ztop = l->z; c.dz = l->dz; c.tem = l->tem;
+    c.c[0] = bdall->m_sois.rawc[il]; c.c[1] = bdall->m_sois.soma[il];
+    c.c[2] = bdall->m_sois.sompr[il]; c.c[3] = bdall->m_sois.somcr[il];
+    c.kd[0] = soilbgc.bgcpar.kdrawc[il]; c.kd[1] = soilbgc.bgcpar.kdsoma[il];
+    c.kd[2] = soilbgc.bgcpar.kdsompr[il]; c.kd[3] = soilbgc.bgcpar.kdsomcr[il];
+    double fr = 0.0, cov = 0.0;
+    for (int ip = 0; ip < NUM_PFT; ip++) {
+      if (cd.m_veg.vegcov[ip] > 0.0 && cd.m_soil.frootfrac[il][ip] > 0.0) {
+        fr += cd.m_soil.frootfrac[il][ip] * cd.m_veg.vegcov[ip];
+      }
+      if (cd.m_veg.vegcov[ip] > 0.0) { cov += cd.m_veg.vegcov[ip]; }
+    }
+    c.froot = cov > 0.0 ? fr / cov : 0.0;
+    c.pool = ground.tk_ch4pool[il];
+    col.push_back(c); lay.push_back(l);
+  }
+  double lai = 0.0;
+  for (int ip = 0; ip < NUM_PFT; ip++) {
+    if (cd.m_veg.vegcov[ip] > 0.0 && cd.m_veg.lai[ip] > 0.0) { lai += cd.m_veg.lai[ip] * cd.m_veg.vegcov[ip]; }
+  }
+  const double pond = RTSMethane::pondSaturation(md->tk_ch4par, ground.tk_months_since_init);
+  const double sx = 1.0 - (1.0 - pond) * (1.0 - std::max(0.0, std::min(1.0, md->tk_ch4par.bg_sat)));
+  RTSMethaneFluxes f = RTSMethane::computeB(col, md->tk_ch4par, edall->m_sois.watertab, sx, lai, DINM[midx]);
+  double removed = 0.0;
+  for (size_t i = 0; i < col.size(); i++) {
+    const RTSMethaneLayer & c = col[i];
+    bdall->m_sois.rawc[i] -= c.dc[0]; bdall->m_sois.soma[i] -= c.dc[1];
+    bdall->m_sois.sompr[i] -= c.dc[2]; bdall->m_sois.somcr[i] -= c.dc[3];
+    lay[i]->rawc = bdall->m_sois.rawc[i]; lay[i]->soma = bdall->m_sois.soma[i];
+    lay[i]->sompr = bdall->m_sois.sompr[i]; lay[i]->somcr = bdall->m_sois.somcr[i];
+    removed += c.dc[0] + c.dc[1] + c.dc[2] + c.dc[3];
+    ground.tk_ch4pool[i] = c.pool;
+  }
+  if (removed > 0.0) { assignSoilBd2pfts_monthly(); }
+  soidiag_thermokarst & d = tk_ch4_month;  // copied into tkdata after the slump step
+  d.ch4_prod = f.prod; d.ch4_oxid = f.oxid; d.ch4_emis = f.emis; d.ch4_plant = f.plant;
+  d.ch4_pool = f.pool; d.pond_sat = pond;
+  d.rh_co2 = bdall->m_soi2a.rhsom + f.oxid;
 }
 
 /** RTS floor (RTSFloor.h): per-layer RH modifiers used inside Soil_Bgc::deltac. Only after initiation. */
@@ -2722,6 +2785,13 @@ void Cohort::updateMonthly_RTSMethane_lateral() {
   t.pond_sat = tk_ch4_month.pond_sat;
   const double latc = tkdata->thermokarst_soi2lat.orgc + tkdata->thermokarst_soi2lat.vegc;
   tkdata->thermokarst_soid.lat_ch4 = md->tk_ch4par.lat_ch4_frac * latc;
+  // scheme (b), slump month: the disturbed column degasses its CH4 pool
+  if (md->tk_ch4_scheme == 2 && (tkdata->thermokarst_soid.removal_thickness > 0.0 || latc > 0.0)) {
+    double p = 0.0;
+    for (int il = 0; il < MAX_SOI_LAY; il++) { p += ground.tk_ch4pool[il]; ground.tk_ch4pool[il] = 0.0; }
+    tkdata->thermokarst_soid.ch4_emis += p;
+    tkdata->thermokarst_soid.ch4_pool = 0.0;
+  }
 }
 
 /////////////////////////////////////////////////////////////////////////////////
@@ -2865,6 +2935,12 @@ void Cohort::set_tk_state_from_restartdata() {
   if (restartdata.tk_init > 0) { ground.tk_months_since_init = restartdata.tk_init - 1; }
   if (restartdata.tk_drainage_type == 0 || restartdata.tk_drainage_type == 1) {
     cd.drainage_type = restartdata.tk_drainage_type;
+  }
+  if (md->tk_ch4 && md->tk_ch4_scheme == 2 && restartdata.has_tk_ch4pool) {   // RTS CH4 scheme (b) pool
+    for (int il = 0; il < MAX_SOI_LAY; il++) {
+      double x = restartdata.tk_ch4pool[il];
+      ground.tk_ch4pool[il] = (x == MISSING_D || !(x > 0.0)) ? 0.0 : x;
+    }
   }
   if (restartdata.has_tk_rg_state) {
     tk_rg_unpack(restartdata.tk_rg_state);

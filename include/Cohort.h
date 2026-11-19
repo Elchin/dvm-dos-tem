@@ -185,6 +185,7 @@ private:
   void updateMonthly_Fir(const int & year, const int & midx, std::string stage);
   // ---- RTS (thermokarst = 1 only)
   void updateMonthly_Thermokarst(const int &year, const int &midx, std::string stage);
+  void updateMonthly_RTSMethaneB(const int & midx);  // scheme (b) (thermokarst_ch4_scheme = 2)
   void updateMonthly_RTSMethane(const int & midx);   // RTS CH4 (thermokarst_ch4)
   void updateMonthly_RTSFloorPrep();                  // per-layer RH modifiers before soil integration
   void updateMonthly_RTSFloorExport();                // monthly lateral export of floor mineral C/N

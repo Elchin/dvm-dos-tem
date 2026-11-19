@@ -253,6 +253,8 @@
     // "richards_dt_fix": 1
     // frozen_layer_liq_cap (default 0 = legacy): 1 = liquid in partly frozen layers limited to the
     // pore space left by ice (validity check + Richards groundwater input)
+    // RTS CH4 (thermokarst = 1 and "thermokarst_ch4": true only): "thermokarst_ch4_scheme" 1 = scheme (a)
+    // reduced form (default), 2 = scheme (b) per-layer CH4 pool (rts-ch4-b). See docs_src/rts_ch4.md.
     // snow_empty_cleanup defaults to 0 (legacy, bit-identical): 1 removes emptied snow layers
     // (no ice/liquid, zero thickness) at the end of each day's snow update, both solvers.
 //    //"dynamic_climate": 0,

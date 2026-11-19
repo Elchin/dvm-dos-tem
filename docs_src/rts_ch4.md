@@ -14,6 +14,14 @@ undisturbed on spatial cells); soil N remains low after a slump (spatial soil-N 
 2100); `thermokarst_folr` is a run-level setting — the v0.3 spatial test used folr 0.5, whereas the
 v0.2 spatial run used 0.8, so the spatial comparison is not a pure regrow-only perturbation.
 
+**Scheme selector (moss/rts-integration merge of rts-ch4-b):** both schemes are in the code.
+`model_settings.thermokarst_ch4_scheme` = 1 (default) runs scheme (a) exactly as before; 2 runs scheme (b)
+(`RTSMethane::computeB`, `Cohort::updateMonthly_RTSMethaneB`, per-layer pool `Ground::tk_ch4pool`, degassed in a
+slump month). Any other value is FATAL. With scheme 2, `pond_sat0`/`pond_tau` default to the (b) values 0.5 / 10 yr
+unless given. The pool is saved as `tk_ch4pool` (Y,X,soillayer) in restart files only when thermokarst = 1,
+thermokarst_ch4 = true and scheme = 2 (serial builds), so all other restart files are unchanged. Tests:
+`tests/rts/test_rts_units.cpp:test_rts_ch4_b`, `tests/rts/test_rts_ch4_b.py`.
+
 ---
 
 # RTS-light v0.2 CH4 prototypes (branches rts-ch4-a, rts-ch4-b)
