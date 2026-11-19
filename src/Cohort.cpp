@@ -408,6 +408,19 @@ void Cohort::initialize_state_parameters() {
   }
   soilenv.richards_infil_fix = md->richards_infil_fix; // Fix B2 (v5k)
   soilenv.richards.dt_fix = md->richards_dt_fix;       // bug R1 (default 0 = legacy)
+  if (md->moss.water_scheme == 1) {
+    // moss_water_scheme 1 (Task 7 water-leak fix): the scheme routes moss drainage into the
+    // Richards infiltration in bursts, often onto a partly frozen column, which exposes two
+    // legacy soil-water bugs that destroy or create water (Gydan T1: -1.2 % of P):
+    //  B2  Richards.cpp:45-57 early return (bdraindepth <= fstsoill->z) books infil into the
+    //      Richards copy of EnvData, so the water is lost (autumn freeze-up, about -1 mm/yr);
+    //  R1  Richards.cpp:195-206 a rejected substep re-solves with the old dt_dz, so the day
+    //      fluxes are applied for more than SEC_IN_DAY (wet days, +3..5 % of infil, +1.9 mm/yr).
+    // Both fixes already exist behind switches; scheme 1 forces them on. Legacy (scheme 0)
+    // keeps the user-chosen values, so output with the moss switches off is bit-identical.
+    soilenv.richards_infil_fix = 1;
+    soilenv.richards.dt_fix = 1;
+  }
   soilenv.frozen_liq_cap = md->frozen_layer_liq_cap;   // 0 = legacy
   soilenv.richards.frozen_liq_cap = md->frozen_layer_liq_cap;
   soilenv.runon_energy_mode = md->runon_energy_mode;   // phase 3 v2 (0 = legacy)
@@ -1204,6 +1217,51 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
       }
       wf << "\n";
       wdg_day++;
+    }
+
+    if (md->energy_diag == 1) {
+      // whole-column daily water budget (output only, energy_diag 1): storage after today's processes.
+      // residual = d(W_layers + puddle + canopy) - (rain + snow - eet - qover - qdrain), computed offline
+      static long wb_day = 0;
+      std::ofstream bf((md->output_dir + "water_daily.csv").c_str(), std::ios::app);
+      const int NL = 8;
+      if (wb_day == 0) {
+        bf << "day,year,doy,rain,snow,eet,soi_evap,veg_evap,veg_sublim,veg_tran,snw_sublim,qover,qdrain,qinfl,"
+           << "W_snow,W_moss_liq,W_moss_ice,W_soil_liq,W_soil_ice,puddle,veg_rwater,veg_snow,swe,"
+           << "floor_added,clamp_removed,evap_unapplied,m_intercept,m_frzin,m_frz_runoff,m_rise,m_drain,m_evap,"
+           << "fib_liq,fib_minliq,fib_maxliq,fib_frozen,fib_ff,n_soil,rich_err,rich_infil,rich_evap,rich_nal,rich_nlay,rich_nfrz,rich_nsub";
+        for (int k = 0; k < NL; k++) { bf << ",L" << k << "_liq,L" << k << "_ice,L" << k << "_dz"; }
+        bf << "\n";
+      }
+      double ws = 0.0, wml = 0.0, wmi = 0.0, wsl = 0.0, wsi = 0.0; int ns = 0;
+      for (Layer* l = ground.toplayer; l != NULL; l = l->nextl) {
+        if (l->isRock) { continue; }
+        if (l->isSnow) { ws += l->liq + l->ice; }
+        else if (l->isMoss) { wml += l->liq; wmi += l->ice; }
+        else if (l->isSoil) { wsl += l->liq; wsi += l->ice; ns++; }
+      }
+      const Soil_Env::MossWaterDiag& d = soilenv.moss_wd;
+      Layer* fb = ground.fstsoill;
+      auto fin = [](double v) { return (std::isfinite(v) && fabs(v) < 1.0e20) ? v : 0.0; };
+      bf.precision(12);
+      bf << wb_day << "," << cd.year << "," << doy << "," << edall->d_a2l.rnfl << "," << edall->d_a2l.snfl << ","
+         << edall->d_l2a.eet << "," << edall->d_soi2a.evap << "," << edall->d_v2a.evap << "," << edall->d_v2a.sublim << ","
+         << edall->d_v2a.tran << "," << edall->d_snw2a.sublim << "," << edall->d_soi2l.qover << "," << edall->d_soi2l.qdrain << ","
+         << edall->d_soi2l.qinfl << "," << ws << "," << wml << "," << wmi << "," << wsl << "," << wsi << ","
+         << edall->d_soi2l.magic_puddle << "," << fin(edall->d_vegs.rwater) << "," << fin(edall->d_vegs.snow) << ","
+         << edall->d_snws.swesum << "," << soilenv.floor_added_mm << "," << soilenv.clamp_removed_mm << ","
+         << soilenv.evap_unapplied_mm << "," << d.intercept << "," << d.frzin << "," << d.frz_runoff << ","
+         << d.rise << "," << d.drain << "," << d.evap << ","
+         << (fb ? fb->liq : 0.0) << "," << (fb ? fb->minliq : 0.0) << "," << (fb ? fb->maxliq : 0.0) << ","
+         << (fb ? fb->frozen : 0) << "," << (fb ? fb->frozenfrac : 0.0) << "," << ns << "," << soilenv.richards.mass_err_mm << "," << soilenv.richards.infil_in_mm << "," << soilenv.richards.evap_in_mm << "," << soilenv.richards.diag_nal << "," << soilenv.richards.diag_nlay << "," << soilenv.richards.diag_nfrz << "," << soilenv.richards.diag_nsub;
+      int k = 0;
+      for (Layer* l = ground.toplayer; l != NULL && k < NL; l = l->nextl) {
+        if (l->isSnow) { continue; }
+        bf << "," << l->liq << "," << l->ice << "," << l->dz; k++;
+      }
+      for (; k < NL; k++) { bf << ",,,"; }
+      bf << "\n";
+      wb_day++;
     }
 
     //update Snow structure at daily timestep (for soil structure

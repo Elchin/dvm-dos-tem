@@ -776,6 +776,7 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   double draindepth = ground->draindepth;
   int topind = fstsoill->solind;
   floor_added_mm = 0.0;
+  clamp_removed_mm = 0.0;
   evap_unapplied_mm = 0.0;
   for (int il=0; il<MAX_SOI_LAY; il++) { uptake_applied[il] = 0.0; } // Fix (c) (v5j), bookkeeping only
 
@@ -841,6 +842,7 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
   puddle_atm_Jm2 = 0.0;
   infil_h_spec = 0.0;
   richards.qgw_mm = 0.0;   // diagnostic only (Richards may not run today)
+  richards.mass_err_mm = 0.0; richards.infil_in_mm = 0.0; richards.evap_in_mm = 0.0; richards.diag_nal = richards.diag_nlay = richards.diag_nfrz = richards.diag_nsub = 0;   // diagnostic only
   // mode 2 (diagnostic): same energy treatment as mode 1 but keeps the upstream recycling.
   const bool recycle_runon = cd->runon_status && (runon_energy_mode != 1);
   if( (rnth + melt) > 0 ) {
@@ -1616,6 +1618,7 @@ void Soil_Env::checkSoilLiquidWaterValidity(Layer *topsoill, int topind){
           BOOST_LOG_SEV(glg, warn) << "Layer " << currl->indl << " liquid forced down to maximum: difference "
                                   << currl->liq - effmaxliq[ind] << " mm";
         }
+        clamp_removed_mm += currl->liq - effmaxliq[ind]; // diagnostic only
         currl->liq = effmaxliq[ind];
       }
     }

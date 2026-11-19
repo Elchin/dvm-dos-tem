@@ -57,6 +57,9 @@ struct Params {
   //     theta_eq = theta_sat (psi / psi_sat)^(-1/b) (psi = suction of the top soil layer; Brooks-Corey,
   //     Beringer et al. 2001 moss values) into the soil infiltration, is refilled from the top soil layer up
   //     to theta_eq, and supplies soil evaporation first. Freezing by the enthalpy solver (thermal_solver 1).
+  //     Scheme 1 also forces richards_infil_fix = 1 and richards_dt_fix = 1 (Cohort.cpp): the moss drainage
+  //     reaches Richards in bursts and on partly frozen columns, where the legacy B2 / R1 bugs lose / create
+  //     about 1-2 mm/yr (docs/moss_dyn_worknotes.md section 9).
   int    water_scheme = 0;   // moss_water_scheme
   double w_bsw      = 1.0;   // moss_bsw (-), Beringer et al. 2001 via Chadburn et al. 2015
   double w_psisat   = 0.12;  // moss_psisat (m suction), Beringer et al. 2001 via Chadburn et al. 2015

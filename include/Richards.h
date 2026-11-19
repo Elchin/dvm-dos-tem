@@ -30,6 +30,7 @@ public :
   // Fix B2 (v5k): true when the last update() returned early (drainage depth at
   // or above the top of its domain: no infiltration, evaporation or uptake applied).
   bool early_return = false;
+  double mass_err_mm = 0.0, infil_in_mm = 0.0, evap_in_mm = 0.0; int diag_nal = 0, diag_nlay = 0, diag_nsub = 0, diag_nfrz = 0;   // diagnostic only (energy_diag water log): final - target column liquid
   double qevap; // mm/day
   double e_ice; //ice impedance factor (CLM5)
 

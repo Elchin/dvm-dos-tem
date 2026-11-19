@@ -40,6 +40,7 @@ void Richards::update(Layer *fstsoill, Layer* bdrainl,
   qdrain = 0.0;
   qgw_mm = 0.0;
   early_return = false;
+  mass_err_mm = 0.0; infil_in_mm = infil * SEC_IN_DAY; evap_in_mm = evap * SEC_IN_DAY;   // diagnostic only
 
   if (bdraindepth <= fstsoill->z) {// no percolation
     early_return = true; // Fix B2 (v5k): Soil_Env re-books the water when richards_infil_fix = 1
@@ -244,6 +245,9 @@ void Richards::update(Layer *fstsoill, Layer* bdrainl,
     final_liq += currl->liq;
     currl = currl->nextl;
   }
+  mass_err_mm = final_liq - target_liq;   // diagnostic only
+  diag_nal = num_al; diag_nsub = (int)n_substep; diag_nlay = 0; diag_nfrz = 0;
+  for (Layer* dl = fstsoill; dl != NULL && dl->indl <= drainind && dl->isSoil; dl = dl->nextl) { diag_nlay++; if (dl->frozen > 0) diag_nfrz++; }
   if(fabs(final_liq - target_liq) > 5.0){
     BOOST_LOG_SEV(glg, warn) << "Problem in Richards soil water solver: final column liquid - target column liquid = "
                              << final_liq - target_liq << " mm";

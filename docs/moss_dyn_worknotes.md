@@ -410,3 +410,38 @@ depends on conditions"; "Yes. Make new scheme Gydan setting".
 `model_settings_set` = {moss_water_scheme 1, moss_tc_scheme 2} for every case, new W `~/cal-gydan/rmf2_moss`, ledger carried 5.33141.
 Estimates in MOSS_SETTING.md: T re-check of the accepted case 0.25 core-h, T top 3 0.49, + A3c thermal re-check 0.68, + reduced
 B1 1.44 (to 6.77 of 7.0); the full B1 grid does not fit.
+
+## 9. Task 7: whole-column water log and the scheme-1 water leak (binary `dvmdostem_moss_v5`, md5 cfbbfaa379b59d44383ecc3c74be2cc5)
+
+**Why.** The P2 Gydan transients (section 8 setting, `~/cal-gydan/rmf2_moss`) failed the 1 % water-closure gate for every rmf < 1 case (T1 −1.18 %, T2 −1.09 %, T3 −1.07 % of P on tr), while the moss layer itself closed to 0.000 mm/yr. Elchin: "Yes, add the column water log and run the two short diagnostic runs (~0.1 core-h), then fix the leak".
+
+**Column water log (diagnostic only, `energy_diag 1`).** `Cohort.cpp` now writes `water_daily.csv` next to `energy_daily.csv`: precipitation, every ET component, qover/qdrain/qinfl, storage by compartment (snow, moss liq/ice, soil liq/ice, puddle, canopy) and the top 8 non-snow layers (liq, ice, dz), the minimum-water top-up (`floor_added`), the new max-clamp counter (`clamp_removed`, `Soil_Env::checkSoilLiquidWaterValidity`), `evap_unapplied`, all moss-step fluxes, and Richards diagnostics (`rich_err` = final − target column liquid, `rich_infil`, `rich_evap`, active / frozen layer counts, substeps). Residual: r = ΔS − (rain + snow − EET − qover − qdrain), S uses `swe` (W_snow from the layer list misses a thin early-winter pack for a day and gives cancelling ±12 mm pairs). Default output is unchanged (`energy_diag` 0 writes nothing).
+
+**Diagnostic runs** (`~/tem-dev/moss-work/runs/D_*`, Gydan G, T1 parameters: rmf 0.05, kdc ×0.5, snwdenmax 300, S21H; harness pr10/eq300/sp30 + tr66; about 68 s each):
+
+| run | column residual (mm/yr, + = created) | Richards final − target | rest |
+|---|---|---|---|
+| D_off (schemes off) | +0.21 | +0.15 | +0.06 (legacy moss copy noise) |
+| D_on (water 1 + tc 2), before fix | +0.88 | **+1.85** | **−0.97** |
+| D_fix (water 1 + tc 2), fixed | **+0.013** | 0.000 | +0.013 |
+
+**Hypothesis refuted.** The minimum-water top-up is never used (`floor_added` = 0, `clamp_removed` = 0 in both runs); reported soil evaporation equals what is removed (`evap_unapplied` days close). The fibric does sit at its minimum far more often under scheme 1 (36.9 vs 2.7 days/yr), but that is not where the water goes.
+
+**Root cause: two existing legacy soil-water bugs that scheme 1 exposes**, because the moss drainage (216 mm/yr) reaches Richards as bursts of infiltration, often on a partly frozen column:
+
+1. **R1, water created, +1.85 mm/yr** (`src/Richards.cpp:195-206`): when a trial substep is rejected and halved, legacy re-solves with the `dt_dz` of the longer substep but advances `dtdone` by the halved one, so the day's fluxes are applied for more than SEC_IN_DAY. All 1649 error days have ≥ 25 substeps (no-error days ≤ 25); error = +3…5 % of infiltration (median 3.9 %), max +2.4 mm/day. Legacy has the same bug, but at +0.15 mm/yr.
+2. **B2, water destroyed, −0.97 mm/yr** (`src/Richards.cpp:45-57`, called from `Soil_Env.cpp:973`): on autumn freeze-up days with the top soil layer partly frozen (`bdraindepth <= fstsoill->z`), `Richards::update` returns early and books the infiltration (here the moss drainage, up to 6.8 mm/day) into its own `ed` copy, so it vanishes; 45 days in 66 yr, all doy 260-290 with the moss partly frozen at its minimum liquid.
+
+**Fix** (`src/Cohort.cpp`, after line 410): both bugs already have fixes behind switches (`richards_infil_fix`, v5k `rebookUnappliedRichards` → puddle/qover; `richards_dt_fix`, recompute `dt_dz` on every retry). `moss_water_scheme 1` now forces both on; scheme 0 keeps the user values, so the switches-off path is untouched. Water is conserved (D_fix +0.013 mm/yr, max |day| 0.035 mm); energy is unchanged (energy_daily `res` max 0.0028, same as before; `unattr` 0; T1 tr E_resid_rel 2.4e-11).
+
+![water leak](figures/moss_water7_leak.png)
+
+*Figure: cumulative daily column-water residual for the three diagnostic runs (left) and the scheme-1 leak split into R1 and B2 (right). `tests/moss_dyn/plot_water_leak.py`.*
+
+**Checks.**
+- Unit tests 450/450 pass (doctest; the 8 failed assertions are the expected-fail / may-fail cases, as before).
+- Bit identity with all new switches off: T0h and G0h (v5) vs T0ref/G0ref and T0f/G0f, 486/486 variables identical each.
+- Gydan T1 re-run (kit copy `~/cal-gydan/kit_v9_moss_fix7`, W `~/cal-gydan/rmf2_moss/fix7`, same case config and parameters as P2 T1 except the binary): water closure **tr −1.18 % → +0.03 % of P (−4.68 → +0.14 mm/yr), PASS**; sc −0.79 % → +0.79 % (PASS both, 5-yr window). ALD 0.597 → 0.582 m, T10m −5.99 → −6.00 °C, SOC30 6.49 → 6.49, SOC100 12.90 → 13.07 kg/m², RH Oct-Apr share 0.242 → 0.230, GPP 2000-2020 146.9 → 170.2, VEGC 141.8 → 165.1; veg ratio vs the P2 Tref (v4, not re-run) 0.627/0.650 → 0.726/0.757 (still below the 0.8 gate); safety-net events 748 → 1351 (Tref 3028). The leak was drying the column, which is part of the moss-run GPP deficit.
+- Ledger: 5.83731 + 0.10484 = **5.94215 core-h** of the 6.1 stop (`rmf2_moss/fix7/logs/ledger.json`).
+
+**Caveats.** Tref (rmf 1) and T2/T3 were not re-run with the fixed binary, so the veg ratio is against an un-fixed reference. Legacy runs keep R1/B2 unless `richards_dt_fix` / `richards_infil_fix` are set (unchanged default by design).

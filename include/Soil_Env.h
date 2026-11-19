@@ -84,6 +84,7 @@ public:
   // checkSoilLiquidWaterValidity(), and soil evaporation that was reported but never removed
   // from the soil (frozen-top branch). Cohort subtracts these from the reported ET.
   double floor_added_mm;
+  double clamp_removed_mm = 0.0;   // diagnostic only: liquid removed by the max-liquid clamp (checkSoilLiquidWaterValidity)
   // wetland (phase 3) diagnostics, mm/day: run-on inflow added to infiltration today (0 unless
   // cd->runon_status); groundwater recharge is Richards::qgw_mm.
   double runon_in_mm = 0.0;
