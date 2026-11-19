@@ -483,3 +483,79 @@ For comparison: pre-fix P2 (v4, vs its own Tref) T2 0.667/0.695, T1 0.627/0.650,
 *Figure: veg ratios, SOC 0–100, cold-season Rh share and water closure vs rmf, fixed (v5) against the fixed reference, pre-fix P2 and legacy-moss rmf1.*
 
 **Ledger:** 5.94215 (after fix7) + P3 0.23427 (Tref 0.11402, A3c ×4 0.12025) = 6.17642; + P4 T2 0.10459 + T3 0.10819 = **6.38920 core-h** of 7.0 (`rmf2_moss/p4/logs/ledger.json`).
+
+## 11. moss/rts-integration: rts-light-cbal + rts-ch4-b merged into the moss work (2026-11-19)
+
+Approved by Elchin ("Yes", 2026-11-19 06:52 EST): new branch on the VM merging rts-ch4-b and rts-light-cbal into
+the moss work, then unit tests and the switches-off identity check; RTS branches untouched. Local only (not pushed).
+
+**Branch** `moss/rts-integration` (worktree `~/tem-dev/moss-rts-wt`), from moss/dyn-moss `f7e1dd2b`.
+RTS branches read as `refs/ro/rts-light-cbal` = 6659317e and `refs/ro/rts-ch4-b` = 6d49ad57 (unchanged).
+Normal merge commits, no rebase, no force:
+
+| commit | parents | content |
+|---|---|---|
+| `8e481bd6` | f7e1dd2b + 6659317e (rts-light-cbal) | history-only: tree identical to f7e1dd2b |
+| `f27dfa6e` | 8e481bd6 + 6d49ad57 (rts-ch4-b) | CH4 scheme (b) behind `thermokarst_ch4_scheme = 2` |
+
+### 11.1 Merge 1, rts-light-cbal (7 code files / 14 hunks + 158 binary `tests/rts/reference/*.nc`)
+rts-light-cbal applies the rts-deepc C/N conservation fixes unconditionally. All of them are already in
+moss/dyn-moss as default-off switch ports (precedent 95590b49, merge plan 7.2), so every conflict was resolved as ours:
+
+| file (hunks) | rts-light-cbal change | existing switch in HEAD |
+|---|---|---|
+| include/Integrator.h (1), src/Integrator.cpp (4) | double-precision soil state in acceptStep, cover_negative_orgn | `n_safetynet_conserve 2` (d9336b3b) |
+| include/Soil_Bgc.h (1), src/Soil_Bgc.cpp (3) | blackhole litter/root-N credit, ORGN/AVLN follow C | `applySoilSafetyNet` credit, `layer_n_remap_fix` (incl. legacy `=+`) |
+| src/Ground.cpp (1) | root litter with no non-moss layer, no-fibric column | `tk_litter_fix`, `tk_nofibric_fix` |
+| src/Cohort.cpp (2) | rootless N, NBAL_DIAG | `n_rootless_fix 2`, NBAL_DIAG gated by thermokarst 1 |
+| src/Soil_Env.cpp (2) | same as above (env side) | ours |
+| tests/rts/reference/*.nc (158) | regenerated references | ours (HEAD lineage references) |
+
+Thermokarst.cpp auto-merged to text identical to HEAD (root-removal cap already there).
+
+### 11.2 Merge 2, rts-ch4-b (19 files / 39 hunks)
+rts-ch4-b replaces scheme (a) by scheme (b); here scheme (a) stays the default and (b) is selectable:
+- `include/RTSMethane.h` (4), `src/RTSMethane.cpp` (2): scheme (a) kept; (b) params/keys, layer fields and
+  `RTSMethane::computeB()` = rts-ch4-b `compute()` with an unchanged body (diff-checked). Scheme 2 uses the (b)
+  ponding defaults 0.5 / 10 yr unless `thermokarst_ch4_pond_sat0/_tau` are set.
+- `include/ModelData.h` (2), `src/ModelData.cpp` (1): new `thermokarst_ch4_scheme` (1 default, 2 = b; else FATAL).
+- `include/Cohort.h` (1), `src/Cohort.cpp` (4): `updateMonthly_RTSMethane` dispatches to
+  `updateMonthly_RTSMethaneB` (rts-ch4-b function, body unchanged except the call name) for scheme 2; slump-month
+  pool degassing only for scheme 2. `Ground::tk_ch4pool` auto-merged.
+- `include/RestartData.h` (1), `src/RestartData.cpp` (5): rts-ch4-b wrote `tkch4pool` in every restart and the
+  MPI type. Replaced by optional `tk_ch4pool` in the RTS-state group, written only with thermokarst 1 +
+  thermokarst_ch4 + scheme 2, read if present. Restart files of all other runs are unchanged (checked).
+- Makefile (2), SConstruct (1), output_spec.csv (1), OutputHolder.h (1), diagnostics.h (1), Runner.cpp (1),
+  tests/rts/rtslib.py (1): ours. HEAD already has RTSMethane and all TKCH4* outputs. A line-by-line check found no
+  rts-ch4-b line missing.
+- config/config.js (1): ours plus a comment for the new key. docs_src/rts_ch4.md (4, add/add): ours plus a selector note.
+- tests: test_rts_ch4.py (3) ours, the rts-ch4-b version added as `tests/rts/test_rts_ch4_b.py` (scheme 2).
+  test_rts_units.cpp (3) ours, plus `test_rts_ch4_b` (computeB).
+
+### 11.3 Tests (VM, ≤3 cores, outside the Gydan ledger; logs `~/tem-dev/moss-work/merge_rts/`)
+- Build -Werror clean. `make unittest`: 450/450 test cases, 8 known failing assertions (same as before).
+- RTS CH4 unit tests (scheme a + b, standalone build of the two test functions): 1858 passed, 0 failed.
+  The full `tests/rts/test_rts_units.cpp` no longer compiles on f7e1dd2b (pre-existing; it references
+  `Integrator::cover_negative_orgn`, `Climate::monthly2daily_mp`, which are not in this lineage).
+  The Makefile has no rts-unit-test target.
+- Identity, all switches off, merged `dvmdostem_rtsint` vs f7e1dd2b (`dvmdostem_moss_v5`):
+  harness T0 and G0 (two-stage, RTS 2021): 486/486 each, vs T0h/G0h and vs T0ref/G0ref.
+  Moss on (water 1, tc 2, energy_diag, G, to stage 2a): 335/335 vs D_fix, water_daily.csv byte-identical.
+  RTS synthetic cell, baseline / RTS on (V01_OFF) / CH4 scheme a on: 33/34, 33/34, 42/42 (only
+  run_status `total_runtime` differs).
+- vs the RTS branch binaries (scratch builds `scratch_ch4b`, `scratch_lcbal`): each reproduces its own stored
+  reference exactly (21/21 base, 27/27 rts). The merged binary differs from them (synthetic base 10/32, rts 5/32
+  identical). This is expected: they are built on the old base 23322af0 / ac022b55, without the moss/dyn-moss
+  lineage physics. f7e1dd2b differs from them identically, so the merge itself adds no difference.
+  On this lineage, HEAD's stored `tests/rts/reference/{baseline,rts}` (v0.1) are not reproduced either (pre-existing).
+- Smoke: synthetic RTS + CH4 C closure (C = VEGC+SOC+DEADC+DWDC+TKCH4POOL): max |res| 0.00058 (a), 0.00057 (b) g/m2/month.
+  CH4 pool balance 4e-17. The scheme b pool carries across a tr→sc restart exactly. Harness T with scheme b: only stage-2b
+  outputs change (58 of 487), stages 1/2a are identical. Moss water closure 0.010 / 0.013 mm/yr (stage 1 / 2a).
+
+### 11.4 Behaviour differences
+- Scheme 1 (default), or CH4 off: none (bit-identical).
+- Scheme 2 in the merged code vs the rts-ch4-b binary: same CH4 code, different host model. On the synthetic cell
+  over 30 years: emission 3.02 vs 5.41 gC/m2, production 11.0 vs 18.0 gC/m2, pool max 0.041 vs 0.053 gC/m2.
+- Restart: `tk_ch4pool` is serial-only and in the RTS-state group, unlike rts-ch4-b (soil vars + MPI).
+
+![moss_rts_integration](figures/moss_rts_integration.png)
