@@ -38,6 +38,44 @@ Running the first K eq years N-unlimited lets C pools (leaf, litter, SOM) build 
 These are model questions, not fixed by this switch; the switch only removes the dependence of the spin-up outcome on the
 early-eq path.
 
-## P0 results
+## P0 results (kit v4, ledger ~/cal-cmt06/j4, binary dvmdostem_v4_43c28e8f md5 7b850dc11241adaf743fd83179daba6d)
 
-(filled in after the kit v4 P0 pilot; see below)
+All runs: CMT06 Toolik cell, fix B (`richards_lowsat_deriv_fix=1`, other Richards switches 0), pr100/eq1000/sp200, tr115, sc30.
+Instrumented runs write 12 yearly eq variables (stage 1 only; tr/sc continue from the same run's own fresh restart-sp).
+
+**Switch-off identity** (short stage 1, `-p 100 -e 30 -s 0`): restart-pr.nc and restart-eq.nc are variable-for-variable
+identical (all 63 variables) for
+- `eq_nunlim_years=0`, all Richards switches 0 vs the kit v3 binary 5a55bb53, and
+- `eq_nunlim_years=0`, fix B vs the 0c40fd48 binary with fix B.
+
+The files differ only in the global `Git_SHA` attribute. With `eq_nunlim_years=10`, restart-pr is byte-identical and
+restart-eq differs, so the switch path is active.
+
+| run | K | eq years 900-999 GPP | alive (kit gate) | GPP 1990-2014 | (a) post-switch leaf C / AVLN / GPP:INGPP min | leaf C:N at K-1 / K / K+50 |
+|---|---|---|---|---|---|---|
+| X3 | 100 | 23 | dead | 19.9 | 11.7 / 0.0095 / 0.086: FAIL | 89 / 99 / 47 |
+| X3 | 200 | 125 | alive | 100.7 | 18.5 / 0.082 / 0.376: pass | 30 / 36 / 49 |
+| X1 cmax0.9 | 100 | 2.4 | dead | 3.1 | 2.9 / 0.0015 / 0.019: FAIL | 71 / 87 / 37 |
+| S1b nfw0.85 | 100 | 263 | dead (dies in sp/tr) | 0.9 | 154 / 0.18 / 0.52: pass | 113 / 105 / 48 |
+
+- **(b) K independence fails.** For X3, K=100 vs K=200 gives eq years 900-999 GPP 23 vs 125: the switch-on is a new fork.
+- **The switch-on shock happens.** During the N-off years leaf C swings with a period of about 25 years (30 to 270 g/m2).
+  The outcome depends on the plant state in the year the N cycle switches on: X3 at K=100 switches with leaf C:N 99 and
+  collapses within about 50 years; at K=200 it switches with C:N 36 and survives.
+- **Two-start gate.**
+
+  | run | tr GPP 1990-2014, own spin-up vs alive-ref start | sc last-10 GPP | gate |
+  |---|---|---|---|
+  | X3 K=200 | 100.7 vs 94.4 (6 %) | 177 vs 208 (16 %, limit 15 %) | FAIL |
+  | X3 K=100 | dead vs alive | | FAIL |
+  | X1 cmax0.9 K=100 | dead vs alive | | FAIL |
+  | S1b nfw0.85 | dead vs dead (alt dies by ~1950) | | consistent but not alive |
+
+- **The alive reference is a legacy-binary state.** Its tr water closure under fix B is -2.5 %P (X3) and -126 %P (X1 cmax0.9).
+  A fix-B reference state is needed for any later two-start check.
+
+![P0 eq trajectories](figures/eq_nunlim_p0_eq_trajectories.png)
+![P0 two-start GPP](figures/eq_nunlim_p0_two_start_gpp.png)
+
+**Conclusion.** The switch works and is bit-identical at 0, but at K=100 it does not remove the spin-up bistability. It moves
+the fork to the switch-on transient. Not adopted for R0.
