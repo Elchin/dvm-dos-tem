@@ -578,6 +578,18 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
       std::cerr << "FATAL: " << err << std::endl;
       exit(EXIT_FAILURE);
     }
+    {
+      Json::Value v = ms.get("snowmelt_heat_cap", false);
+      if (!(v.isBool() || bnf::valid_int(v, 0, 1))) {
+        std::cerr << "FATAL: model_settings.snowmelt_heat_cap must be false/0 (legacy, default) or true/1" << std::endl;
+        exit(EXIT_FAILURE);
+      }
+      snowmelt_heat_cap = v.asBool();
+      if (snowmelt_heat_cap && thermal_solver != 1) {
+        std::cerr << "FATAL: model_settings.snowmelt_heat_cap applies to thermal_solver = 1 only" << std::endl;
+        exit(EXIT_FAILURE);
+      }
+    }
     if (thermal_solver == 1 && stefan_front_resist_fix != 0) {
       std::cerr << "WARNING: model_settings.stefan_front_resist_fix is ignored with thermal_solver = 1"
                 << " (no Stefan fronts are integrated)" << std::endl;
@@ -792,6 +804,7 @@ ModelData::ModelData():force_cmt(-1) {
   wetland_enabled = false; wetland_ch4 = true; wetland_runon = false; wetland_groundwater = false; // phase 3 (off)
   { const int wc[] = {6, 31, 32, 55, 61, 75, 92, 93}; wetland_cmts.assign(wc, wc + 8); }
   m2d_mean_preserving = false; // m2d (off)
+  snowmelt_heat_cap = false; // (off)
   interception_scheme = 0; wetland_diag = 0; eq_co2_mode = 0; runon_energy_mode = 0; ch4_conserve = 0; ch4_daily = 0; reco_ch4ox_output = 0; keep_expelled_water = 0;
   ch4_module = false; runon_enabled = false; groundwater_enabled = false;
   et_fpc_once_fix = 0; nv_snow_bury_fix = 0; rain_int_lai_fix = 0; nv_rain_surface = 0; // v5l (off)

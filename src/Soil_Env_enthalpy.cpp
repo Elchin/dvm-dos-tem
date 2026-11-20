@@ -94,6 +94,38 @@ double Soil_Env::enthMeltSource(const double tsurface) const {
   return fmax(melt_mm, 0.0) * LHFUS / SEC_IN_DAY;      // W m-2
 }
 
+// snowmelt_heat_cap: E J m-2 of melt energy into the snow cells from the top: each cell with ice is first
+// warmed to 0 C (cold content), then its ice melts at 0 C (ice -> liq, Lf each); the next cell gets the rest.
+// Stops at the first non-snow layer. Returns the energy the pack could not take (J m-2, >= 0). H = C T - ice Lf
+// with snow on the free-water curve, so every cell stays on the curve (T < 0 with liq = 0, or T = 0).
+double Soil_Env::enthApplyMeltDirect(double E, EnergyDiag& q) {
+  q.mdir = q.mcc = q.mmelt = 0.0;
+  for (Layer* l = ground->toplayer; l != NULL && l->isSnow && E > 0.0; l = l->nextl) {
+    if (!(l->ice > 0.0)) { continue; }        // nothing to melt (emptied cell): skip, zero heat capacity
+    if (l->tem < 0.0) {
+      const double C = enthLayerCs(l) + fmax(l->liq, 0.0) * SHCLIQ + l->ice * SHCICE;
+      const double need = -C * l->tem;
+      if (E < need) { l->tem += E / C; q.mcc += E; E = 0.0; break; }   // T < 0, liq unchanged: on the curve
+      l->tem = 0.0; q.mcc += need; E -= need;
+    }
+    if (E < l->ice * LHFUS) {                 // partial melt of this cell: all of E used
+      const double m = E / LHFUS;
+      l->ice -= m; l->liq = fmax(l->liq, 0.0) + m; q.mmelt += m; E = 0.0;
+    } else {                                  // cell melts out at 0 C; the rest goes to the next cell
+      const double m = l->ice;
+      l->liq = fmax(l->liq, 0.0) + m; l->ice = 0.0; q.mmelt += m; E -= m * LHFUS;
+    }
+    // back onto the cell's freezing curve at the same H (the free-water curve spans [-eps, 0], so a
+    // mixed cell sits just below 0 C; the solver works from T): H-conserving, as step 3
+    enthalpy::Cell c; enthalpyCell(l, c);
+    const double h = enthalpy::Hstate(c, l->tem, fmax(l->liq, 0.0), fmax(l->ice, 0.0));
+    double lq = 0.0, ic = 0.0;
+    l->tem = enthalpy::equilibrate(c, h, lq, ic); l->liq = lq; l->ice = ic;
+  }
+  q.mdir = q.mcc + q.mmelt * LHFUS;
+  return fmax(E, 0.0);
+}
+
 namespace {
 // one backward-Euler step with dt halving on non-convergence (depth <= 6)
 bool enthStep(Soil_Env& se, const std::vector<enthalpy::Cell>& cells, std::vector<double>& T,
@@ -178,7 +210,20 @@ void Soil_Env::enthalpyThermalStep(const double tsurface, const double qmelt_Wm2
   std::vector<enthalpy::Cell> cells(n);
   std::vector<double> T(n), S(n, 0.0);
   for (int i = 0; i < n; ++i) { enthalpyCell(L[i], cells[i]); T[i] = L[i]->tem; }
-  if (n > 0 && L[0]->isSnow) { S[0] = qmelt_Wm2; }
+  double hdir = 0.0;   // snowmelt_heat_cap: enthalpy put into the snow cells before the solve (J m-2)
+  if (n > 0 && L[0]->isSnow) {
+    if (snowmelt_heat_cap == 1) {
+      // Melt energy is used where it melts snow: cold content first, then Lf x ice, top down; what the
+      // pack cannot take goes back to the surface (q.mret), so the melt source cannot heat the soil or
+      // overheat a melted-out top cell inside the solve. Default 0: legacy heat source S[0].
+      const double hb = columnEnthalpyE();
+      q.mret = enthApplyMeltDirect(fmax(qmelt_Wm2, 0.0) * SEC_IN_DAY, q);
+      hdir = columnEnthalpyE() - hb;
+      for (int i = 0; i < n; ++i) { enthalpyCell(L[i], cells[i]); T[i] = L[i]->tem; }
+    } else {
+      S[0] = qmelt_Wm2;
+    }
+  }
   enthalpy::BC bc;
   bc.top_type = 1; bc.cn_top = 1.0e2; bc.Ts = tsurface;   // legacy virtual top layer conductance
   bc.q_bot = geothermal_flux_Wm2;
@@ -239,7 +284,7 @@ void Soil_Env::enthalpyThermalStep(const double tsurface, const double qmelt_Wm2
   }
   enthCheckFinite("after the solve");
   const double hs = columnEnthalpyE();
-  q.gtop = acc.gtop; q.gbot = acc.gbot; q.src = acc.src;
+  q.gtop = acc.gtop; q.gbot = acc.gbot; q.src = acc.src + hdir;
   q.res = (hs - h0) - (q.gtop + q.gbot + q.src);
   // pore-volume ice cap (as Stefan::updateWaterAfterFront): excess is expelled water
   for (int i = 0; i < n; ++i) {

@@ -225,6 +225,12 @@ public:
   int interception_scheme;
   int wetland_diag;
   bool m2d_mean_preserving = false; // model_settings.monthly2daily_mean_preserving (default false = legacy interpolation)
+  // model_settings.snowmelt_heat_cap (thermal_solver 1 only; default false = legacy, bit-identical): true = the
+  // radiation/SEB snow-melt energy is applied to the snow cells before the solve (cold content first, then
+  // melt, top down) instead of as a heat source S[0] in the top snow cell; it is capped at what the pack can
+  // take (cold content + Lf x ice) and the rest is returned to the surface (not put into the column, booked
+  // as EnergyDiag::mret). docs/WORK_NOTES_snowmelt_heat_cap.md
+  bool snowmelt_heat_cap = false;
   int eq_co2_mode;   // model_settings.eq_co2_mode: 0 = first co2 value in EQ/pre-run (default), 1 = baseline mean (upstream)
   // Phase 3 v2 (Elchin 2026-11-11: "1 agree, 2 fix it, 3 agree"). All default 0 = bit-identical.
   // runon_energy_mode: (a) run-on/ponded water carry energy at max(Tair, 0 C); puddle freeze/thaw

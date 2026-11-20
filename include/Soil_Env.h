@@ -55,6 +55,11 @@ struct EnergyDiag {
   double rsnow = 0.0, rwater = 0.0, wlayer = 0.0;
   long remapfb = 0;
   int solves = 0, fallbacks = 0, enth = 0;
+  // snowmelt_heat_cap (thermal_solver 1, switch on only; J m-2 or kg m-2 per day): mdir = melt energy applied
+  //  to the snow cells before the solve (part of src), mcc = of which cold content, mmelt = ice melted by it
+  //  (mdir = mcc + LHFUS * mmelt), mret = melt energy the pack could not take, returned to the surface
+  //  (not in the column, not in src).
+  double mdir = 0.0, mcc = 0.0, mmelt = 0.0, mret = 0.0;
 };
 
 struct SebDiag {
@@ -168,6 +173,9 @@ public:
   int thermal_solver = 0, thermal_sfcc = 1, thermal_face_mode = 0, thermal_nl_solver = 0,
       thermal_substeps = 1;
   double geothermal_flux_Wm2 = 0.0;   // bottom heat flux into the column (W m-2), this cohort
+  int snowmelt_heat_cap = 0;         // model_settings.snowmelt_heat_cap (0 = legacy S[0] heat source)
+  // snowmelt_heat_cap: apply E (J m-2) to the snow cells top down (cold content, then melt); returns the rest
+  double enthApplyMeltDirect(double E, EnergyDiag& q);
   // between-step enthalpy bookings (J m-2), added by Cohort around the non-thermal modules
   double enth_bk_snow = 0.0, enth_bk_water = 0.0, enth_bk_layer = 0.0, enth_bk_fire = 0.0;
   double enth_h_last = 0.0;          // column enthalpy at the end of the last thermal step

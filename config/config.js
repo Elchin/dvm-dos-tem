@@ -253,6 +253,9 @@
     // "thermal_sfcc": 1,
     // "thermal_substeps": 4,
     // "richards_dt_fix": 1
+    // snowmelt_heat_cap (thermal_solver 1 only; default false = legacy, bit-identical): true = radiation/SEB
+    // snow-melt energy goes to snow cold content + melt (top down), capped at what the pack can take; the rest
+    // is returned to the surface (energy_daily.csv mdir,mcc,mmelt,mret). docs/WORK_NOTES_snowmelt_heat_cap.md
     // frozen_layer_liq_cap (default 0 = legacy): 1 = liquid in partly frozen layers limited to the
     // pore space left by ice (validity check + Richards groundwater input)
     // RTS CH4 (thermokarst = 1 and "thermokarst_ch4": true only): "thermokarst_ch4_scheme" 1 = scheme (a)
