@@ -44,10 +44,10 @@ public:
   bool hasnonvascular; //if exists non-vascular PFT(s) within the vegetation community
   
   // wetland (phase 3): per-cohort flags set in Cohort::Cohort from model_settings.wetland
-  bool is_wetland;         // wetland bundle enabled and cmttype listed in wetland.cmts
-  bool ch4_on;             // is_wetland && wetland.ch4
-  bool groundwater_status; //decide whether to include groundwater recharge estimations (is_wetland && groundwater)
-  bool runon_status; // decide whether to include runon estimations (is_wetland && run_on)
+  bool is_wetland = false;         // wetland bundle enabled and cmttype listed in wetland.cmts
+  bool ch4_on = false;             // is_wetland && wetland.ch4
+  bool groundwater_status = false; //decide whether to include groundwater recharge estimations (is_wetland && groundwater)
+  bool runon_status = false; // decide whether to include runon estimations (is_wetland && run_on)
 
   int vegyear[MAX_VEG_SET];
   int vegtype[MAX_VEG_SET];

@@ -191,6 +191,15 @@ public:
   // richards_dt_fix, OFF by default (0 = legacy): recompute dt_dz when a Richards trial
   // substep is rejected and halved (bug R1, see Richards.h dt_fix). Applies to both thermal solvers.
   int richards_dt_fix;
+  // richards_mass_guard (bug R2, TEM-dev 2026-11-20), OFF by default (0 = legacy): see Richards.h mass_guard.
+  //   richards_mass_tol_mm (> 0, default 1.0): |final - target column liquid| allowed per day.
+  int richards_mass_guard;
+  // richards_sat_deriv_fix (bug R2 root cause), OFF by default (0 = legacy): see Richards.h sat_deriv_fix.
+  int richards_sat_deriv_fix;
+  // R2 offline candidates (default 0): see Richards.h ksat_harmonic / lowsat_deriv_fix.
+  int richards_ksat_harmonic;
+  int richards_lowsat_deriv_fix;
+  double richards_mass_tol_mm;
   // frozen_layer_liq_cap (Elchin 2026-11-12), OFF by default (0 = legacy). 1 = liquid water in a
   //   partly frozen soil layer is limited to the pore space left by its ice,
   //   (poro dz - ice/rho_i) rho_w, in the soil-water validity check (effmaxliq) and in the Richards

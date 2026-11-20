@@ -975,7 +975,7 @@ void Soil_Env::updateDailySM(double weighted_veg_tran) {
                     infil, cd->cell_slope);
     ed->d_soi2l.qdrain += richards.qdrain;
     // Refs (B2): no published source; code bug (Richards::update early return, upstream 419a4eb3, fix commit 07f6c8d0); restores water mass conservation (continuity in Richards 1931, doi:10.1063/1.1745010).
-    if (richards_infil_fix == 1 && richards.early_return) {
+    if ((richards_infil_fix == 1 || richards.guard_tripped) && richards.early_return) {   // bug R2 guard re-books too
       rebookUnappliedRichards(infil, evap); // Fix B2 (v5k); infil, evap in mm/s here
     } else
     { // Fix (c) (v5j), bookkeeping only: Richards applies uptake to fstsoill..drainl

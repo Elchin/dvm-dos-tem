@@ -148,7 +148,12 @@ void Runner::run_years(int start_year, int end_year, const std::string& stage) {
             << " richards_calls=" << this->cohort.soilenv.richards.n_calls - rr_c0
             << " richards_rejections=" << this->cohort.soilenv.richards.n_rejections - rr_r0
             << " richards_reject_days=" << this->cohort.soilenv.richards.n_reject_calls - rr_d0
-            << " richards_dt_fix=" << this->cohort.soilenv.richards.dt_fix << std::endl;
+            << " richards_dt_fix=" << this->cohort.soilenv.richards.dt_fix
+            << " richards_mass_guard=" << this->cohort.soilenv.richards.mass_guard
+            << " richards_sat_deriv_fix=" << this->cohort.soilenv.richards.sat_deriv_fix
+            << " richards_ksat_harmonic=" << this->cohort.soilenv.richards.ksat_harmonic
+            << " richards_lowsat_deriv_fix=" << this->cohort.soilenv.richards.lowsat_deriv_fix
+            << " richards_guard_days_cum=" << this->cohort.soilenv.richards.n_guard << std::endl;
   if (Integrator::soil_giveup_retry == 1 || Integrator::soil_giveup_diag == 1) {  // v5n
     const Integrator& si = this->cohort.get_solintegrator();
     std::cerr << "Soil integrator v5n summary (cumulative over the run): stage=" << stage

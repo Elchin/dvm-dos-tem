@@ -45,6 +45,42 @@ public :
   // Refs: CLM5 tech note (Lawrence et al. 2018) sect. 7.3.3 / CTSM SoilWaterMovementMod
   // (adaptive time stepping recomputes dt-dependent coefficients each trial).
   int dt_fix = 0;
+  // model_settings.richards_mass_guard, OFF by default (0 = legacy, bit-identical).
+  // Bug R2 (TEM-dev 2026-11-20, CMT06 S0_base sc 2041): on a stiff, nearly saturated column the
+  // trial loop reaches dtmin (10 s) with max_tridiag_error still > toler_upper and accepts the
+  // substep anyway; the whole day then runs 8640 substeps of 10 s. The accepted solutions do not
+  // conserve the column liquid (mass_err_mm = +1124 and +2462 mm on two days), the excess over
+  // saturation is then dumped to qover by Soil_Env::checkSoilLiquidWaterValidity (runoff with no
+  // source: W closure -30.9 %P over the sc run). 1 = if |final - target column liquid| >
+  // mass_tol_mm after the substep loop, restore every layer's liquid to its start-of-day value and
+  // return as an early return (Soil_Env re-books infiltration to puddle/qover and evaporation as
+  // unapplied, uptake stays unapplied), so the day conserves water. Counted in n_guard.
+  // Refs: water mass conservation (continuity; Richards 1931, doi:10.1063/1.1745010); CLM5 tech
+  // note sect. 7.3.3 (Lawrence et al. 2018) adaptive substeps with an error bound.
+  int mass_guard = 0;
+  // model_settings.richards_sat_deriv_fix, OFF by default (0 = legacy, bit-identical). Root cause of R2: the interface
+  // saturation s1 is clamped at 1 (hk = imped*ksat_upper), but dhkdw = (2B+3)*hk/s1 is still used, so the linearized
+  // gravity flux out of a saturated layer into a saturated layer grows with the lower layer's water (dqodw2 > 0).
+  // With a high-ksat fibric layer (191 mm/s) over a thin saturated humic layer (0.0104 mm/s) the humic row's diagonal
+  // turns positive (b = +104 at dt 10 s), one 10 s substep drains it to about -208 mm, the solver floors the negative
+  // liquid at 0.0001 mm (s2 = 0.01, smp ~ -1e17 mm) and the solve loses mass to round-off every substep.
+  // 1 = one-sided derivative at the clamp: dhkdw = 0 where the unclamped s1 >= 1.
+  // Refs: CLM5 tech note sect. 7.3 (Lawrence et al. 2018): hk = ksat*s^(2B+3) with s <= 1; the derivative of a
+  // clamped function is 0 on the clamped side.
+  int sat_deriv_fix = 0;
+  // Offline R2 candidates (2026-11-20), OFF by default (0 = legacy, bit-identical). The full-model check of sat_deriv_fix showed
+  // the failure also happens with the upper (fibric) layer unsaturated (s1 = 0.94 < 1): the interface uses the fibric ksat
+  // (191 mm/s) over a saturated humic layer (0.0104 mm/s), and dqout/dtheta_lower stays positive (gravity term), so the
+  // humic row is not diagonally dominant.
+  // ksat_harmonic = 1: interface ksat = (dz1 + dz2) / (dz1/ksat1 + dz2/ksat2) (finite-volume series conductance).
+  // lowsat_deriv_fix = 1: d(hk)/d(theta_lower) = 0 when the lower layer is saturated (hk cannot rise through a full layer).
+  int ksat_harmonic = 0;
+  int lowsat_deriv_fix = 0;
+  int diag_nfloor = 0;   // diagnostic only: in-solver floor hits (layer liquid < 1e-4 mm after a substep) on the last day
+  bool sat2[MAX_RICH_IND];   // unclamped s2 >= 1 (lowsat_deriv_fix)
+  double mass_tol_mm = 1.0;
+  long n_guard = 0;        // days rejected by mass_guard (diagnostic counter)
+  bool guard_tripped = false;
   // Diagnostics only (never affect results): cumulative counts over the object's life.
   long n_calls = 0;        // update() calls that entered the substep loop
   long n_rejections = 0;   // rejected trial substeps (dtsub halvings)

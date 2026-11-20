@@ -410,6 +410,11 @@ void Cohort::initialize_state_parameters() {
   }
   soilenv.richards_infil_fix = md->richards_infil_fix; // Fix B2 (v5k)
   soilenv.richards.dt_fix = md->richards_dt_fix;       // bug R1 (default 0 = legacy)
+  soilenv.richards.mass_guard = md->richards_mass_guard;   // bug R2 (default 0 = legacy)
+  soilenv.richards.mass_tol_mm = md->richards_mass_tol_mm;
+  soilenv.richards.sat_deriv_fix = md->richards_sat_deriv_fix;   // bug R2 root-cause fix (default 0)
+  soilenv.richards.ksat_harmonic = md->richards_ksat_harmonic;   // R2 candidate A (default 0)
+  soilenv.richards.lowsat_deriv_fix = md->richards_lowsat_deriv_fix;   // R2 candidate B (default 0)
   if (md->moss.water_scheme == 1) {
     // moss_water_scheme 1 (Task 7 water-leak fix): the scheme routes moss drainage into the
     // Richards infiltration in bursts, often onto a partly frozen column, which exposes two

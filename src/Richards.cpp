@@ -6,6 +6,9 @@
 // seems to matter for certain installs!
 #include <lapacke.h>
 #include <sstream>
+#include <cstdlib>
+#include <iostream>
+#include <string>
 #include <stdexcept>
 
 extern src::severity_logger< severity_level > glg;
@@ -40,7 +43,8 @@ void Richards::update(Layer *fstsoill, Layer* bdrainl,
   qdrain = 0.0;
   qgw_mm = 0.0;
   early_return = false;
-  mass_err_mm = 0.0; infil_in_mm = infil * SEC_IN_DAY; evap_in_mm = evap * SEC_IN_DAY;   // diagnostic only
+  guard_tripped = false;
+  diag_nfloor = 0; mass_err_mm = 0.0; infil_in_mm = infil * SEC_IN_DAY; evap_in_mm = evap * SEC_IN_DAY;   // diagnostic only
 
   if (bdraindepth <= fstsoill->z) {// no percolation
     early_return = true; // Fix B2 (v5k): Soil_Env re-books the water when richards_infil_fix = 1
@@ -114,6 +118,12 @@ void Richards::update(Layer *fstsoill, Layer* bdrainl,
     all_uptake += (qtrans[ind] * SEC_IN_DAY);
   }
   double target_liq = original_liq + qinfil*SEC_IN_DAY - qevap*SEC_IN_DAY - all_uptake;
+  // richards_mass_guard / TEM_RICH_DIAG: start-of-day liquid per layer (restore on a guard trip)
+  double liq_start[MAX_RICH_IND];
+  for (int i = 0; i < MAX_RICH_IND; i++) { liq_start[i] = 0.0; }
+  for (Layer* l = fstsoill; l != NULL && l->indl <= drainind && l->isSoil; l = l->nextl) { liq_start[l->indl] = l->liq; }
+  static const bool rich_diag = (std::getenv("TEM_RICH_DIAG") != NULL);
+  double dg_sum_dev = 0.0, dg_max_dev = 0.0; long dg_info_bad = 0, dg_atmin_bad = 0; int dg_nloop = 0; lapack_int dg_info = 0;
 
   //Begin iteration domain. Logic follows CLM fortran code.
   //Start of adaptive-length iteration substeps
@@ -176,7 +186,8 @@ void Richards::update(Layer *fstsoill, Layer* bdrainl,
         ldb = 1;
         num_layers = num_al;
         nrhs = 1;
-        LAPACKE_dgtsv(LAPACK_ROW_MAJOR, num_layers, nrhs, sub_diagonal, diagonal, super_diagonal, result, ldb);
+        dg_info = LAPACKE_dgtsv(LAPACK_ROW_MAJOR, num_layers, nrhs, sub_diagonal, diagonal, super_diagonal, result, ldb);
+        if (dg_info != 0) { dg_info_bad++; }   // diagnostic only
         //copy values from result into deltathetaliq and re-index
         for(int ii=0; ii<num_al; ii++){
           deltathetaliq[ii+topind] = result[ii];
@@ -204,26 +215,45 @@ void Richards::update(Layer *fstsoill, Layer* bdrainl,
           }
         }
       }
-      else{try_dtsub = false;}
+      else{
+        if (max_tridiag_error > toler_upper) { dg_atmin_bad++; }   // diagnostic only: accepted at dtmin above tolerance
+        try_dtsub = false;
+      }
     } //end of trial timestep
 
     //Modify layer liquid in each active layer by calculated
     //change in liquid.
     currl = fstsoill;
+    double dg_change = 0.0, dg_expect = (qinfil - qevap) * dtsub; dg_nloop = 0;   // diagnostic only
 
     while(currl != NULL && currl->indl<=drainind && currl->isSoil){
       int ind = currl->indl;
       double liquid_change = dzmm[ind] * deltathetaliq[ind];
+      dg_change += liquid_change; dg_expect -= qtrans[ind] * dtsub; dg_nloop++;   // diagnostic only
       currl->liq += liquid_change;
       percolation[ind] += liquid_change;
 
       //update soi_liq so that vol_liq can be recalculated for
       //lateral drainage (below) or next iteration (above)
+      if (currl->liq < 0.0001) { diag_nfloor++; }   // diagnostic only
       soi_liq[ind] = fmax(0.0001, currl->liq);
 
       currl = currl->nextl;
     }
 
+    { double dv = dg_change - dg_expect; dg_sum_dev += dv; dg_max_dev = fmax(dg_max_dev, fabs(dv)); }   // diagnostic only
+    { static int dg_dump_left = (std::getenv("TEM_RICH_DIAG") && std::string(std::getenv("TEM_RICH_DIAG")) == "2") ? 3 : 0;   // TEM_RICH_DIAG=2: dump the first 3 non-conserving substeps
+      double dv = dg_change - dg_expect;
+      if (dg_dump_left > 0 && fabs(dv) > 1.e-6) {
+        dg_dump_left--;
+        std::cerr << "RICHDIAG2 substep " << n_substep << " dtsub " << dtsub << " dev " << dv << " maxerr " << max_tridiag_error << std::endl;
+        for (int ind = topind; ind <= drainind; ind++) {
+          std::cerr << "RICHDIAG2  i " << ind << " soi_liq " << soi_liq[ind] << " vol " << vol_liq[ind] << " lporo " << liq_poro[ind] << " s2 " << s2[ind] << " hk " << hk[ind]
+                    << " qin " << qin[ind] << " qout " << qout[ind] << " a " << amx[ind] << " b " << bmx[ind] << " c " << cmx[ind] << " r " << rmx[ind]
+                    << " dth " << deltathetaliq[ind] << " dzmm " << dzmm[ind] << " dt_dz " << dt_dz[ind] << std::endl;
+        }
+      }
+    }
     dtdone += dtsub; //add substep to total completed time
 
     if(fabs(delta_t - dtdone) < 1.e-8){
@@ -251,6 +281,27 @@ void Richards::update(Layer *fstsoill, Layer* bdrainl,
   if(fabs(final_liq - target_liq) > 5.0){
     BOOST_LOG_SEV(glg, warn) << "Problem in Richards soil water solver: final column liquid - target column liquid = "
                              << final_liq - target_liq << " mm";
+  }
+  if (rich_diag && (fabs(final_liq - target_liq) > 1.0 || n_substep > 4000)) {   // TEM_RICH_DIAG: stderr only
+    std::cerr << "RICHDIAG day n_substep=" << n_substep << " num_al=" << num_al << " nloop=" << dg_nloop
+              << " topind=" << topind << " drainind=" << drainind << " mass_err=" << final_liq - target_liq
+              << " sum(dz*dtheta - flux*dt)=" << dg_sum_dev << " max_substep_dev=" << dg_max_dev
+              << " lapack_info_bad=" << dg_info_bad << " accepted_at_dtmin_above_tol=" << dg_atmin_bad
+              << " qinfil_mm=" << qinfil * SEC_IN_DAY << " qevap_mm=" << qevap * SEC_IN_DAY << " uptake_mm=" << all_uptake << std::endl;
+    for (Layer* l = fstsoill; l != NULL && l->indl <= drainind + 1; l = l->nextl) {
+      std::cerr << "RICHDIAG  L indl=" << l->indl << " type=" << (l->isMoss ? "moss" : l->isFibric ? "fib" : l->isHumic ? "hum" : l->isMineral ? "min" : l->isRock ? "rock" : "?")
+                << " z=" << l->z << " dz=" << l->dz << " liq0=" << liq_start[l->indl] << " liq=" << l->liq
+                << " maxliq=" << l->maxliq << " minliq=" << l->minliq << " poro=" << l->poro << " frozen=" << l->frozen
+                << " hksat=" << l->hksat << " bsw=" << l->bsw << " psisat=" << l->psisat << " smp=" << smp[l->indl] << " hk=" << hk[l->indl] << std::endl;
+    }
+  }
+  // richards_mass_guard (bug R2; default 0 = legacy): reject a non-conserving day
+  if (mass_guard == 1 && !(fabs(final_liq - target_liq) <= mass_tol_mm)) {
+    for (Layer* l = fstsoill; l != NULL && l->indl <= drainind && l->isSoil; l = l->nextl) { l->liq = liq_start[l->indl]; }
+    for (int i = 0; i < MAX_RICH_IND; i++) { percolation[i] = 0.0; layer_drain[i] = 0.0; }
+    if (rich_diag) { std::cerr << "RICHDIAG guard: day rejected, liquid restored (mass_err " << final_liq - target_liq << " mm)" << std::endl; }
+    mass_err_mm = 0.0; n_guard += 1; guard_tripped = true; early_return = true; qdrain = 0.0;
+    return;
   }
   //Update layer volumetric water post percolation so lateral drainage is
   // based on today's values
@@ -465,6 +516,7 @@ void Richards::computeHydraulicProperties(Layer *fstsoill, int drainind){
   while(currl != NULL && currl->indl <=drainind+1){
     int ind = currl->indl;
     s2[ind] = vol_liq[ind]/liq_poro[ind]; //liquid saturation at node
+    sat2[ind] = (s2[ind] >= 1.0);   // lowsat_deriv_fix (R2)
     s2[ind] = fmin(s2[ind], 1.0);
     s2[ind] = fmax(0.01, s2[ind]);
 
@@ -481,11 +533,17 @@ void Richards::computeHydraulicProperties(Layer *fstsoill, int drainind){
       s1[ind] = 0.5 * (s2[ind] + s2[ind+1]);//liquid saturation at interface
       imped[ind] = pow(10.0, -e_ice * (0.5 * (ice_frac[ind] + ice_frac[ind+1]))); //ice impedance
     }
+    const bool s1_clamped_hi = (s1[ind] >= 1.0);   // richards_sat_deriv_fix (R2)
     s1[ind] = fmin(s1[ind], 1.0);
     s1[ind] = fmax(0.01, s1[ind]);
 
-    hk[ind] = imped[ind] * ksat[ind] * pow(s1[ind], 2.0 * Bsw[ind] + 3);//hydraulic conductivity, mm/s
+    double ks_int = ksat[ind];
+    if (ksat_harmonic == 1 && ind <= drainind && ksat[ind] > 0.0 && ksat[ind+1] > 0.0 && dzmm[ind] > 0.0 && dzmm[ind+1] > 0.0) {
+      ks_int = (dzmm[ind] + dzmm[ind+1]) / (dzmm[ind] / ksat[ind] + dzmm[ind+1] / ksat[ind+1]);   // R2 candidate A
+    }
+    hk[ind] = imped[ind] * ks_int * pow(s1[ind], 2.0 * Bsw[ind] + 3);//hydraulic conductivity, mm/s
     dhkdw[ind] = (2.0* Bsw[ind] + 3.0) * hk[ind] / s1[ind];//d(hk)/d(vol_liq)
+    if (sat_deriv_fix == 1 && s1_clamped_hi) { dhkdw[ind] = 0.0; }   // R2: one-sided derivative at the s1 = 1 clamp
     smp[ind] = -psisat[ind] * pow(s2[ind], -Bsw[ind]);//soil matric potential
     dsmpdw[ind] = (-Bsw[ind] * smp[ind] / s2[ind]) / liq_poro[ind];//d(smp)/d(vol_liq)
 
@@ -503,6 +561,7 @@ void Richards::computeMoistureFluxesAndDerivs(Layer *fstsoill, int topind, int d
       dqidw1[ind] = 0.0;
       double dhkds1 = 0.5 * dhkdw[ind] / liq_poro[ind]; // derivative w.r.t. volumetric liquid water in the upper layer
       double dhkds2 = 0.5 * dhkdw[ind] / liq_poro[ind+1]; // derivative w.r.t. volumetric liquid water in the lower layer
+      if (lowsat_deriv_fix == 1 && sat2[ind+1]) { dhkds2 = 0.0; }   // R2 candidate B
       double num = (smp[ind+1] - smp[ind]);
       double den = nodemm[ind+1] - nodemm[ind];
       if(ind == drainind){ //if this is the single active layer
@@ -521,6 +580,7 @@ void Richards::computeMoistureFluxesAndDerivs(Layer *fstsoill, int topind, int d
       dqidw1[ind] = dqodw2[ind-1];
       double dhkds1 = 0.5 * dhkdw[ind] / liq_poro[ind]; // derivative w.r.t. volumetric liquid water in the upper layer
       double dhkds2 = 0.5 * dhkdw[ind] / liq_poro[ind+1]; // derivative w.r.t. volumetric liquid water in the lower layer
+      if (lowsat_deriv_fix == 1 && sat2[ind+1]) { dhkds2 = 0.0; }   // R2 candidate B
       double num = (smp[ind+1] - smp[ind]);
       double den = nodemm[ind+1] - nodemm[ind];
       if(ind == drainind){ //bottom layer

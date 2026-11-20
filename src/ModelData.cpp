@@ -175,6 +175,38 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     richards_dt_fix = v.asInt();
   }
   {
+    Json::Value v = controldata["model_settings"].get("richards_mass_guard", 0);
+    if (!bnf::valid_int(v, 0, 1)) {
+      std::cerr << "FATAL: model_settings.richards_mass_guard must be 0 (legacy, default) or 1 (reject a Richards day whose column liquid does not close)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    richards_mass_guard = v.asInt();
+    Json::Value t = controldata["model_settings"].get("richards_mass_tol_mm", 1.0);
+    if (!t.isNumeric() || t.isBool() || !(t.asDouble() > 0.0)) {
+      std::cerr << "FATAL: model_settings.richards_mass_tol_mm must be a number > 0 (default 1.0 mm)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    richards_mass_tol_mm = t.asDouble();
+    Json::Value sd = controldata["model_settings"].get("richards_sat_deriv_fix", 0);
+    if (!bnf::valid_int(sd, 0, 1)) {
+      std::cerr << "FATAL: model_settings.richards_sat_deriv_fix must be 0 (legacy, default) or 1 (d hk/d theta = 0 at the s1 = 1 clamp)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    richards_sat_deriv_fix = sd.asInt();
+    Json::Value kh = controldata["model_settings"].get("richards_ksat_harmonic", 0);
+    if (!bnf::valid_int(kh, 0, 1)) {
+      std::cerr << "FATAL: model_settings.richards_ksat_harmonic must be 0 (legacy, default: upper-layer ksat) or 1 (thickness-weighted harmonic interface ksat)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    richards_ksat_harmonic = kh.asInt();
+    Json::Value ld = controldata["model_settings"].get("richards_lowsat_deriv_fix", 0);
+    if (!bnf::valid_int(ld, 0, 1)) {
+      std::cerr << "FATAL: model_settings.richards_lowsat_deriv_fix must be 0 (legacy, default) or 1 (d hk/d theta_lower = 0 when the lower layer is saturated)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    richards_lowsat_deriv_fix = ld.asInt();
+  }
+  {
     Json::Value v = controldata["model_settings"].get("frozen_layer_liq_cap", 0);
     if (!bnf::valid_int(v, 0, 1)) {
       std::cerr << "FATAL: model_settings.frozen_layer_liq_cap must be 0 (legacy, default) or 1 (liquid in partly frozen layers limited to the pore space left by ice)" << std::endl;
@@ -793,6 +825,7 @@ void ModelData::update(ArgHandler const * arghandler) {
 
 ModelData::ModelData():force_cmt(-1) {
   richards_dt_fix = 0; // bug R1 fix (off)
+  richards_mass_guard = 0; richards_mass_tol_mm = 1.0; richards_sat_deriv_fix = 0; richards_ksat_harmonic = 0; richards_lowsat_deriv_fix = 0; // bug R2 guard / fixes (off)
   frozen_layer_liq_cap = 0; // off (legacy)
   fire_n_redep_fix = 0; fire_c_bookkeep_fix = 0; // fire-balance fixes (off)
   dwd_n_leak_fix = 0; deadroot_n_route_fix = 0;  // N leak fixes (off)
