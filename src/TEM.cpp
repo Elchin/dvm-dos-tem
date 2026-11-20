@@ -742,7 +742,25 @@ void advance_model(const int rowidx, const int colidx,
 
     // Run model
     BOOST_LOG_SEV(glg, monitor) << "Running Equilibrium, " << fri_adj_eq_yrs << " years.";
-    runner.run_years(0, fri_adj_eq_yrs, "eq-run");
+    if (modeldata.eq_nunlim_years == 0) {
+      runner.run_years(0, fri_adj_eq_yrs, "eq-run");   // legacy path (eq_nunlim_years 0, default), unchanged
+    } else {
+      // eq_nunlim_years K > 0: first K eq years N-unlimited (nfeed off), then stage_settings.eq.nfeed
+      std::vector<EqSegment> seg = eq_nunlim_segments(modeldata.eq_nunlim_years, fri_adj_eq_yrs,
+                                                      runner.cohort.md->get_dsbmodule(), modeldata.output_interval);
+      if (seg.size() != 2) {
+        std::cerr << "FATAL: eq_nunlim_years " << modeldata.eq_nunlim_years << " invalid for " << fri_adj_eq_yrs
+                  << " eq years (needs 0 < K < eq years, fire off in eq, K a multiple of output_interval "
+                  << modeldata.output_interval << ")" << std::endl;
+        exit(EXIT_FAILURE);
+      }
+      std::cerr << "eq_nunlim_years: eq years [0," << seg[0].end << ") with nfeed off, [" << seg[1].start << ","
+                << seg[1].end << ") with nfeed " << runner.cohort.md->eq_nfeed << std::endl;
+      runner.cohort.md->set_nfeed(false);
+      runner.run_years(seg[0].start, seg[0].end, "eq-run");
+      runner.cohort.md->set_nfeed(runner.cohort.md->eq_nfeed);
+      runner.run_years(seg[1].start, seg[1].end, "eq-run");
+    }
 
     // Update restartdata structure from the running state
     runner.cohort.set_restartdata_from_state();

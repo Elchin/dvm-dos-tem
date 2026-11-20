@@ -207,6 +207,14 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
     richards_lowsat_deriv_fix = ld.asInt();
   }
   {
+    Json::Value v = controldata["model_settings"].get("eq_nunlim_years", 0);
+    if (!bnf::valid_int(v, 0, 100000)) {
+      std::cerr << "FATAL: model_settings.eq_nunlim_years must be an integer 0 (legacy, default) .. 100000 (first K eq years with nfeed off)" << std::endl;
+      exit(EXIT_FAILURE);
+    }
+    eq_nunlim_years = v.asInt();
+  }
+  {
     Json::Value v = controldata["model_settings"].get("frozen_layer_liq_cap", 0);
     if (!bnf::valid_int(v, 0, 1)) {
       std::cerr << "FATAL: model_settings.frozen_layer_liq_cap must be 0 (legacy, default) or 1 (liquid in partly frozen layers limited to the pore space left by ice)" << std::endl;
@@ -826,6 +834,7 @@ void ModelData::update(ArgHandler const * arghandler) {
 ModelData::ModelData():force_cmt(-1) {
   richards_dt_fix = 0; // bug R1 fix (off)
   richards_mass_guard = 0; richards_mass_tol_mm = 1.0; richards_sat_deriv_fix = 0; richards_ksat_harmonic = 0; richards_lowsat_deriv_fix = 0; // bug R2 guard / fixes (off)
+  eq_nunlim_years = 0; // spin-up: N-unlimited early eq (off)
   frozen_layer_liq_cap = 0; // off (legacy)
   fire_n_redep_fix = 0; fire_c_bookkeep_fix = 0; // fire-balance fixes (off)
   dwd_n_leak_fix = 0; deadroot_n_route_fix = 0;  // N leak fixes (off)

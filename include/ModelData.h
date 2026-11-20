@@ -8,6 +8,19 @@
 #include <string>
 #include <map>
 #include <vector>
+
+/** eq_nunlim_years: one run_years() segment of the eq stage. */
+struct EqSegment { int start; int end; bool nfeed_off; };
+/** Segments of the eq stage for eq_nunlim_years K over n eq years (dsb_eq: fire in eq; oi: output_interval).
+ *  K == 0 -> one segment [0, n) (legacy). 0 < K < n, !dsb_eq, oi > 0, K % oi == 0 -> [0, K) N-unlimited + [K, n).
+ *  Anything else -> empty vector (caller: FATAL). */
+inline std::vector<EqSegment> eq_nunlim_segments(int K, int n, bool dsb_eq, int oi) {
+  std::vector<EqSegment> s;
+  if (K == 0) { if (n >= 0) s.push_back({0, n, false}); return s; }
+  if (K < 0 || K >= n || dsb_eq || oi <= 0 || K % oi != 0) return s;
+  s.push_back({0, K, true}); s.push_back({K, n, false});
+  return s;
+}
 #include <iostream>
 #include <fstream>
 #include <sstream>
@@ -198,6 +211,12 @@ public:
   int richards_sat_deriv_fix;
   // R2 offline candidates (default 0): see Richards.h ksat_harmonic / lowsat_deriv_fix.
   int richards_ksat_harmonic;
+  // eq_nunlim_years (TEM-dev 2026-11-20, spin-up), default 0 = legacy (one eq call with stage_settings.eq.nfeed).
+  //   K > 0: the first K eq years run with nfeed OFF (N-unlimited: plant and soil N fluxes skipped, N pools frozen),
+  //   then nfeed = stage_settings.eq.nfeed for the remaining eq years; same eq climate sequence and year index.
+  //   Valid: integer 0..100000 (parse), and at eq start 0 < K < eq years, fire off in eq, K a multiple of output_interval
+  //   (FATAL otherwise). See eq_nunlim_segments().
+  int eq_nunlim_years;
   int richards_lowsat_deriv_fix;
   double richards_mass_tol_mm;
   // frozen_layer_liq_cap (Elchin 2026-11-12), OFF by default (0 = legacy). 1 = liquid water in a
