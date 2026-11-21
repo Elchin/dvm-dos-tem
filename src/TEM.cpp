@@ -321,7 +321,7 @@ int ntasks = 1;
   //  This avoids overwriting any restart files that might be in use.
   BOOST_LOG_SEV(glg, info) << "Creating restart files for stages to be run";
   RestartData::write_ch4 = modeldata.wetland_enabled && modeldata.wetland_ch4;   // phase 3
-  RestartData::write_puddle = (modeldata.runon_energy_mode >= 1);               // phase 3 v2
+  // restart-state-carry: puddle_ice / magic_puddle are now written for every run (was runon_energy_mode >= 1)
   if(args->get_pr_yrs() > 0){
     BOOST_LOG_SEV(glg, info) << "Creating empty PR restart file";
     RestartData::create_empty_file(pr_restart_fname, num_rows, num_cols, modeldata.thermal_solver);

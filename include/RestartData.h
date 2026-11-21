@@ -62,9 +62,11 @@ public :
   static bool write_ch4;
   // Phase 3 v2: optional puddle ice / liquid scalars, written only when
   // runon_energy_mode==1. Absent in old restarts => MISSING_D on read.
-  static bool write_puddle;
   void read_px_puddle_vars(const std::string& fname, const int rowidx, const int colidx);
   void write_px_puddle_vars(const std::string& fname, const int rowidx, const int colidx);
+  // restart-state-carry: BNF previous-year memory (optional NetCDF vars; absent in old restarts)
+  void read_px_bnf_vars(const std::string& fname, const int rowidx, const int colidx);
+  void write_px_bnf_vars(const std::string& fname, const int rowidx, const int colidx);
   static int read_thermal_solver_attr(const std::string& fname);
   // fire-balance fixes: optional fire state, written only when fire_c_bookkeep_fix or
   // fire_n_redep_fix is 1 (write_fire_state, set by Cohort), so restart files of runs with both
@@ -174,6 +176,13 @@ public :
   // v5q-d2m-gate: previous-year ALD (m); optional NetCDF scalar per pixel, written only if >= 0
   // (d2m_transfer_gate != 0), read as MISSING_D when absent (old restarts).
   double d2m_ald_prevyr;
+  // restart-state-carry: bnf::YearMemory (Soil_Bgc::bnfmem) previous-year values, so that the first
+  // year after a restart gets the same BNF as a chained run. has_bnf_state = all four vars present.
+  double bnf_prev_npp[12];
+  double bnf_prev_et[12];
+  double bnf_prev_pft_npp[NUM_PFT];
+  int bnf_have_prev;     // 0/1; MISSING_I = not known (pixel never written)
+  bool has_bnf_state;
 
   double DZsoil[MAX_SOI_LAY];
   int TYPEsoil[MAX_SOI_LAY];

@@ -359,6 +359,10 @@ void RestartData::reinitValue() {
   watertab     = MISSING_D;
   puddle_ice_mm = MISSING_D;
   magic_puddle  = MISSING_D;
+  for (int k = 0; k < 12; k++) { bnf_prev_npp[k] = MISSING_D; bnf_prev_et[k] = MISSING_D; }
+  for (int ip = 0; ip < NUM_PFT; ip++) { bnf_prev_pft_npp[ip] = MISSING_D; }
+  bnf_have_prev = MISSING_I;
+  has_bnf_state = false;
 
   for(int il =0; il<MAX_SOI_LAY; il++) {
     DZsoil[il]   = MISSING_D;
@@ -436,6 +440,7 @@ void RestartData::update_from_ncfile(const std::string& fname, const int rowidx,
 
   read_px_d2m_vars(fname, rowidx, colidx);   // v5q-d2m-gate (optional variable)
   read_px_puddle_vars(fname, rowidx, colidx); // phase 3 v2 (optional puddle ice / liquid)
+  read_px_bnf_vars(fname, rowidx, colidx);    // restart-state-carry (optional BNF memory)
   read_px_fire_vars(fname, rowidx, colidx);   // fire-balance fixes (optional fire state)
   if (read_tk_state) { read_px_tk_vars(fname, rowidx, colidx); }   // RTS (thermokarst = 1 only)
 
@@ -471,7 +476,8 @@ void RestartData::write_pixel_to_ncfile(const std::string& fname, const int rowi
   write_px_prev_pft_vars(fname, rowidx, colidx);
 
   if (d2m_ald_prevyr >= 0.0) { write_px_d2m_vars(fname, rowidx, colidx); }   // v5q-d2m-gate
-  if (write_puddle) { write_px_puddle_vars(fname, rowidx, colidx); }        // phase 3 v2
+  write_px_puddle_vars(fname, rowidx, colidx);   // phase 3 v2; always (restart-state-carry)
+  write_px_bnf_vars(fname, rowidx, colidx);      // restart-state-carry
   if (write_fire_state) { write_px_fire_vars(fname, rowidx, colidx); }      // fire-balance fixes
   if (write_tk_state) { write_px_tk_vars(fname, rowidx, colidx); }          // RTS (thermokarst = 1 only)
 
@@ -701,19 +707,21 @@ void RestartData::read_px_puddle_vars(const std::string& fname, const int rowidx
 }
 
 void RestartData::write_px_puddle_vars(const std::string& fname, const int rowidx, const int colidx) {
+  // restart-state-carry: written for every pixel and mode. create_empty_file defines the variables
+  // (serial and MPI); the serial redef below only covers files made by an older binary.
+  int ncid, iceV = -1, liqV = -1;
 #ifdef WITHMPI
-  BOOST_LOG_SEV(glg, warn) << "puddle_ice not written to the restart in MPI builds (starts at 0 on restart).";
+  temutil::nc( nc_open_par(fname.c_str(), NC_WRITE|NC_MPIIO, MPI_COMM_SELF, MPI_INFO_NULL, &ncid), fname );
+  temutil::nc( nc_inq_varid(ncid, "puddle_ice", &iceV) );
+  temutil::nc( nc_inq_varid(ncid, "magic_puddle", &liqV) );
 #else
-  int ncid, cv;
   temutil::nc( nc_open(fname.c_str(), NC_WRITE, &ncid), fname );
-  int dims[2];
-  temutil::nc( nc_inq_dimid(ncid, "Y", &dims[0]) );
-  temutil::nc( nc_inq_dimid(ncid, "X", &dims[1]) );
-  bool need_redef = false;
-  int iceV = -1, liqV = -1;
-  if (nc_inq_varid(ncid, "puddle_ice", &iceV) != NC_NOERR) { need_redef = true; }
-  if (nc_inq_varid(ncid, "magic_puddle", &liqV) != NC_NOERR) { need_redef = true; }
+  bool need_redef = (nc_inq_varid(ncid, "puddle_ice", &iceV) != NC_NOERR)
+                    || (nc_inq_varid(ncid, "magic_puddle", &liqV) != NC_NOERR);
   if (need_redef) {
+    int dims[2];
+    temutil::nc( nc_inq_dimid(ncid, "Y", &dims[0]) );
+    temutil::nc( nc_inq_dimid(ncid, "X", &dims[1]) );
     temutil::nc( nc_redef(ncid) );
     if (nc_inq_varid(ncid, "puddle_ice", &iceV) != NC_NOERR) {
       temutil::nc( nc_def_var(ncid, "puddle_ice", NC_DOUBLE, 2, dims, &iceV) );
@@ -725,11 +733,84 @@ void RestartData::write_px_puddle_vars(const std::string& fname, const int rowid
     }
     temutil::nc( nc_enddef(ncid) );
   }
+#endif
   size_t start[2] = {(size_t)rowidx, (size_t)colidx};
   temutil::nc( nc_put_var1_double(ncid, iceV, start, &puddle_ice_mm) );
   temutil::nc( nc_put_var1_double(ncid, liqV, start, &magic_puddle) );
   temutil::nc( nc_close(ncid) );
+}
+
+/** restart-state-carry: optional BNF memory bnf_prev_npp / bnf_prev_et (Y,X,prevtwelve),
+ *  bnf_prev_pft_npp (Y,X,pft), bnf_have_prev (Y,X). has_bnf_state = all four present
+ *  (old restarts: false, members stay MISSING and Soil_Bgc keeps its in-memory BNF memory). */
+void RestartData::read_px_bnf_vars(const std::string& fname, const int rowidx, const int colidx) {
+  has_bnf_state = false;
+  for (int k = 0; k < 12; k++) { bnf_prev_npp[k] = MISSING_D; bnf_prev_et[k] = MISSING_D; }
+  for (int ip = 0; ip < NUM_PFT; ip++) { bnf_prev_pft_npp[ip] = MISSING_D; }
+  bnf_have_prev = MISSING_I;
+  int ncid, v[4];
+  const char* names[4] = {"bnf_prev_npp", "bnf_prev_et", "bnf_prev_pft_npp", "bnf_have_prev"};
+  temutil::nc( nc_open(fname.c_str(), NC_NOWRITE, &ncid), fname );
+  bool all = true;
+  for (int k = 0; k < 4; k++) { if (nc_inq_varid(ncid, names[k], &v[k]) != NC_NOERR) { all = false; } }
+  if (all) {
+    size_t s2[2] = {(size_t)rowidx, (size_t)colidx};
+    size_t s3[3] = {(size_t)rowidx, (size_t)colidx, 0};
+    size_t c12[3] = {1, 1, 12};
+    size_t cp[3] = {1, 1, NUM_PFT};
+    temutil::nc( nc_get_vara_double(ncid, v[0], s3, c12, &bnf_prev_npp[0]) );
+    temutil::nc( nc_get_vara_double(ncid, v[1], s3, c12, &bnf_prev_et[0]) );
+    temutil::nc( nc_get_vara_double(ncid, v[2], s3, cp, &bnf_prev_pft_npp[0]) );
+    temutil::nc( nc_get_var1_int(ncid, v[3], s2, &bnf_have_prev) );
+    has_bnf_state = true;
+  }
+  temutil::nc( nc_close(ncid) );
+}
+
+/** restart-state-carry: write this pixel's BNF memory (variables defined by create_empty_file;
+ *  serial builds also define them in a file made by an older binary). */
+void RestartData::write_px_bnf_vars(const std::string& fname, const int rowidx, const int colidx) {
+  int ncid, v[4] = {-1, -1, -1, -1};
+  const char* names[4] = {"bnf_prev_npp", "bnf_prev_et", "bnf_prev_pft_npp", "bnf_have_prev"};
+#ifdef WITHMPI
+  temutil::nc( nc_open_par(fname.c_str(), NC_WRITE|NC_MPIIO, MPI_COMM_SELF, MPI_INFO_NULL, &ncid), fname );
+  for (int k = 0; k < 4; k++) { temutil::nc( nc_inq_varid(ncid, names[k], &v[k]) ); }
+#else
+  temutil::nc( nc_open(fname.c_str(), NC_WRITE, &ncid), fname );
+  bool need = false;
+  for (int k = 0; k < 4; k++) { if (nc_inq_varid(ncid, names[k], &v[k]) != NC_NOERR) { need = true; } }
+  if (need) {
+    int d[3];
+    temutil::nc( nc_inq_dimid(ncid, "Y", &d[0]) );
+    temutil::nc( nc_inq_dimid(ncid, "X", &d[1]) );
+    int dt, dp;
+    bool new_twelve = (nc_inq_dimid(ncid, "prevtwelve", &dt) != NC_NOERR);
+    bool new_pft = (nc_inq_dimid(ncid, "pft", &dp) != NC_NOERR);
+    temutil::nc( nc_redef(ncid) );
+    if (new_twelve) { temutil::nc( nc_def_dim(ncid, "prevtwelve", 12, &dt) ); }
+    if (new_pft) { temutil::nc( nc_def_dim(ncid, "pft", NUM_PFT, &dp) ); }
+    int d12[3] = {d[0], d[1], dt};
+    int dpf[3] = {d[0], d[1], dp};
+    if (v[0] < 0) { temutil::nc( nc_def_var(ncid, names[0], NC_DOUBLE, 3, d12, &v[0]) );
+                    temutil::nc( nc_put_att_double(ncid, v[0], "_FillValue", NC_DOUBLE, 1, &MISSING_D) ); }
+    if (v[1] < 0) { temutil::nc( nc_def_var(ncid, names[1], NC_DOUBLE, 3, d12, &v[1]) );
+                    temutil::nc( nc_put_att_double(ncid, v[1], "_FillValue", NC_DOUBLE, 1, &MISSING_D) ); }
+    if (v[2] < 0) { temutil::nc( nc_def_var(ncid, names[2], NC_DOUBLE, 3, dpf, &v[2]) );
+                    temutil::nc( nc_put_att_double(ncid, v[2], "_FillValue", NC_DOUBLE, 1, &MISSING_D) ); }
+    if (v[3] < 0) { temutil::nc( nc_def_var(ncid, names[3], NC_INT, 2, d, &v[3]) );
+                    temutil::nc( nc_put_att_int(ncid, v[3], "_FillValue", NC_INT, 1, &MISSING_I) ); }
+    temutil::nc( nc_enddef(ncid) );
+  }
 #endif
+  size_t s2[2] = {(size_t)rowidx, (size_t)colidx};
+  size_t s3[3] = {(size_t)rowidx, (size_t)colidx, 0};
+  size_t c12[3] = {1, 1, 12};
+  size_t cp[3] = {1, 1, NUM_PFT};
+  temutil::nc( nc_put_vara_double(ncid, v[0], s3, c12, &bnf_prev_npp[0]) );
+  temutil::nc( nc_put_vara_double(ncid, v[1], s3, c12, &bnf_prev_et[0]) );
+  temutil::nc( nc_put_vara_double(ncid, v[2], s3, cp, &bnf_prev_pft_npp[0]) );
+  temutil::nc( nc_put_var1_int(ncid, v[3], s2, &bnf_have_prev) );
+  temutil::nc( nc_close(ncid) );
 }
 
 /** Checks a given variable against an extreme negative value. 
@@ -1244,7 +1325,6 @@ void RestartData::read_px_prev_pft_vars(const std::string& fname, const int rowi
 /** Creates (overwrites) an empty restart file. */
 int RestartData::thermal_solver_expected = 0;
 bool RestartData::write_ch4 = false;
-bool RestartData::write_puddle = false;
 
 int RestartData::read_thermal_solver_attr(const std::string& fname) {
   int ncid, v = 0;
@@ -1712,6 +1792,32 @@ void RestartData::create_empty_file(const std::string& fname,
 #ifdef WITHMPI
   // Instruct HDF5 to use independent parallel access for this variable
   temutil::nc(nc_var_par_access(ncid, prvltrfcnAV, NC_INDEPENDENT));
+#endif
+
+  // restart-state-carry: ponding (phase 3 v2) and BNF previous-year memory, defined for every
+  // run so that serial and MPI builds write them per pixel without leaving data mode.
+  int puddleiceV, magicpuddleV, bnfnppV, bnfetV, bnfpftV, bnfhaveV;
+  int bnf12_dimids[3] = {yD, xD, prevtwelveD};
+  int bnfpft_dimids[3] = {yD, xD, pftD};
+  temutil::nc( nc_def_var(ncid, "puddle_ice", NC_DOUBLE, 2, vartype2D_dimids, &puddleiceV) );
+  temutil::nc( nc_put_att_double(ncid, puddleiceV, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
+  temutil::nc( nc_def_var(ncid, "magic_puddle", NC_DOUBLE, 2, vartype2D_dimids, &magicpuddleV) );
+  temutil::nc( nc_put_att_double(ncid, magicpuddleV, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
+  temutil::nc( nc_def_var(ncid, "bnf_prev_npp", NC_DOUBLE, 3, bnf12_dimids, &bnfnppV) );
+  temutil::nc( nc_put_att_double(ncid, bnfnppV, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
+  temutil::nc( nc_def_var(ncid, "bnf_prev_et", NC_DOUBLE, 3, bnf12_dimids, &bnfetV) );
+  temutil::nc( nc_put_att_double(ncid, bnfetV, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
+  temutil::nc( nc_def_var(ncid, "bnf_prev_pft_npp", NC_DOUBLE, 3, bnfpft_dimids, &bnfpftV) );
+  temutil::nc( nc_put_att_double(ncid, bnfpftV, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
+  temutil::nc( nc_def_var(ncid, "bnf_have_prev", NC_INT, 2, vartype2D_dimids, &bnfhaveV) );
+  temutil::nc( nc_put_att_int(ncid, bnfhaveV, "_FillValue", NC_INT, 1, &MISSING_I) );
+#ifdef WITHMPI
+  temutil::nc(nc_var_par_access(ncid, puddleiceV, NC_INDEPENDENT));
+  temutil::nc(nc_var_par_access(ncid, magicpuddleV, NC_INDEPENDENT));
+  temutil::nc(nc_var_par_access(ncid, bnfnppV, NC_INDEPENDENT));
+  temutil::nc(nc_var_par_access(ncid, bnfetV, NC_INDEPENDENT));
+  temutil::nc(nc_var_par_access(ncid, bnfpftV, NC_INDEPENDENT));
+  temutil::nc(nc_var_par_access(ncid, bnfhaveV, NC_INDEPENDENT));
 #endif
 
   /* Global Attributes */

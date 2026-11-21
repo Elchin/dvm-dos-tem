@@ -22,8 +22,11 @@
 // total at the start of the month; Meyerholt's FOR scheme only states that
 // BNF converges to 0 above 2 gN/m2 inorganic N, the linear form is ours).
 // Month m receives B * w_m, w_m = max(NPP_m,0)/sum(max(NPP_k,0)) of the
-// previous year (uniform 1/12 if that sum is 0). The first model year of a
-// process (no previous year in memory; not stored in the restart file) gets 0.
+// previous year (uniform 1/12 if that sum is 0). The first model year of a run
+// gets 0 (no previous year). The previous-year memory is carried across stages
+// in the restart file (bnf_prev_npp/et/pft_npp, bnf_have_prev; restart-state-carry),
+// so a run restarted from a file matches a chained run. Old restarts without these
+// variables keep the in-memory state (a fresh process: first year 0, as before).
 // Phase 2, model_settings.bnf_to_plant (0/1, default 0; 1 needs bnf_scheme > 0):
 // 1 = the scheme part of B (the symbiotic-type rate: PRO, AET or CONST) goes to
 // the plant labile N pool (LABN) instead of the soil, as symbiotic BNF in

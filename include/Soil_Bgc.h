@@ -388,6 +388,9 @@ public:
   //   doi:10.1029/1999GB900014; Thornton et al. 2007, doi:10.1029/2006GB002868 (BNF to soil mineral N).
   bnf::Params bnfp;
   bnf::YearMemory bnfmem;
+  // restart-state-carry: copy the previous-year BNF memory to / from the restart.
+  void bnf_memory_to_restart(RestartData & rdata) const;
+  bool bnf_memory_from_restart(const RestartData & rdata);   // false: absent/invalid, memory kept
   double bnf_soil_month = 0.0;   // g/m2/month into AVLN
   double bnf_veg_month = 0.0;    // Phase 2 (bnf_to_plant 1): g/m2/month to plant labile N (Cohort shares it among PFTs)
   double bnf_veg_delivered = 0.0;// Phase 2: amount the vegetation integrators delivered (veg give-up: fraction bh_t0)

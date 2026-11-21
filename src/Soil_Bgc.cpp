@@ -1968,6 +1968,8 @@ void Soil_Bgc::set_state_from_restartdata(const RestartData & rdata) {
   bd->m_sois.wdebrisc = rdata.wdebrisc;
   bd->m_sois.wdebrisn = rdata.wdebrisn;
   assignCarbonBd2LayerMonthly();
+
+  bnf_memory_from_restart(rdata);   // restart-state-carry
 };
 
 void Soil_Bgc::initializeParameter() {
@@ -3296,4 +3298,27 @@ void Soil_Bgc::deepCarbonTransfer(double del_orgn[]) {
     d2m_f = (d2m_on && mtot > 0.0) ? 1.0 : 0.0;
   }
   d2m_moved_c = moved_c; d2m_moved_n = moved_n;
+}
+
+
+/** restart-state-carry: previous-year BNF memory -> restart (cur_* are 0 at a year-end restart). */
+void Soil_Bgc::bnf_memory_to_restart(RestartData & rdata) const {
+  for (int k = 0; k < 12; k++) { rdata.bnf_prev_npp[k] = bnfmem.prev_npp[k]; rdata.bnf_prev_et[k] = bnfmem.prev_et[k]; }
+  for (int ip = 0; ip < NUM_PFT; ip++) { rdata.bnf_prev_pft_npp[ip] = bnfmem.prev_pft_npp[ip]; }
+  rdata.bnf_have_prev = bnfmem.have_prev ? 1 : 0;
+}
+
+/** restart-state-carry: restore the previous-year BNF memory. Old restarts (no BNF vars) or a pixel
+ *  that was never written (fill values) keep the in-memory state, which is the legacy behaviour. */
+bool Soil_Bgc::bnf_memory_from_restart(const RestartData & rdata) {
+  if (!rdata.has_bnf_state) { return false; }
+  if (rdata.bnf_have_prev != 0 && rdata.bnf_have_prev != 1) { return false; }
+  for (int k = 0; k < 12; k++) {
+    if (rdata.bnf_prev_npp[k] == MISSING_D || rdata.bnf_prev_et[k] == MISSING_D) { return false; }
+  }
+  for (int ip = 0; ip < NUM_PFT; ip++) { if (rdata.bnf_prev_pft_npp[ip] == MISSING_D) { return false; } }
+  for (int k = 0; k < 12; k++) { bnfmem.prev_npp[k] = rdata.bnf_prev_npp[k]; bnfmem.prev_et[k] = rdata.bnf_prev_et[k]; }
+  for (int ip = 0; ip < NUM_PFT; ip++) { bnfmem.prev_pft_npp[ip] = rdata.bnf_prev_pft_npp[ip]; }
+  bnfmem.have_prev = (rdata.bnf_have_prev == 1);
+  return true;
 }

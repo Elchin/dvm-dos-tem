@@ -2339,6 +2339,7 @@ void Cohort::set_restartdata_from_state() {
   restartdata.watertab   = edall->d_sois.watertab;
   restartdata.puddle_ice_mm = soilenv.puddle_ice_mm;
   restartdata.magic_puddle  = edall->d_soi2l.magic_puddle;
+  soilbgc.bnf_memory_to_restart(restartdata);   // restart-state-carry
 
   for(int il =0; il<cd.d_soil.numsl; il++) {
     restartdata.DZsoil[il]   = cd.d_soil.dz[il];
