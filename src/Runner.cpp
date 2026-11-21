@@ -1,5 +1,6 @@
 #include <string>
 #include <algorithm>
+#include <ctime>
 #include <fstream>
 #include <iostream>
 #include <json/writer.h>
@@ -26,6 +27,12 @@ Runner::Runner(ModelData mdldata, bool cal_mode, int y, int x):
                            << "injected ModelData, and for explicit (y,x) "
                            << "position w/in the input data region.";
   this->md = mdldata;
+  // Reset the cell timer here: mdldata.cell_stime is shared/global and only
+  // reflects the start of the whole program (or a stale previous cell), so
+  // without this every cell's elapsed-time check in run_years() would be
+  // measured from program start rather than from this cell's start.
+  // (upstream 76e91ed0; only matters when model_settings.cell_timelimit > 0)
+  this->md.cell_stime = time(0);
   // Point the cohort at the Runner-owned copy. mdldata is a by-value constructor
   // parameter, so &mdldata dangled as soon as this constructor returned and every later
   // cohort.md->get_*/set_* (stage switches, nfeed, dsl, dynamic LAI, ...) read/wrote dead
@@ -4850,13 +4857,16 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
   map_itr = netcdf_outputs.end();
 
 
-  //NRESORB
-  map_itr = netcdf_outputs.find("NRESORB");
+  //NRESORPTION
+  map_itr = netcdf_outputs.find("NRESORPTION");
+  if(map_itr == netcdf_outputs.end()){ // fork compat: legacy name used before
+    map_itr = netcdf_outputs.find("NRESORB"); //  upstream 888ad6ea/fead82c2 rename
+  }
   if(map_itr != netcdf_outputs.end()){
-    BOOST_LOG_SEV(glg, debug)<<"NetCDF output: NRESORB";
+    BOOST_LOG_SEV(glg, debug)<<"NetCDF output: NRESORPTION";
     curr_spec = map_itr->second;
 
-    #pragma omp critical(outputNRESORB)
+    #pragma omp critical(outputNRESORPTION)
     {
       //PFT and compartment
       if(curr_spec.pft && curr_spec.compartment){
@@ -4930,7 +4940,7 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
 
       }
     }
-  }//end NRESORB
+  }//end NRESORPTION
   map_itr = netcdf_outputs.end();
 
 
@@ -6259,12 +6269,15 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
 
 
   //SOC from 0cm to 30cm
-  map_itr = netcdf_outputs.find("SOC0_30cm");
+  map_itr = netcdf_outputs.find("SOC0TO30CM");
+  if(map_itr == netcdf_outputs.end()){ // fork compat: legacy name used before
+    map_itr = netcdf_outputs.find("SOC0_30cm"); //  upstream 888ad6ea/fead82c2 rename
+  }
   if (map_itr != netcdf_outputs.end()) {
-    BOOST_LOG_SEV(glg, debug) << "NetCDF output: SOC0_30cm";
+    BOOST_LOG_SEV(glg, debug) << "NetCDF output: SOC0TO30CM";
     curr_spec = map_itr->second;
 
-    #pragma omp critical(outputSOC0_30cm)
+    #pragma omp critical(outputSOC0TO30CM)
     {
 
       //Monthly
@@ -6290,18 +6303,21 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
         }
 
       }
-    } //end critical(outputSOC0_30cm)
-  } //end SOC0_30cm
+    } //end critical(outputSOC0TO30CM)
+  } //end SOC0TO30CM
   map_itr = netcdf_outputs.end();
 
 
   //SOC from 0cm to 100cm
-  map_itr = netcdf_outputs.find("SOC0_100cm");
+  map_itr = netcdf_outputs.find("SOC0TO100CM");
+  if(map_itr == netcdf_outputs.end()){ // fork compat: legacy name used before
+    map_itr = netcdf_outputs.find("SOC0_100cm"); //  upstream 888ad6ea/fead82c2 rename
+  }
   if (map_itr != netcdf_outputs.end()) {
-    BOOST_LOG_SEV(glg, debug) << "NetCDF output: SOC0_100cm";
+    BOOST_LOG_SEV(glg, debug) << "NetCDF output: SOC0TO100CM";
     curr_spec = map_itr->second;
 
-    #pragma omp critical(outputSOC0_100cm)
+    #pragma omp critical(outputSOC0TO100CM)
     {
 
       //Monthly
@@ -6327,18 +6343,21 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
         }
 
       }
-    } //end critical(outputSOC0_100cm)
-  } //end SOC0_100cm
+    } //end critical(outputSOC0TO100CM)
+  } //end SOC0TO100CM
   map_itr = netcdf_outputs.end();
 
 
   //SOC from 0cm to 200cm
-  map_itr = netcdf_outputs.find("SOC0_200cm");
+  map_itr = netcdf_outputs.find("SOC0TO200CM");
+  if(map_itr == netcdf_outputs.end()){ // fork compat: legacy name used before
+    map_itr = netcdf_outputs.find("SOC0_200cm"); //  upstream 888ad6ea/fead82c2 rename
+  }
   if (map_itr != netcdf_outputs.end()) {
-    BOOST_LOG_SEV(glg, debug) << "NetCDF output: SOC0_200cm";
+    BOOST_LOG_SEV(glg, debug) << "NetCDF output: SOC0TO200CM";
     curr_spec = map_itr->second;
 
-    #pragma omp critical(outputSOC0_200cm)
+    #pragma omp critical(outputSOC0TO200CM)
     {
 
       //Monthly
@@ -6364,18 +6383,21 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
         }
 
       }
-    } //end critical(outputSOC0_200cm)
-  } //end SOC0_200cm
+    } //end critical(outputSOC0TO200CM)
+  } //end SOC0TO200CM
   map_itr = netcdf_outputs.end();
 
 
   //SOC from 0cm to 300cm
-  map_itr = netcdf_outputs.find("SOC0_300cm");
+  map_itr = netcdf_outputs.find("SOC0TO300CM");
+  if(map_itr == netcdf_outputs.end()){ // fork compat: legacy name used before
+    map_itr = netcdf_outputs.find("SOC0_300cm"); //  upstream 888ad6ea/fead82c2 rename
+  }
   if (map_itr != netcdf_outputs.end()) {
-    BOOST_LOG_SEV(glg, debug) << "NetCDF output: SOC0_300cm";
+    BOOST_LOG_SEV(glg, debug) << "NetCDF output: SOC0TO300CM";
     curr_spec = map_itr->second;
 
-    #pragma omp critical(outputSOC0_300cm)
+    #pragma omp critical(outputSOC0TO300CM)
     {
 
       //Monthly
@@ -6401,8 +6423,8 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
         }
 
       }
-    } //end critical(outputSOC0_300cm)
-  } //end SOC0_300cm
+    } //end critical(outputSOC0TO300CM)
+  } //end SOC0TO300CM
   map_itr = netcdf_outputs.end();
 
 
@@ -7239,12 +7261,15 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
 
 
   //Soil temperature at 30cm
-  map_itr = netcdf_outputs.find("TSOIL_30cm");
+  map_itr = netcdf_outputs.find("TSOIL30CM");
+  if(map_itr == netcdf_outputs.end()){ // fork compat: legacy name used before
+    map_itr = netcdf_outputs.find("TSOIL_30cm"); //  upstream 888ad6ea/fead82c2 rename
+  }
   if (map_itr != netcdf_outputs.end()) {
-    BOOST_LOG_SEV(glg, debug) << "NetCDF output: TSOIL_30cm";
+    BOOST_LOG_SEV(glg, debug) << "NetCDF output: TSOIL30CM";
     curr_spec = map_itr->second;
 
-    #pragma omp critical(outputTSOIL_30cm)
+    #pragma omp critical(outputTSOIL30CM)
     {
 
       //Monthly
@@ -7270,18 +7295,21 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
         }
 
       }
-    } //end critical(outputTSOIL_30cm)
-  } //end TSOIL_30cm
+    } //end critical(outputTSOIL30CM)
+  } //end TSOIL30CM
   map_itr = netcdf_outputs.end();
 
 
   //Soil temperature at 100cm
-  map_itr = netcdf_outputs.find("TSOIL_100cm");
+  map_itr = netcdf_outputs.find("TSOIL100CM");
+  if(map_itr == netcdf_outputs.end()){ // fork compat: legacy name used before
+    map_itr = netcdf_outputs.find("TSOIL_100cm"); //  upstream 888ad6ea/fead82c2 rename
+  }
   if (map_itr != netcdf_outputs.end()) {
-    BOOST_LOG_SEV(glg, debug) << "NetCDF output: TSOIL_100cm";
+    BOOST_LOG_SEV(glg, debug) << "NetCDF output: TSOIL100CM";
     curr_spec = map_itr->second;
 
-    #pragma omp critical(outputTSOIL_100cm)
+    #pragma omp critical(outputTSOIL100CM)
     {
 
       //Monthly
@@ -7306,18 +7334,21 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
           outhold.tsoil_100_for_output.clear();
         }
       }
-    } //end critical(outputTSOIL_100cm)
-  } //end TSOIL_100cm
+    } //end critical(outputTSOIL100CM)
+  } //end TSOIL100CM
   map_itr = netcdf_outputs.end();
 
 
   //Soil temperature at 200cm
-  map_itr = netcdf_outputs.find("TSOIL_200cm");
+  map_itr = netcdf_outputs.find("TSOIL200CM");
+  if(map_itr == netcdf_outputs.end()){ // fork compat: legacy name used before
+    map_itr = netcdf_outputs.find("TSOIL_200cm"); //  upstream 888ad6ea/fead82c2 rename
+  }
   if (map_itr != netcdf_outputs.end()) {
-    BOOST_LOG_SEV(glg, debug) << "NetCDF output: TSOIL_200cm";
+    BOOST_LOG_SEV(glg, debug) << "NetCDF output: TSOIL200CM";
     curr_spec = map_itr->second;
 
-    #pragma omp critical(outputTSOIL_200cm)
+    #pragma omp critical(outputTSOIL200CM)
     {
 
       //Monthly
@@ -7342,18 +7373,21 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
           outhold.tsoil_200_for_output.clear();
         }
       }
-    } //end critical(outputTSOIL_200cm)
-  } //end TSOIL_200cm
+    } //end critical(outputTSOIL200CM)
+  } //end TSOIL200CM
   map_itr = netcdf_outputs.end();
 
 
   //Soil temperature at 300cm
-  map_itr = netcdf_outputs.find("TSOIL_300cm");
+  map_itr = netcdf_outputs.find("TSOIL300CM");
+  if(map_itr == netcdf_outputs.end()){ // fork compat: legacy name used before
+    map_itr = netcdf_outputs.find("TSOIL_300cm"); //  upstream 888ad6ea/fead82c2 rename
+  }
   if (map_itr != netcdf_outputs.end()) {
-    BOOST_LOG_SEV(glg, debug) << "NetCDF output: TSOIL_300cm";
+    BOOST_LOG_SEV(glg, debug) << "NetCDF output: TSOIL300CM";
     curr_spec = map_itr->second;
 
-    #pragma omp critical(outputTSOIL_300cm)
+    #pragma omp critical(outputTSOIL300CM)
     {
 
       //Monthly
@@ -7378,8 +7412,8 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
           outhold.tsoil_300_for_output.clear();
         }
       }
-    } //end critical(outputTSOIL_300cm)
-  } //end TSOIL_300cm
+    } //end critical(outputTSOIL300CM)
+  } //end TSOIL300CM
   map_itr = netcdf_outputs.end();
 
 
@@ -7659,12 +7693,15 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
 
 
   //VWC at 30cm
-  map_itr = netcdf_outputs.find("VWC_30cm");
+  map_itr = netcdf_outputs.find("VWC30CM");
+  if(map_itr == netcdf_outputs.end()){ // fork compat: legacy name used before
+    map_itr = netcdf_outputs.find("VWC_30cm"); //  upstream 888ad6ea/fead82c2 rename
+  }
   if (map_itr != netcdf_outputs.end()) {
-    BOOST_LOG_SEV(glg, debug) << "NetCDF output: VWC_30cm";
+    BOOST_LOG_SEV(glg, debug) << "NetCDF output: VWC30CM";
     curr_spec = map_itr->second;
 
-    #pragma omp critical(outputVWC_30cm)
+    #pragma omp critical(outputVWC30CM)
     {
 
       //Monthly
@@ -7696,12 +7733,15 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
 
 
   //VWC at 100cm
-  map_itr = netcdf_outputs.find("VWC_100cm");
+  map_itr = netcdf_outputs.find("VWC100CM");
+  if(map_itr == netcdf_outputs.end()){ // fork compat: legacy name used before
+    map_itr = netcdf_outputs.find("VWC_100cm"); //  upstream 888ad6ea/fead82c2 rename
+  }
   if (map_itr != netcdf_outputs.end()) {
-    BOOST_LOG_SEV(glg, debug) << "NetCDF output: VWC_100cm";
+    BOOST_LOG_SEV(glg, debug) << "NetCDF output: VWC100CM";
     curr_spec = map_itr->second;
 
-    #pragma omp critical(outputVWC_100cm)
+    #pragma omp critical(outputVWC100CM)
     {
 
       //Monthly
@@ -7726,18 +7766,21 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
           outhold.vwc_100_for_output.clear();
         }
       }
-    } //end critical(outputVWC_100cm)
-  } //end VWC_100cm
+    } //end critical(outputVWC100CM)
+  } //end VWC100CM
   map_itr = netcdf_outputs.end();
 
 
   //VWC at 200cm
-  map_itr = netcdf_outputs.find("VWC_200cm");
+  map_itr = netcdf_outputs.find("VWC200CM");
+  if(map_itr == netcdf_outputs.end()){ // fork compat: legacy name used before
+    map_itr = netcdf_outputs.find("VWC_200cm"); //  upstream 888ad6ea/fead82c2 rename
+  }
   if (map_itr != netcdf_outputs.end()) {
-    BOOST_LOG_SEV(glg, debug) << "NetCDF output: VWC_200cm";
+    BOOST_LOG_SEV(glg, debug) << "NetCDF output: VWC200CM";
     curr_spec = map_itr->second;
 
-    #pragma omp critical(outputVWC_200cm)
+    #pragma omp critical(outputVWC200CM)
     {
 
       //Monthly
@@ -7762,18 +7805,21 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
           outhold.vwc_200_for_output.clear();
         }
       }
-    } //end critical(outputVWC_200cm)
-  } //end VWC_200cm
+    } //end critical(outputVWC200CM)
+  } //end VWC200CM
   map_itr = netcdf_outputs.end();
 
 
   //VWC at 300cm
-  map_itr = netcdf_outputs.find("VWC_300cm");
+  map_itr = netcdf_outputs.find("VWC300CM");
+  if(map_itr == netcdf_outputs.end()){ // fork compat: legacy name used before
+    map_itr = netcdf_outputs.find("VWC_300cm"); //  upstream 888ad6ea/fead82c2 rename
+  }
   if (map_itr != netcdf_outputs.end()) {
-    BOOST_LOG_SEV(glg, debug) << "NetCDF output: VWC_300cm";
+    BOOST_LOG_SEV(glg, debug) << "NetCDF output: VWC300CM";
     curr_spec = map_itr->second;
 
-    #pragma omp critical(outputVWC_300cm)
+    #pragma omp critical(outputVWC300CM)
     {
 
       //Monthly
@@ -7798,8 +7844,8 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
           outhold.vwc_300_for_output.clear();
         }
       }
-    } //end critical(outputVWC_300cm)
-  } //end VWC_300cm
+    } //end critical(outputVWC300CM)
+  } //end VWC300CM
   map_itr = netcdf_outputs.end();
 
 

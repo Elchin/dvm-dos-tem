@@ -6,11 +6,18 @@ import os
 import sys
 import errno
 import shutil
+import pathlib
+import re
+
 #import json
 import commentjson # need because we keep comments in our config file
 import collections
 import argparse
 import textwrap
+from pathlib import Path
+
+from pyddt.util import config as pyddt_config
+from pyddt.util.layout import DEFAULT_RUN_LAYOUT
 
 def mkdir_p(path):
   '''Emulates the shell's `mkdir -p`.'''
@@ -21,6 +28,63 @@ def mkdir_p(path):
       pass
     else:
       raise
+
+def input_ssp(filename):
+  match = re.search(r'(?<![a-z0-9])ssp[_-]?([1-5])[_.-]?([0-9])[_.-]?([0-9])(?![0-9])',
+                    pathlib.Path(filename).name, re.IGNORECASE)
+  return ''.join(match.groups()) if match else None
+
+
+def pick_input_file(search_dir, criteria_groups, default_filename, description, scenario=None):
+  '''
+  Scan search_dir for .nc files whose lowercased names contain all tokens in
+  at least one criteria group (list of tuples). Returns the first match. If
+  multiple matches are found, a warning is printed. If no match is found, a
+  warning is printed and the default filename is used.
+  '''
+  matches = []
+  for candidate in sorted(pathlib.Path(search_dir).iterdir()):
+    if not candidate.is_file() or candidate.suffix.lower() != '.nc':
+      continue
+    name_lower = candidate.name.lower()
+    for tokens in criteria_groups:
+      if all(t in name_lower for t in tokens):
+        matches.append(candidate.name)
+        break
+
+  if scenario:
+    scenario_matches = [name for name in matches if input_ssp(name) == scenario]
+    if scenario_matches:
+      matches = scenario_matches
+    else:
+      matches = [name for name in matches if input_ssp(name) is None]
+      if matches:
+        print(
+          f"WARNING: No {description} file labeled SSP{scenario} found in {search_dir}. "
+          "Using an unlabeled file; its scenario cannot be verified.",
+          file=sys.stderr,
+        )
+      else:
+        print(
+          f"WARNING: No {description} file matching SSP{scenario} found in {search_dir}.",
+          file=sys.stderr,
+        )
+
+  if len(matches) > 1:
+    print(
+      f"WARNING: Multiple {description} files found in {search_dir}: "
+      f"{matches}. Using first match: {matches[0]}",
+      file=sys.stderr,
+    )
+  if len(matches) == 0:
+    print(
+      f"WARNING: No {description} file found in {search_dir}. "
+      f"Defaulting to: {default_filename}",
+      file=sys.stderr,
+    )
+    return os.path.join(search_dir, default_filename)
+
+  return os.path.join(search_dir, matches[0])
 
 
 def cmdline_parse(argv=None):
@@ -52,7 +116,7 @@ def cmdline_parse(argv=None):
       help=textwrap.dedent("""Force create new directory, overwriting existing 
         data."""))
 
-  parser.add_argument('--input-data-path', default="<placeholder>",
+  parser.add_argument('--input-data-path', required=True,
       help=textwrap.dedent("""Path to the input data"""))
 
   parser.add_argument('--seed-parameters',
@@ -96,6 +160,9 @@ def cmdline_run(args):
   '''
     # Make the new main working directory
   mkdir_p(args.new_directory)
+  # Resolve the shared relative paths without creating directories that will
+  # be populated by copytree (which expects its destination not to exist).
+  run_paths = {name: Path(args.new_directory) / name for name in DEFAULT_RUN_LAYOUT}
 
   if args.force:
     shutil.rmtree(args.new_directory)
@@ -113,37 +180,37 @@ def cmdline_run(args):
   if args.no_cal_targets:
     pass
   else:
-    mkdir_p(os.path.join(args.new_directory, 'calibration'))
+    mkdir_p(run_paths['calibration'])
     if args.seed_targets:
       shutil.copy(args.seed_targets,
-                  os.path.join(args.new_directory, 'calibration'))
+                  run_paths['calibration'])
     else:
       shutil.copy(os.path.join(ddt_dir,'pyddt','src','pyddt', 'calibration', 'calibration_targets.py'),
-                  os.path.join(args.new_directory, 'calibration'))
+                  run_paths['calibration'])
 
   if args.seed_parameters:
     shutil.copytree(args.seed_parameters,
-                    os.path.join(args.new_directory, 'parameters'))
+                    run_paths['parameters'])
   else:
     shutil.copytree(os.path.join(ddt_dir, 'parameters'),
-                    os.path.join(args.new_directory, 'parameters'))
+                    run_paths['parameters'])
 
 
   # Copy over the config and parameters directories
-  shutil.copytree(os.path.join(ddt_dir, 'config'), os.path.join(args.new_directory, 'config'))
+  shutil.copytree(os.path.join(ddt_dir, 'config'), run_paths['config'])
 
   if args.copy_inputs:
     shutil.copytree(args.input_data_path, os.path.join(args.new_directory, 'inputs', os.path.basename(args.input_data_path)))
   else:
     # Copy the run mask from the source data directory into the new working directory
-    shutil.copy(os.path.join(args.input_data_path, 'run-mask.nc'), os.path.join(args.new_directory, 'run-mask.nc'))
+    mask_filename = pyddt_config.DEFAULT_INPUT_FILE_NAMES['runmask_file']
+    shutil.copy(os.path.join(args.input_data_path, mask_filename), run_paths['run-mask.nc'])
 
   # Make sure an output directory exists
-  mkdir_p(os.path.join(args.new_directory, 'output'))
+  mkdir_p(run_paths['output'])
 
   # Open the new config file
-  with open(os.path.join(args.new_directory, 'config/config.js'), encoding='utf-8') as fp:
-    config = commentjson.load(fp)
+  config = pyddt_config.load_config(run_paths['config/config.js'])
 
   ####  Set up the new config file appropriately... ####
 
@@ -151,30 +218,132 @@ def cmdline_run(args):
   config['IO']['parameter_dir'] = 'parameters/'  # <-- trailing slash is important!!
   config['IO']['output_dir']    = 'output/'      # <-- trailing slash is important!!
   config['IO']['restart_from']  = ''             # defaults to blank; not a restart run,
-  config['IO']['runmask_file']  = 'run-mask.nc'
+  config['IO']['runmask_file']  = pyddt_config.DEFAULT_INPUT_FILE_NAMES['runmask_file']
 
   if args.copy_inputs:
     input_data_path = os.path.join('inputs', os.path.basename(args.input_data_path))
     # leave run mask where it is, set path
-    config['IO']['runmask_file']  = os.path.join(input_data_path,'run-mask.nc')
+    config['IO']['runmask_file']  = os.path.join(input_data_path, pyddt_config.DEFAULT_INPUT_FILE_NAMES['runmask_file'])
+    input_data_path = os.path.join(os.path.abspath(args.new_directory), input_data_path)
 
   else:
     input_data_path = os.path.join(os.path.abspath(args.input_data_path))
- 
-  # Set up the paths to the input data...
-  config['IO']['hist_climate_file']    = os.path.join(input_data_path, 'historic-climate.nc')
-  config['IO']['proj_climate_file']    = os.path.join(input_data_path, 'projected-climate.nc')
-  config['IO']['veg_class_file']       = os.path.join(input_data_path, 'vegetation.nc')
-  config['IO']['drainage_file']        = os.path.join(input_data_path, 'drainage.nc')
-  config['IO']['soil_texture_file']    = os.path.join(input_data_path, 'soil-texture.nc')
-  config['IO']['co2_file']             = os.path.join(input_data_path, 'co2.nc')
-  config['IO']['proj_co2_file']        = os.path.join(input_data_path, 'projected-co2.nc')
-  config['IO']['ch4_file']             = os.path.join(input_data_path, 'ch4.nc')
-  config['IO']['proj_ch4_file']        = os.path.join(input_data_path, 'projected-ch4.nc')
-  config['IO']['topo_file']            = os.path.join(input_data_path, 'topo.nc')
-  config['IO']['fri_fire_file']        = os.path.join(input_data_path, 'fri-fire.nc')
-  config['IO']['hist_exp_fire_file']   = os.path.join(input_data_path, 'historic-explicit-fire.nc')
-  config['IO']['proj_exp_fire_file']   = os.path.join(input_data_path, 'projected-explicit-fire.nc')
+    if not pathlib.Path(input_data_path).is_dir():
+      raise ValueError(f"Input data path {input_data_path} is not a valid directory.")
+
+  # Check the input data path and look for the appropriate files. Allow for some
+  # variation, i.e. veg, vegetation, veg_class, VegClass, etc. Same for soil
+  # texture, climate, climate, topo, fire and co2 files. This is to allow for
+  # some flexibility in the input data naming conventions, and to avoid having
+  # to rename files just to get them to work with the default config file. If
+  # there are multiple files that match the criteria, then the first one found
+  # will be used, and a warning will be printed to the user. If no files are
+  # found that match the criteria, then the path in the config file will be set
+  # to the default filename, which will likely cause the run to fail, but at
+  # least the user will get a clear error message about what file is missing.
+  
+  config['IO']['hist_climate_file'] = pick_input_file(
+    input_data_path,
+    [('historic', 'climate'), ('hist', 'climate')],
+    pyddt_config.DEFAULT_INPUT_FILE_NAMES['hist_climate_file'],
+    'historic climate',
+  )
+
+  config['IO']['proj_climate_file'] = pick_input_file(
+    input_data_path,
+    [('projected', 'climate'), ('proj', 'climate')],
+    pyddt_config.DEFAULT_INPUT_FILE_NAMES['proj_climate_file'],
+    'projected climate',
+  )
+
+  config['IO']['veg_class_file'] = pick_input_file(
+    input_data_path,
+    [('vegetation',), ('veg_class',), ('vegclass',), ('veg',)],
+    pyddt_config.DEFAULT_INPUT_FILE_NAMES['veg_class_file'],
+    'vegetation',
+  )
+
+  config['IO']['drainage_file'] = pick_input_file(
+    input_data_path,
+    [('drainage',), ('drain',)],
+    pyddt_config.DEFAULT_INPUT_FILE_NAMES['drainage_file'],
+    'drainage',
+  )
+
+  config['IO']['soil_texture_file'] = pick_input_file(
+    input_data_path,
+    [('soil', 'texture'), ('soil_texture',), ('soiltex',)],
+    pyddt_config.DEFAULT_INPUT_FILE_NAMES['soil_texture_file'],
+    'soil texture',
+  )
+
+  config['IO']['co2_file'] = pick_input_file(
+    input_data_path,
+    [('historic', 'co2'), ('hist', 'co2'), ('co2',)],
+    pyddt_config.DEFAULT_INPUT_FILE_NAMES['co2_file'],
+    'historic CO2',
+  )
+
+  config['IO']['proj_co2_file'] = pick_input_file(
+    input_data_path,
+    [('projected', 'co2'), ('proj', 'co2')],
+    pyddt_config.DEFAULT_INPUT_FILE_NAMES['proj_co2_file'],
+    'projected CO2',
+    scenario=input_ssp(config['IO']['proj_climate_file']),
+  )
+
+  # Fork: CH4 inputs (wetland/CH4 module). Not added to
+  # pyddt_config.DEFAULT_INPUT_FILE_NAMES on purpose: that dict is also the
+  # *required* input list for pyddt.util.input / preflight, and many input sets
+  # have no CH4 files.
+  config['IO']['ch4_file'] = pick_input_file(
+    input_data_path,
+    [('historic', 'ch4'), ('hist', 'ch4'), ('ch4',)],
+    'ch4.nc',
+    'historic CH4',
+  )
+
+  config['IO']['proj_ch4_file'] = pick_input_file(
+    input_data_path,
+    [('projected', 'ch4'), ('proj', 'ch4')],
+    'projected-ch4.nc',
+    'projected CH4',
+    scenario=input_ssp(config['IO']['proj_climate_file']),
+  )
+
+  config['IO']['topo_file'] = pick_input_file(
+    input_data_path,
+    [('topo',), ('topography',)],
+    pyddt_config.DEFAULT_INPUT_FILE_NAMES['topo_file'],
+    'topography',
+  )
+
+  config['IO']['fri_fire_file'] = pick_input_file(
+    input_data_path,
+    [('fri', 'fire'), ('fri-fire',), ('frifire',)],
+    pyddt_config.DEFAULT_INPUT_FILE_NAMES['fri_fire_file'],
+    'FRI fire',
+  )
+
+  config['IO']['hist_exp_fire_file'] = pick_input_file(
+    input_data_path,
+    [('historic', 'explicit', 'fire'), ('hist', 'exp', 'fire')],
+    pyddt_config.DEFAULT_INPUT_FILE_NAMES['hist_exp_fire_file'],
+    'historic explicit fire',
+  )
+
+  config['IO']['proj_exp_fire_file'] = pick_input_file(
+    input_data_path,
+    [('projected', 'explicit', 'fire'), ('proj', 'exp', 'fire')],
+    pyddt_config.DEFAULT_INPUT_FILE_NAMES['proj_exp_fire_file'],
+    'projected explicit fire',
+  )
+
+  if args.copy_inputs:
+    for key in (*pyddt_config.DEFAULT_INPUT_FILE_NAMES, 'ch4_file', 'proj_ch4_file'):
+      if key == 'runmask_file':
+        continue  # The copied run mask already has a relative path.
+      config['IO'][key] = os.path.relpath(config['IO'][key], os.path.abspath(args.new_directory))
 
   # By default the process based fire model input files are in a repo nested inside the DVM-DOS-TEM
   # repo.  The default paths are relative to the repo root.  This will make the paths absolute:
@@ -232,7 +401,7 @@ def cmdline_run(args):
   # Sort the keys in the IO section.
   config['IO'] = collections.OrderedDict(sorted(iter(config['IO'].items()), key=lambda k_v: sort_order.index(k_v[0])))
 
-  with open(os.path.join(args.new_directory, 'config/config.js'), 'w', encoding='utf-8') as fp:
+  with open(run_paths['config/config.js'], 'w', encoding='utf-8') as fp:
     commentjson.dump(config, fp, indent=2, sort_keys=False) # sorting messes up previous sorting!
 
 
