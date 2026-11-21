@@ -61,9 +61,10 @@ struct DcSoil {
 
 TEST_SUITE("deepc") {
 
-TEST_CASE("deep_carbon: ModelData default 1 (with and without the key), Soil_Bgc member default 0") {
-  ModelData md; CHECK(md.deep_carbon == 1);
-  Json::Value c; c["model_settings"]["svp_ice_fix"] = 0; ModelData mj(c); CHECK(mj.deep_carbon == 1);
+TEST_CASE("deep_carbon: ModelData default 0 (with and without the key; prod/deepc-default-off), Soil_Bgc member default 0") {
+  ModelData md; CHECK(md.deep_carbon == 0);
+  Json::Value c; c["model_settings"]["svp_ice_fix"] = 0; ModelData mj(c); CHECK(mj.deep_carbon == 0);
+  Json::Value e; ModelData me(e); CHECK(me.deep_carbon == 0);   // empty model_settings
   Soil_Bgc sb; CHECK(sb.deep_carbon == 0);
   CHECK(sb.deepc_s2df[0] == 0.5); CHECK(sb.deepc_s2df[1] == 1.0); CHECK(sb.deepc_s2df[2] == 1.0); CHECK(sb.deepc_s2df[3] == 1.0);
   CHECK(sb.deepc_d2mf[0] == 0.5); CHECK(sb.deepc_d2mf[3] == 1.0);
@@ -137,4 +138,10 @@ TEST_CASE("deep_carbon 1, gate 1 partial: f = eligible thickness / 5.2, moved C 
   CHECK(g.c(5) - DcSoil(1, 2).step().c(5) == 0.0);    // below the gate: receives nothing
 }
 
+}
+
+TEST_CASE("deep_carbon: explicit 1 in config still enables deep C and reaches Soil_Bgc (prod/deepc-default-off)") {
+  ModelData m1(msg(1)); CHECK(m1.deep_carbon == 1);
+  ModelData m0(msg(0)); CHECK(m0.deep_carbon == 0);
+  Soil_Bgc sb; sb.deep_carbon = m1.deep_carbon; CHECK(sb.deep_carbon == 1);   // Cohort.cpp: soilbgc.deep_carbon = md->deep_carbon
 }

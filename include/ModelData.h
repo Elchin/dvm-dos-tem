@@ -340,7 +340,8 @@ public:
   // 2 = transfer off). Integers 0/1/2 only; see Soil_Bgc.h for the scheme and references.
   int d2m_transfer_gate;
   // wetland_deep_C phase 2: model_settings.deep_carbon (1 = deep soil C burial scheme of upstream
-  // deep_carbon_v2, DEFAULT per E. Jafarov; 0 = v5q-gpp-fleaf2 burial path, bit-identical). Integers
+  // deep_carbon_v2; enable with "deep_carbon": 1 in config; 0 = v5q-gpp-fleaf2 burial path, bit-identical,
+  // BINARY DEFAULT since prod/deepc-default-off, E. Jafarov 2026-11-20 "Flip the deep_carbon binary default to 0"). Integers
   // 0/1 only; see Soil_Bgc.h (deep_carbon) for the scheme and references.
   int deep_carbon;
   // model_settings.rhmoistfrozen_override: per-CMT override of cmt_bgcsoil rhmoistfrozen (CMT number -> value in [0,1]);
