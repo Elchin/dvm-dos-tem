@@ -70,6 +70,13 @@ def pick_input_file(search_dir, criteria_groups, default_filename, description, 
           file=sys.stderr,
         )
 
+  # (fork) If the standard default filename is among the matches, use it. This
+  # keeps the pre-merge behaviour for conventionally named input sets (e.g.
+  # vegetation.nc is not displaced by original-vegetation.nc, co2.nc by
+  # projected-co2.nc) and only falls back to fuzzy matching otherwise.
+  if default_filename in matches:
+    matches = [default_filename]
+
   if len(matches) > 1:
     print(
       f"WARNING: Multiple {description} files found in {search_dir}: "
@@ -378,6 +385,8 @@ def cmdline_run(args):
     "fri_fire_file",
     "hist_exp_fire_file",
     "proj_exp_fire_file",
+    "hist_exp_thermokarst_file",
+    "proj_exp_thermokarst_file",
     #"topo_file",
     "fire_fuel_model_file",
     "fire_fosberg_a_file",
@@ -399,7 +408,8 @@ def cmdline_run(args):
   ] 
 
   # Sort the keys in the IO section.
-  config['IO'] = collections.OrderedDict(sorted(iter(config['IO'].items()), key=lambda k_v: sort_order.index(k_v[0])))
+  config['IO'] = collections.OrderedDict(sorted(iter(config['IO'].items()), key=lambda k_v: sort_order.index(k_v[0]) if k_v[0] in sort_order else len(sort_order)))
+  # (fork) unknown IO keys sort to the end instead of raising ValueError
 
   with open(run_paths['config/config.js'], 'w', encoding='utf-8') as fp:
     commentjson.dump(config, fp, indent=2, sort_keys=False) # sorting messes up previous sorting!
