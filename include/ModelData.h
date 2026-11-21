@@ -259,6 +259,15 @@ public:
   // take (cold content + Lf x ice) and the rest is returned to the surface (not put into the column, booked
   // as EnergyDiag::mret). docs/WORK_NOTES_snowmelt_heat_cap.md
   bool snowmelt_heat_cap = false;
+  // model_settings.snow_thermal_closure (thermal_solver 1 only; default false = legacy, bit-identical): true = after
+  // the thermal solve, every snow cell whose layer enthalpy differs from the solver's enthalpy is re-equilibrated at
+  // the solver's enthalpy (re-pays latent heat that the post-solve snow steps did not charge). Adds snleak,snleak_n
+  // to energy_daily.csv. docs/WORK_NOTES_snow_thermal_closure.md
+  bool snow_thermal_closure = false;
+  // model_settings.snow_enth_trace (thermal_solver 1 only; default 0 = off, bit-identical): 1 = print the snow cells
+  // (T, liq, ice, layer H, solver H) at four phases of the daily thermal step to stderr on days with |res| > 1e3 J m-2;
+  // 2 = every day. Logging only, no state change.
+  int snow_enth_trace = 0;
   int eq_co2_mode;   // model_settings.eq_co2_mode: 0 = first co2 value in EQ/pre-run (default), 1 = baseline mean (upstream)
   // Phase 3 v2 (Elchin 2026-11-11: "1 agree, 2 fix it, 3 agree"). All default 0 = bit-identical.
   // runon_energy_mode: (a) run-on/ponded water carry energy at max(Tair, 0 C); puddle freeze/thaw

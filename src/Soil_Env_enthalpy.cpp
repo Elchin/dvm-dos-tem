@@ -28,6 +28,8 @@
 #include <cmath>
 #include <vector>
 #include <iostream>
+#include <sstream>
+#include <iomanip>
 
 #include "../include/TEMLogger.h"
 extern src::severity_logger< severity_level > glg;
@@ -210,6 +212,7 @@ void Soil_Env::enthalpyThermalStep(const double tsurface, const double qmelt_Wm2
   std::vector<enthalpy::Cell> cells(n);
   std::vector<double> T(n), S(n, 0.0);
   for (int i = 0; i < n; ++i) { enthalpyCell(L[i], cells[i]); T[i] = L[i]->tem; }
+  q.snleak = 0.0; q.snleak_n = 0.0;
   double hdir = 0.0;   // snowmelt_heat_cap: enthalpy put into the snow cells before the solve (J m-2)
   if (n > 0 && L[0]->isSnow) {
     if (snowmelt_heat_cap == 1) {
@@ -219,11 +222,40 @@ void Soil_Env::enthalpyThermalStep(const double tsurface, const double qmelt_Wm2
       const double hb = columnEnthalpyE();
       q.mret = enthApplyMeltDirect(fmax(qmelt_Wm2, 0.0) * SEC_IN_DAY, q);
       hdir = columnEnthalpyE() - hb;
+      if (snow_thermal_closure == 1) {
+        // The direct melt can leave a snow cell off its freezing curve: the cold-content branch of
+        // enthApplyMeltDirect warms a cell to a T inside the free-water band (-eps, 0) and returns without
+        // putting liquid back on the curve (found with snow_enth_trace, CMT06 1945 d147: cell H -16.57e6 vs
+        // solver H(T) -9.78e6 J m-2). The solve then treats the cell as on the curve and the scatter turns the
+        // missing liquid into melt without charging Lf. Put every snow cell back on its curve at the same
+        // layer enthalpy (as step 3); snleak books the enthalpy the legacy path would have created.
+        for (Layer* l = ground->toplayer; l != NULL && l->isSnow; l = l->nextl) {
+          enthalpy::Cell c; enthalpyCell(l, c);
+          if (enthalpy::onCurve(c, l->tem, fmax(l->liq, 0.0), 1.0e-12 * fmax(1.0, c.W))) { continue; }
+          const double hl = enthalpy::Hstate(c, l->tem, fmax(l->liq, 0.0), fmax(l->ice, 0.0));
+          q.snleak += enthalpy::H(c, l->tem) - hl; q.snleak_n += 1.0;
+          double lq, ic;
+          l->tem = enthalpy::equilibrate(c, hl, lq, ic);
+          l->liq = lq; l->ice = ic;
+        }
+      }
       for (int i = 0; i < n; ++i) { enthalpyCell(L[i], cells[i]); T[i] = L[i]->tem; }
     } else {
       S[0] = qmelt_Wm2;
     }
   }
+  std::ostringstream trc;   // snow_enth_trace (logging only)
+  auto snap = [&](const char* ph) {
+    if (!snow_enth_trace) { return; }
+    trc << std::setprecision(17) << "TRACE " << ph << "\n";
+    int shown = 0;
+    for (int i = 0; i < n && shown < 5; ++i, ++shown) {
+      Layer* l = L[i];
+      trc << "  cell " << i << (l->isSnow ? " snow" : (l->isRock ? " rock" : " soil")) << " T " << l->tem << " liq " << l->liq
+          << " ice " << l->ice << " Hlayer " << enthLayerH(l) << " Hsolver " << enthalpy::H(cells[i], l->tem) << "\n";
+    }
+  };
+  snap("pre-solve (after direct melt)");
   enthalpy::BC bc;
   bc.top_type = 1; bc.cn_top = 1.0e2; bc.Ts = tsurface;   // legacy virtual top layer conductance
   bc.q_bot = geothermal_flux_Wm2;
@@ -261,6 +293,7 @@ void Soil_Env::enthalpyThermalStep(const double tsurface, const double qmelt_Wm2
     const double lq = enthalpy::liq(cells[i], T[i]);
     l->liq = lq; l->ice = fmax(0.0, cells[i].W - lq);
   }
+  snap("post-scatter (before melted-out hand-off)");
   // heat of fully melted snow cells (no ice left, T > 0) goes to the cell below (conservative).
   // fix/meltout-closure: the receiver is the next cell that can hold heat. A zero-mass snow cell
   // (no water, no solid: an emptied snow layer the snow module has not removed yet) has zero heat
@@ -282,10 +315,15 @@ void Soil_Env::enthalpyThermalStep(const double tsurface, const double qmelt_Wm2
     m->tem = enthalpy::equilibrate(cm, hm, lq, ic);
     if (!m->isRock) { m->liq = lq; m->ice = ic; }
   }
+  snap("post-hand-off");
   enthCheckFinite("after the solve");
   const double hs = columnEnthalpyE();
   q.gtop = acc.gtop; q.gbot = acc.gbot; q.src = acc.src + hdir;
   q.res = (hs - h0) - (q.gtop + q.gbot + q.src);
+  if (snow_enth_trace && (snow_enth_trace == 2 || fabs(q.res) > 1.0e3)) {
+    std::cerr << trc.str() << "TRACE res " << std::setprecision(17) << q.res << " hdir " << hdir << " gtop " << q.gtop << " src " << q.src
+              << " mmelt " << q.mmelt << " mret " << q.mret << std::endl;
+  }
   // pore-volume ice cap (as Stefan::updateWaterAfterFront): excess is expelled water
   for (int i = 0; i < n; ++i) {
     Layer* l = L[i];

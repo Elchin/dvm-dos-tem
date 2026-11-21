@@ -256,6 +256,11 @@
     // snowmelt_heat_cap (thermal_solver 1 only; default false = legacy, bit-identical): true = radiation/SEB
     // snow-melt energy goes to snow cold content + melt (top down), capped at what the pack can take; the rest
     // is returned to the surface (energy_daily.csv mdir,mcc,mmelt,mret). docs/WORK_NOTES_snowmelt_heat_cap.md
+    // snow_thermal_closure (thermal_solver 1 only; default false = legacy, bit-identical): true = after the thermal
+    // solve, snow cells whose layer enthalpy differs from the solver's are re-equilibrated at the solver's enthalpy
+    // (energy_daily.csv snleak,snleak_n). snow_enth_trace (thermal_solver 1 only; default 0): 1/2 = print snow cells at
+    // four phases of the daily thermal step to stderr (days with |res| > 1e3 J m-2 / every day); logging only.
+    // docs/WORK_NOTES_snow_thermal_closure.md
     // frozen_layer_liq_cap (default 0 = legacy): 1 = liquid in partly frozen layers limited to the
     // pore space left by ice (validity check + Richards groundwater input)
     // RTS CH4 (thermokarst = 1 and "thermokarst_ch4": true only): "thermokarst_ch4_scheme" 1 = scheme (a)

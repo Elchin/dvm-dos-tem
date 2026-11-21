@@ -60,6 +60,8 @@ struct EnergyDiag {
   //  (mdir = mcc + LHFUS * mmelt), mret = melt energy the pack could not take, returned to the surface
   //  (not in the column, not in src).
   double mdir = 0.0, mcc = 0.0, mmelt = 0.0, mret = 0.0;
+  // snow_thermal_closure (switch on only): enthalpy re-equilibrated in snow cells after the solve (J m-2) and cells touched
+  double snleak = 0.0, snleak_n = 0.0;
 };
 
 struct SebDiag {
@@ -174,6 +176,8 @@ public:
       thermal_substeps = 1;
   double geothermal_flux_Wm2 = 0.0;   // bottom heat flux into the column (W m-2), this cohort
   int snowmelt_heat_cap = 0;         // model_settings.snowmelt_heat_cap (0 = legacy S[0] heat source)
+  int snow_thermal_closure = 0;      // model_settings.snow_thermal_closure (0 = legacy, bit-identical)
+  int snow_enth_trace = 0;           // model_settings.snow_enth_trace (0 = off; logging only)
   // snowmelt_heat_cap: apply E (J m-2) to the snow cells top down (cold content, then melt); returns the rest
   double enthApplyMeltDirect(double E, EnergyDiag& q);
   // between-step enthalpy bookings (J m-2), added by Cohort around the non-thermal modules

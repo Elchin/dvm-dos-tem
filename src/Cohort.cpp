@@ -370,6 +370,8 @@ void Cohort::initialize_state_parameters() {
   soilenv.thermal_nl_solver = md->thermal_nl_solver;
   soilenv.thermal_substeps  = md->thermal_substeps;
   soilenv.snowmelt_heat_cap = md->snowmelt_heat_cap ? 1 : 0;   // default 0 (legacy)
+  soilenv.snow_thermal_closure = md->snow_thermal_closure ? 1 : 0;   // default 0 (legacy)
+  soilenv.snow_enth_trace = md->snow_enth_trace;   // default 0 (off)
   snowenv.thermal_solver    = md->thermal_solver;
   ground.enthalpy_remap     = (md->thermal_solver == 1) ? 1 : 0;
   ground.snow_empty_cleanup = md->snow_empty_cleanup;
@@ -995,7 +997,8 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
         ef << "day,doy,tsurf,snow,nsnow,nfront,h0,h1,gtop,gbot,res,snowmk";
         if (md->thermal_solver == 1) { // Option C columns (see Soil_Env.h EnergyDiag)
           ef << ",src,clip,init,equil,bsnow,bwater,blayer,bfire,unattr,resday,solves,fallbacks,rsnow,rwater,wlayer,remapfb";
-          if (md->snowmelt_heat_cap) { ef << ",mdir,mcc,mmelt,mret"; }   // switch on only (off: file unchanged)
+          if (md->snowmelt_heat_cap) { ef << ",mdir,mcc,mmelt,mret"; }
+          if (md->snow_thermal_closure) { ef << ",snleak,snleak_n"; }   // switch on only (off: file unchanged)
         }
         ef << "\n";
       }
@@ -1008,6 +1011,7 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
            << "," << q.blayer << "," << q.bfire << "," << q.unattr << "," << q.resday << "," << q.solves << ","
            << q.fallbacks << "," << q.rsnow << "," << q.rwater << "," << q.wlayer << "," << q.remapfb;
         if (md->snowmelt_heat_cap) { ef << "," << q.mdir << "," << q.mcc << "," << q.mmelt << "," << q.mret; }
+        if (md->snow_thermal_closure) { ef << "," << q.snleak << "," << q.snleak_n; }
       }
       ef << "\n";
       edg_day++;
