@@ -268,3 +268,22 @@ Phase 5a is done on local feat/hg-t2, docs and preset only. There are no code ch
 - Defaults are proposed, not flipped.
 - All identity, conservation and unit checks pass.
 - Details are in WORK_NOTES_hg_t2.md section 5. The optional 5b round is a wider ev_z range or structural options.
+
+## 18. Phase 5b status (2026-11-24)
+Done on local feat/hg-t2 (not pushed): d787f0fd (code + tests), 4339a0fc (preset values), + docs. Binary binT2p5c.
+- New switches inside hg_t2, default off at component level: hg_t2_kdsplit + hg_t2_dlog_kd_hum (humic-layer Kd offset,
+  layer type 2), hg_t2_xpath + hg_f_conn (organic-layer overland/lateral share retained to the first mineral layer),
+  hg_t2_snowsink + hg_v_snow (ground Hg(0) sink under snow, weighted by snow fraction).
+- hg_t2 = 1 now takes the calibrated preset (hg_t2_preset 1, explicit keys win). hg_t2 itself stays default 0 (D5).
+- T2-only hg_t2_r_stem / hg_t2_r_root / hg_t2_k_meth_proxy (T1 names with hg_t2 = 1 are a parse error).
+- D4: restarts/TVC_Warming_nfeed_D4_680yr_restart-sc.nc is the standard TVC start (cs/sites_d4, cs/STANDARD.md).
+- Refit (E6 26 members, ev_z to 0.5 m, exact v_ground / v_snow solve): kd_org 3.453, dlog 0.242, f_conn 1 (xpath off),
+  fd 0.083, ev_z 0.50, v_ground 4.88e-5, v_snow 1.283e-4; r_stem / r_root 0.0044 / 0.0067, k_meth_proxy 71, snow_kred 0.090.
+- Met: Toolik uptake 4.06, net Hg(0) 6.40, winter share 0.367, Rm, %MeHg 0.709 / 0.100 / 2.05, TVC Ro 0.409.
+  Missed: export TVC 6.15 / Toolik 4.77 (> 4), Toolik Ro 0.448, HPC Ro 0.268. Flow-path retention cuts export but raises Ro.
+- All identity, conservation and unit checks pass. 5b cost 1.136 core-h; ledger 7.184 / 7.537.
+- Details and the T2 summary: WORK_NOTES_hg_t2.md sections 6-7.
+
+## 19. T2 final status
+T2 phases 1-5b are complete on local feat/hg-t2. Decisions left for Elchin: D5 (default-on of hg_t2 with the tracer), D6
+(DOC pool / deeper retention path for the export misfit), ev_z 0.5 vs 0.3, keeping or dropping kdsplit, and a T2 copy of k_meth_ch4.

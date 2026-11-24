@@ -487,3 +487,137 @@ The ledger stands at 6.048 of 7.537. That leaves 1.49, or 1.19 above the 0.3 res
 3. Shared T1 parameters (r_stem, r_root, k_meth_proxy): T2-specific copies, or a T1 recalibration.
 4. 5b: a refinement round with hg_ev_z extended to 0.5 m, about 16 members ≈ 0.47 core-h, within the remaining budget.
 5. D4: whether the 680-yr chained TVC restart (organic C 16.8 -> 10.4 kgC/m2) should become the TVC case restart for other work. So far it is used only in cs/sites_d4.
+
+## 6. Phase 5b: structural options, preset for hg_t2 = 1, T2-only copies, D4 standard restart, refit (2026-11-24)
+
+Elchin's decision (verbatim): "Go with your recommendations and do the structural fix within the remaining budget".
+Commits on local feat/hg-t2 (not pushed): d787f0fd (code + tests, defaults off), 4339a0fc (fitted preset values +
+config/hg_t2_calibrated.json), plus this docs commit. Binaries: binT2p5b (md5 34cb6d5a, d787f0fd), binT2p5c
+(md5 b2e878b3, 4339a0fc, final). Scripts in ~/tem-dev/hg_t2/src: ens6.py, runP5b.sh, runP5b_chain1.sh, fit6.py, hg0_lin.py,
+fit6c.py, runP5b_final.sh, plots_p6.py (runP5.sh gained the ENSGEN option; old copy src/runP5.sh.p5a).
+
+### Structural changes (include/HgTracer.h; all inside hg_t2, each behind its own switch)
+1. **Humic-layer Kd** (hg_t2_kdsplit 0/1, hg_t2_dlog_kd_hum in [-3, 3]): in diss_transport_, layers of type 2
+   (deep/humic) use log10 Kd = hg_t2_log_kd_org + dlog; moss (0) and fibric (1) layers keep hg_t2_log_kd_org. This is the
+   moss/fibric-vs-humic Kd tied to the organic-layer type (needs hg_t2_diss). dlog = 0 is bit-identical to off (unit test).
+2. **Explicit export-path control** (hg_t2_xpath 0/1, hg_f_conn in [0, 1]): only the share f_conn of the organic-layer
+   overland + lateral dissolved flux (including the melt overland share) leaves the column; the rest goes to the first
+   mineral layer's dissolved pool (booked in the downward flux, so the column balance is unchanged). f_conn = 1 is
+   identical to off (unit test).
+3. **Ground Hg(0) sink under snow** (hg_t2_snowsink 0/1, hg_v_snow m/s): with snow fraction fs = min(1, SWE / swe_full),
+   sink = ((1 - fs) v_ground + fs v_snow) x GEM x veg_scale x dt; off keeps (1 - fs) v_ground (phase 3). Needs hg_t2_evasion.
+4. **hg_t2 = 1 takes the calibrated preset** (hg_t2_preset, default 1; T2-only). t2_preset_() sets the fitted switches and
+   values before the explicit keys are read, so any explicit hg_* key wins; hg_t2_preset 0 gives the old component defaults
+   (used by the older unit tests). Dependent switches follow an explicit parent switch-off (e.g. hg_t2_diss 0 also turns
+   meltroute/kdsplit/xpath off unless set). The master switch hg_t2 stays default 0 (D5 not flipped).
+5. **T2-only copies** hg_t2_r_stem, hg_t2_r_root, hg_t2_k_meth_proxy: with hg_t2 = 1 they replace r_stem / r_root /
+   k_meth_proxy; setting the T1 names together with hg_t2 = 1 is a parse error (no silent ambiguity). hg_t2 = 0 never reads
+   them, so the T1 path is untouched (checked bit-identical below). k_meth_ch4 (3250) remains shared (fen class reproduces).
+6. Unit tests (tests/unit/test_hg_tracer.cpp): 5 new cases (preset/parse, snow sink, kdsplit, xpath incl. melt share and
+   retention, random all-on balance); standalone 51/51 cases (2450 assertions); full suite 533/533 cases (8 known may-fail).
+
+### D4 restart as the standard TVC starting point
+restarts/TVC_Warming_nfeed_D4_680yr_restart-sc.nc (copy of out/D4/TVC_Warming_nfeed_b/seg034/output/restart-sc.nc,
+md5 450a15da, restarts/README.md) is the TVC restart0.nc of the standard case set cs/sites_d4 (cs/STANDARD.md; default
+SRC_CS of runP5.sh). HPC is unchanged. Old restarts and T1 / identity case sets are untouched; every run copies into new dirs.
+
+### Refit (E6 + exact Hg(0) solve)
+- P5R (binT2p5b, new switches off, 5a values) reproduced P5V2 bit-identically.
+- E6: 26-member LHS (seed 23, ~0.76 core-h, budget-limited from the planned 32) on binT2p5b with kdsplit, xpath and
+  snowsink all on, 7 parameters: kd_org 3.0-4.2, dlog_kd_hum -0.5-1.5, f_conn 0.2-1, v_ground 3e-5-2e-4 (log),
+  r_snow = v_snow / v_ground 0.5-8 (log), fd 0.03-0.3 (log), ev_z 0.05-0.5 m (log; the extended range). Max balance error 2.6e-9.
+- fit6: quadratic emulator on E5 (64, structural terms 0) + E6 (26) = 90 points. Ro / export / Rm are well emulated
+  (LOO RMSE in log 0.04-0.18 vs SD 0.5-1.0); Toolik net Hg(0) is not (LOO 3.5 vs SD 6).
+- hg0_lin: the Toolik ground sink is exactly linear, sink0_m = a_m v_ground + b_m v_snow (residual 5e-16; snow covers
+  Oct-May). fit6c therefore solves v_ground and v_snow exactly for net Hg(0) 6.5 and winter share 0.37 at every candidate and
+  fits kd_org, dlog, f_conn, fd, ev_z on the emulator (cost bands as fit5).
+- Best (fit6c): kd_org 3.453, dlog_kd_hum 0.242, f_conn 1.0, fd 0.083, ev_z 0.50 (upper bound), v_ground 4.88e-5,
+  v_snow 1.283e-4 (r_snow 2.63). Emulator cost 0.32 (5a structure on the same emulator: 3.05).
+- Near-optimal set (n = 15; 5-50-95 %): kd_org 3.04-3.26-3.46, dlog -0.21-0.17-0.84, f_conn 0.35-0.73-0.98 (corr with
+  kd_org 0.94: export path and Kd substitute), fd 0.058-0.088-0.103, ev_z 0.31-0.44-0.49 (fd~ev_z -0.55). Fixed ev_z:
+  0.1 -> cost 3.87, 0.2 -> 4.0, 0.3 -> 2.2; at shallow ev_z the fit uses xpath (f_conn 0.36) and a larger dlog.
+- v_ground / v_snow are set by the two Toolik Obrist constraints: the solve maps net 6.5 with winter 0.30-0.44 to
+  v_ground ~9e-5 to ~2e-5 and v_snow ~1.1e-4 to ~1.5e-4, so the winter-share uncertainty dominates v_ground.
+- Verification P5G (explicit best set, --ch4) came out above the emulator for Ro / export (extrapolation at ev_z 0.5).
+  P5H = P5G + xpath f_conn 0.6 lowered export (TVC 4.49, HPC 1.74, Toolik 3.99) but raised organic Hg:C (TVC 0.524, Toolik
+  0.655): the retained Hg goes to the first mineral layer and is mixed back by cryo/bioturbation. Cost: P5H 28.4, P5G 6.86,
+  5a P5V2 11.37 -> the preset is P5G (xpath available but off). Figures 11-13.
+
+### Results (P5G = preset; last 20 yr; ug/m2/yr; Ro organic Hg:C ratio to T0 basis, Rm mineral)
+
+| Quantity | TVC | HPC | Toolik proxy | Target | 5a (P5V2) |
+|---|---|---|---|---|---|
+| Ro | 0.409 | 0.268 | 0.448 | 0.29-0.41 | 0.447 / 0.276 / 0.467 |
+| Rm | 1.254 | 1.430 | 1.351 | 0.97-1.69 | 1.268 / 1.445 / 1.354 |
+| Export | 6.15 | 2.71 | 4.77 | 0.8-4.0 | 6.54 / 2.98 / 4.88 |
+| Vegetation uptake | 5.42 | 4.14 | 4.06 | Toolik 4.1 | same |
+| Net Hg(0) | 1.65 | 0.46 | 6.40 | Toolik 6.5 +- 0.7 | 2.17 / 0.69 / 6.70 |
+| Winter share of net Hg(0) | - | - | 0.367 | 0.37 | 0.283 |
+| Soil re-emission | 4.98 | 5.36 | 0.40 | - | |
+| Ground sink | 4.05 | 3.77 | 4.23 | - | |
+| %MeHg (JJAS active) | 0.709 | 0.100 | fen case 2.05 | 0.7 / 0.1 / 2 | 0.704 / 0.100 / 2.06 |
+
+Fixed by 5b: Toolik winter share (28 -> 37 %) with net Hg(0) kept in band; TVC Ro now at the band edge (0.409); export down
+4-9 %. Still outside: TVC export 6.15 and Toolik export 4.77 (> 4.0), Toolik Ro 0.448 (> 0.41), HPC Ro 0.268 (< 0.29).
+
+### Checks (all on binT2p5c unless noted)
+
+| Check | Result |
+|---|---|
+| hg_t2 = 1 preset only (P5F) vs explicit P5G | 0 differing variables (all 6 site/stage dirs) + CH4 fen case 0/379 |
+| hg_t2 = 0 (P5T1b) vs T1 final (VF4) | only restart hg_state length (117 vs 94, the T2 restart extension) |
+| P5T1b vs P5T1 (5a, binT2p4) | 0 differences |
+| P5R (binT2p5b, new switches off) vs P5V2 | 0 differences |
+| P5I4 Hg off 2-case (sub_off) | RESULT: PASS |
+| P5I5 all on via preset (sub_t2h) | RESULT: PASS; C/N/water/energy identical with tracer on: True |
+| P5I6 Hg off 8-case prod | RESULT: PASS |
+| Balance error | <= 1e-9 ug/m2 in every run (E6 max 2.6e-9) |
+| Unit tests | 533/533 (8 known may-fail); Hg standalone 51/51 (2450 assertions); run only inside the builds, no overlap |
+| Cores | <= 4 processes; segments <= 75 yr; nohup; no parameters/ edits; no deletions |
+
+### Cost (core-h)
+
+| Item | Core-h |
+|---|---|
+| P5R | 0.029 |
+| E6 (26) | 0.760 |
+| P5G (with CH4) | 0.044 |
+| P5H | 0.029 |
+| P5F (with CH4) + P5T1b | 0.074 |
+| P5I4 + P5I5 + P5I6 | 0.201 |
+| **Phase 5b total** | **1.136** |
+
+Ledger 7.184 of 7.537 (0.353 left, 0.053 above the 0.3 reserve). Phase 5 total 3.41; T2 total 5.125.
+
+### Open items after 5b
+1. Export at TVC (6.2) and Toolik (4.8) and the Ro edges remain; neither the humic Kd split nor flow-path retention fixes
+   export without raising organic Hg:C, because retained Hg is mixed back. Next structural option: route retained Hg below
+   the cryo/bioturbation zone or into a non-mixing (sorbed-mineral) pool, or the DOC-linked export (D6).
+2. ev_z sits at the 0.5 m bound (deep re-emission is physically doubtful; Obrist soil-gas depletion is near-surface).
+   ev_z 0.3 costs 2.2 (emulator) and is the conservative alternative.
+3. dlog_kd_hum is weakly identified (near-optimal range spans 0); kdsplit could be dropped without much loss.
+4. v_ground hinges on the winter-share target (0.30-0.44 -> v_ground 9e-5 to 2e-5).
+5. D5: hg_t2 default stays 0. k_meth_ch4 is still shared with T1. Configs that set hg_r_stem / hg_r_root /
+   hg_k_meth_proxy together with hg_t2 = 1 now fail at parse (use the hg_t2_* names).
+6. The emulator uses 26 new members only (budget); a further ensemble would sharpen dlog / f_conn.
+
+## 7. T2 summary (phases 1-5b, 2026-11-24)
+T2 replaces T1's surface and transport closures with process pieces, all inside include/HgTracer.h and behind hg_t2
+(default 0; needs hg_tracer = 1). With hg_t2 = 0 the T1 step is unchanged (bit-identical to T1 VF4 except the restart
+vector length), and Hg off stays bit-identical to the base model (8-case prod). Nothing in T2 feeds back on C/N/water/energy
+(checked identical with everything on). The tracer is affine and exactly conservative (balance at roundoff, spin-up jump).
+
+| Phase | Content | Key commits |
+|---|---|---|
+| 1 | Foliar uptake (LAI), snowpack Hg with photoreduction / sublimation (D7), wet deposition timing, restart v3, outputs | (phase-1 commits, section 1) |
+| 2 | Dissolved pool, daily sorption + overland / lateral / vertical export, cryo/bioturbation, moss sorbent; Kd_org refit | c32cd335, ecc13285, ae1a200b |
+| 3 | Process soil re-emission (fd, temperature, snow, ev_z), ground Hg(0) sink, stomatal foliar uptake (D3), melt routing, D8 | e3f1c3c2, 4c0d6914, 98aa09ee |
+| 4 | Fire ash retention, RTS particulate export, canopy wash-off | a94f93bb |
+| 5a | D4 TVC carbon spin-up (680 yr), 64-member ensemble, joint refit, k_meth classes | cb018895, b7dbc42a |
+| 5b | Humic Kd, export-path control, winter snow sink, hg_t2 = 1 preset, T2-only r_stem / r_root / k_meth_proxy, D4 standard | d787f0fd, 4339a0fc, docs |
+
+Against T1d: TVC organic Hg:C 2.63 -> 0.41, HPC 1.06 -> 0.27; TVC export 4.26 -> 6.15 (now from explicit daily
+pathways), HPC 5.80 -> 2.71, Toolik 0.24 -> 4.77; Toolik uptake 4.06 and net Hg(0) 6.40 with a 37 % winter share match
+Obrist 2017; %MeHg classes match Thompson 2025. Main remaining gap: export at TVC / Toolik vs Zolkos-type yields and the
+Ro edges (open item 1 above). Cost: T2 5.125 core-h (ledger 7.184 / 7.537). Use: hg_tracer 1, hg_mehg 1, hg_t2 1 (preset),
+case set cs/sites_d4 (D4 TVC restart). Figures: docs_src/figures_hg_t2/hg_t2_fig1-13.
