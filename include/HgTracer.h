@@ -289,8 +289,11 @@ struct Params {
 // T2 phase 5: calibrated values of the hg_t2 settings (applied with hg_t2 = 1 and hg_t2_preset = 1 before the explicit
 // model_settings; WORK_NOTES_hg_t2 sections 5-6, config/hg_t2_calibrated.json). Never used with hg_t2 = 0.
 inline void t2_preset_(Params& p) {
+  // phase 5b fit (P5G; WORK_NOTES_hg_t2 section 6): Toolik net Hg(0) 6.4 / winter 37 % from v_ground + v_snow (exact linear
+  // solve), Hg:C / export from Kd, fd, ev_z (emulator on E5 + E6, 90 runs); hg_t2_xpath left off (f_conn fit 1.0)
   p.t2_diss = 1; p.t2_evasion = 1; p.t2_foliar = 2; p.t2_meltroute = 1; p.fire_ash = 0.1; p.t2_rts = 1; p.wash = 0.5;
-  p.t2_log_kd_org = 3.46; p.v_ground = 1.1e-4; p.fd = 0.10; p.ev_z = 0.20; p.snow_kred = 0.090;
+  p.t2_log_kd_org = 3.453; p.t2_kdsplit = 1; p.t2_dlog_kd_hum = 0.242; p.t2_xpath = 0; p.f_conn = 1.0;
+  p.t2_snowsink = 1; p.v_ground = 4.88e-5; p.v_snow = 1.283e-4; p.fd = 0.083; p.ev_z = 0.50; p.snow_kred = 0.090;
   p.t2_r_stem = 0.0044; p.t2_r_root = 0.0067; p.t2_k_meth_proxy = 71.0;
 }
 

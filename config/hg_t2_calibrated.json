@@ -1,16 +1,11 @@
 {
- "_comment": "Hg T2 phase-5a calibrated preset (model_settings overlay; no parameters/ edits). Joint refit 2026-11-24: 64-member LHS ensemble (E5_, seed 11) on TVC (D4 C-spun restart), HPC and the Toolik proxy; quadratic emulator + band-distance cost; verified in P5V/P5V2. Defaults in include/HgTracer.h are NOT changed (r_stem, r_root, k_meth_proxy are shared with T1). See docs_src/WORK_NOTES_hg_t2.md section 5.",
- "_uncertainty_5_95": {
-  "hg_t2_log_kd_org": [3.36, 3.55], "hg_v_ground": [8.2e-05, 1.25e-04], "hg_fd": [0.087, 0.146], "hg_ev_z": [0.104, 0.2],
-  "hg_r_stem": [0.0045, 0.015], "hg_r_root": [0.0069, 0.045], "hg_snow_kred": [0.0067, 0.12],
-  "_note": "near-optimal emulator set (cost <= best + 7.04); hg_ev_z best at the 0.2 range bound; hg_snow_kred not identifiable (kept at its 0.090 default); hg_k_meth_proxy scaled linearly to the Thompson 2025 classes"
- },
+ "_comment": "Hg T2 calibrated set (phase 5b, 2026-11-24). Since binT2p5c these are the built-in values of hg_t2 = 1 (hg_t2_preset 1, include/HgTracer.h t2_preset_); this file lists them as an explicit model_settings overlay. T1 / Hg-off paths (hg_t2 = 0) unchanged. See docs_src/WORK_NOTES_hg_t2.md section 6.",
+ "_uncertainty": "near-optimal 5-95 % (emulator, 5 free parameters with net Hg(0) / winter solved exactly): t2_log_kd_org 3.04-3.46, t2_dlog_kd_hum -0.21-0.84 (not significantly != 0), f_conn 0.35-0.98 (correlated 0.94 with Kd; off), fd 0.058-0.103, ev_z 0.31-0.49 (best at the 0.5 m bound); v_ground / v_snow follow from the Obrist 2017 net 6.5 +- 0.7 and 37 % winter share (net +-0.7 -> v_ground, v_snow about +-17 %)",
  "model_settings": {
   "hg_tracer": 1, "hg_mehg": 1, "hg_t2": 1,
-  "hg_t2_diss": 1, "hg_t2_evasion": 1, "hg_t2_foliar": 2, "hg_t2_meltroute": 1,
-  "hg_fire_ash": 0.1, "hg_t2_rts": 1, "hg_wash": 0.5,
-  "hg_t2_log_kd_org": 3.46, "hg_v_ground": 1.1e-4, "hg_fd": 0.10, "hg_ev_z": 0.20, "hg_snow_kred": 0.090,
-  "hg_r_stem": 0.0044, "hg_r_root": 0.0067,
-  "hg_k_meth_proxy": 71.0, "hg_k_meth_ch4": 3250.0
+  "hg_t2_diss": 1, "hg_t2_evasion": 1, "hg_t2_foliar": 2, "hg_t2_meltroute": 1, "hg_fire_ash": 0.1, "hg_t2_rts": 1, "hg_wash": 0.5,
+  "hg_t2_log_kd_org": 3.453, "hg_t2_kdsplit": 1, "hg_t2_dlog_kd_hum": 0.242, "hg_t2_xpath": 0,
+  "hg_t2_snowsink": 1, "hg_v_ground": 4.88e-5, "hg_v_snow": 1.283e-4, "hg_fd": 0.083, "hg_ev_z": 0.50, "hg_snow_kred": 0.090,
+  "hg_t2_r_stem": 0.0044, "hg_t2_r_root": 0.0067, "hg_t2_k_meth_proxy": 71.0, "hg_k_meth_ch4": 3250.0
  }
 }
