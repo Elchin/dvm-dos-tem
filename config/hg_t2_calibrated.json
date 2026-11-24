@@ -7,6 +7,6 @@
   "hg_t2_log_kd_org": 3.377, "hg_t2_kdsplit": 1, "hg_t2_dlog_kd_hum": 0.242, "hg_t2_xpath": 1, "hg_f_conn": 0.53582,
   "hg_t2_deeproute": 1, "hg_f_deep": 1.0, "hg_z_deep": 1.5,
   "hg_t2_snowsink": 1, "hg_v_ground": 4.3731e-5, "hg_v_snow": 1.3038e-4, "hg_fd": 0.068765, "hg_ev_z": 0.50, "hg_snow_kred": 0.090,
-  "hg_t2_r_stem": 0.0044, "hg_t2_r_root": 0.0067, "hg_t2_k_meth_proxy": 71.0, "hg_k_meth_ch4": 3250.0
+  "hg_t2_r_stem": 0.0044, "hg_t2_r_root": 0.0067, "hg_t2_k_meth_proxy": 71.0, "hg_t2_k_meth_ch4": 3250.0
  }
 }

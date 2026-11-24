@@ -1231,3 +1231,20 @@ TEST_CASE("hg_t2 phase 5c all on (deep route), random steps with geometry change
   CHECK(s.cum.export_ > 0.0); CHECK(s.cum.down > 0.0);
   std::remove(T2DEP);
 }
+
+// ---- T2 phase 5d: T2-only copy of hg_k_meth_ch4
+TEST_CASE("hg_t2_k_meth_ch4: T2 copy (default 3250 = T1 value), T1 name with hg_t2 = 1 is an error, T1 path untouched") {
+  hgtr::Params p = t2params();   // writes T2DEP
+  CHECK(p.t2_k_meth_ch4 == 3250.0); CHECK(p.k_meth_ch4 == 3250.0);
+  Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_t2"] = 1; m["hg_dep_file"] = T2DEP;
+  hgtr::Params r; REQUIRE(hgtr::parse(m, r) == ""); CHECK(r.k_meth_ch4 == 3250.0);
+  Json::Value a = m; a["hg_t2_k_meth_ch4"] = 2000.0; REQUIRE(hgtr::parse(a, r) == ""); CHECK(r.k_meth_ch4 == 2000.0); CHECK(r.t2_k_meth_ch4 == 2000.0);
+  Json::Value b = m; b["hg_k_meth_ch4"] = 3250.0; CHECK(hgtr::parse(b, r) != "");   // T1 name with hg_t2 = 1
+  Json::Value c = m; c["hg_t2_k_meth_ch4"] = -1.0; CHECK(hgtr::parse(c, r) != "");
+  Json::Value t1 = ms0(); t1["hg_tracer"] = 1; t1["hg_mehg"] = 1; t1["hg_k_meth_ch4"] = 1000.0; t1["hg_t2_k_meth_ch4"] = 5000.0;
+  hgtr::Params q; REQUIRE(hgtr::parse(t1, q) == ""); CHECK(q.k_meth_ch4 == 1000.0);   // hg_t2 = 0: T1 name, the copy unused
+  // same MeHg as T1 with the default copy: CH4-driven step, hg_t2 = 1 parse vs T1 value
+  hgtr::Params s1; hgtr::Params s0; s1.tracer = s0.tracer = 1; s1.mehg = s0.mehg = 1; s1.k_meth_ch4 = r.k_meth_ch4; s0.k_meth_ch4 = 3250.0;
+  CHECK(s1.k_meth_ch4 == s0.k_meth_ch4);
+  std::remove(T2DEP);
+}

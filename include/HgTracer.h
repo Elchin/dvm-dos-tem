@@ -154,7 +154,8 @@
 //   hg_t2_preset (default 1, acts only with hg_t2 = 1): the absent hg_t2 settings take the phase-5 calibrated values
 //     (Params::t2_preset_); hg_t2_preset = 0 keeps the component defaults (all T2 options off). The T1 / Hg-off paths
 //     (hg_t2 = 0) never read these. T2-only copies hg_t2_r_stem, hg_t2_r_root, hg_t2_k_meth_proxy replace hg_r_stem,
-//     hg_r_root, hg_k_meth_proxy when hg_t2 = 1 (giving the T1 names with hg_t2 = 1 is an error).
+//     hg_r_root, hg_k_meth_proxy when hg_t2 = 1 (giving the T1 names with hg_t2 = 1 is an error); phase 5d adds
+//     hg_t2_k_meth_ch4 (replaces hg_k_meth_ch4, default the same 3250).
 //   All new coefficients come from water, snow, geometry and type only: the step stays affine and exactly conservative.
 // T2 phase 5c (docs_src/HG_T2_design.md section 20, WORK_NOTES_hg_t2 section 8), needs hg_t2_xpath = 1:
 //   hg_t2_deeproute = 1: the share hg_f_deep of the Hg retained on the flow path (1 - hg_f_conn of the organic-layer
@@ -294,6 +295,7 @@ struct Params {
   double t2_r_stem   = 0.02;  // hg_t2_r_stem: T2 copy of hg_r_stem (used when hg_t2 = 1)
   double t2_r_root   = 0.07;  // hg_t2_r_root: T2 copy of hg_r_root (used when hg_t2 = 1)
   double t2_k_meth_proxy = 87.0; // hg_t2_k_meth_proxy: T2 copy of hg_k_meth_proxy (used when hg_t2 = 1)
+  double t2_k_meth_ch4 = 3250.0; // hg_t2_k_meth_ch4: T2 copy of hg_k_meth_ch4 (used when hg_t2 = 1; phase 5d)
   bool   dep_comp    = false; // the deposition file has components (hg2_wet / hg2_dry / hg0_soil columns)
   std::vector<double> dep_w, dep_d2, dep_d0, dep_s0;   // components per row (ug/m2/yr)
 };
@@ -420,7 +422,8 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_fire_ash", &p.fire_ash, 0, 1}, {"hg_wash", &p.wash, 0, 1}, {"hg_wash_pref", &p.wash_pref, 1e-3, 1e4},
             {"hg_t2_dlog_kd_hum", &p.t2_dlog_kd_hum, -3, 3}, {"hg_f_conn", &p.f_conn, 0, 1}, {"hg_v_snow", &p.v_snow, 0, 1},
             {"hg_f_deep", &p.f_deep, 0, 1}, {"hg_z_deep", &p.z_deep, 0, 100},
-            {"hg_t2_r_stem", &p.t2_r_stem, 0, 1e3}, {"hg_t2_r_root", &p.t2_r_root, 0, 1e3}, {"hg_t2_k_meth_proxy", &p.t2_k_meth_proxy, 0, 1e9}};
+            {"hg_t2_r_stem", &p.t2_r_stem, 0, 1e3}, {"hg_t2_r_root", &p.t2_r_root, 0, 1e3}, {"hg_t2_k_meth_proxy", &p.t2_k_meth_proxy, 0, 1e9},
+            {"hg_t2_k_meth_ch4", &p.t2_k_meth_ch4, 0, 1e9}};
   struct I { const char* k; int* v; int lo, hi; };
   I is[] = {{"hg_tracer", &p.tracer, 0, 1}, {"hg_mehg", &p.mehg, 0, 1}, {"hg_mehg_driver", &p.mehg_driver, 0, 1},
             {"hg_spinup", &p.spinup, 0, 1}, {"hg_transport", &p.transport, 0, 1}, {"hg_spinup_cycle", &p.spinup_cycle, 1, 50}, {"hg_spinup_closure", &p.spinup_closure, 0, 2}, {"hg_tr_year0", &p.tr_year0, -100000, 100000},
@@ -469,10 +472,10 @@ inline std::string parse(const Json::Value& ms, Params& p) {
     if (p.t2_foliar < 1 && !set("hg_wash")) { p.wash = 0.0; }
   }
   if (p.t2 == 1) {   // T2-only copies of the parameters shared with T1 (the T1 path, hg_t2 = 0, keeps the T1 values)
-    for (const char* k : {"hg_r_stem", "hg_r_root", "hg_k_meth_proxy"}) {
+    for (const char* k : {"hg_r_stem", "hg_r_root", "hg_k_meth_proxy", "hg_k_meth_ch4"}) {
       if (ms.isMember(k)) { return std::string("model_settings.") + k + " is a T1 setting; with hg_t2 = 1 use hg_t2_" + (k + 3); }
     }
-    p.r_stem = p.t2_r_stem; p.r_root = p.t2_r_root; p.k_meth_proxy = p.t2_k_meth_proxy;
+    p.r_stem = p.t2_r_stem; p.r_root = p.t2_r_root; p.k_meth_proxy = p.t2_k_meth_proxy; p.k_meth_ch4 = p.t2_k_meth_ch4;
   }
   if (p.f_evade + p.f_export + p.f_leach > 1.0) { return "model_settings.hg_f_evade + hg_f_export + hg_f_leach must be <= 1"; }
   // hg_spinup (default 1) and hg_transport (default 1) act only with hg_tracer = 1 (ignored otherwise)
