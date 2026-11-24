@@ -816,3 +816,177 @@ Ledger total 8.145.
 2. The deep (permafrost) Hg store grows by 1.8-3.5 ug/m2/yr. It needs checking against deep profiles, and it would be
    released on thaw.
 3. Unchanged: D5 (hg_t2 default 0), D6, a single f_conn for all sites.
+
+## 10. Phase 6a: deep permafrost Hg check (observations, warming test, f_deep) (2026-11-24)
+
+Elchin approved ("yes") the deep-permafrost check, budget 0.5 core-h (LEDGER section "PHASE 6a", src/ledger6a.py). The
+analysis uses the 5d preset (feat/hg-t2 @ 0b9dd694, binT2p5f). The model code and the preset are unchanged in 6a. Scripts:
+src/deep_an.py (layer profiles -> an2/deep_6a*.json) and src/p6a/ (mk_w6b.py f_deep base case sets, mk_w6c.py / mk_w6d.py
+continuation run dirs, run_w6.sh / run_w6b.sh chains, an_w6.py -> an2/w6_6a.json, plots_p6a.py). Figures 18 and 19.
+
+### 10.1 Observations used (all open access)
+- Schuster et al. 2018, GRL 45, 1463, https://doi.org/10.1002/2017GL075571. Data: USGS ScienceBase
+  https://doi.org/10.5066/F7NC5Z9T. There are 588 samples from 13 Alaskan permafrost cores, all below the thaw depth. Medians:
+  STHg 43 +- 30 ng/g and RHgC 1.6 +- 0.9 ug/g C. The data-release column "mg Hg/g C" holds values in ug/g C.
+  - Recomputed from the release, z >= 1 m (n = 166): STHg median 48 ng/g (IQR 35-97); RHgC 1.58 (0.94-3.09).
+    Frozen dry bulk density is 0.44-0.47 g/cm3 (ice-rich). Hg per m depth (STHg x BD) is 21.6 mg/m2 per m (13-30).
+  - Toolik core TL, z >= 1 m: STHg 113 ng/g, RHgC 1.53.
+  - Long-term accumulation over 14C-dated intervals is 0.8-9.3 ug/m2/yr: DH1 4.09 and 0.79, NC 2.08 and 5.50,
+    TL 6.59 and 9.31.
+- Azaroff et al. 2026 Arctic permafrost soil Hg-C synthesis (Bolin Centre, https://bolin.su.se/data/azaroff-2026-permafrost-mercury,
+  2089 samples, 18 studies). Mineral samples (SOC < 20 %) at z >= 1 m, n = 214:
+  - RHgC median 1.35 (IQR 0.66-2.45; p90 3.80, p95 4.10, p99 4.64);
+  - STHg median 38 ng/g (IQR 23-91).
+  Organic samples at z >= 1 m have RHgC 0.087. The Mackenzie Delta (Inuvik, Outridge et al. 2016) samples are peat only: RHgC 0.10, STHg 42.
+- Olson et al. 2018, GBC 32, https://doi.org/10.1029/2017GB005840 (Toolik):
+  - active layer: organic 151 +- 7, A 108 +- 10, B 87 +- 5 ug/kg; frozen (transient permafrost) 56 +- 2; rock 47 +- 1;
+  - active-layer pool 41.9 +- 9.2 mg/m2 (range 16.6-136.5);
+  - mineral 14C ages > 7300 yr, with the highest Hg:OC.
+- Lim et al. 2020, Biogeosciences 17, 3083, https://doi.org/10.5194/bg-17-3083-2020 (W Siberia): RHgC falls from 0.38
+  (active-layer peat) to 0.23 (frozen peat). Mineral horizons are 5-10x higher; the pan-Arctic means are 0.19 (organic) and
+  0.63 (mineral) ug/g C.
+- Schaefer et al. 2020, Nat Commun 11, 4650, https://doi.org/10.1038/s41467-020-18398-5. This is the SiBCASA-Hg thaw model: Hg is
+  released with the decay of thawed old organic matter, 16 % evades and 1.5 % is exported. Under RCP8.5 the permafrost region
+  becomes a net Hg(0) source of 1.9 +- 1.1 Gg/yr (peak, by 2200), and Yukon River Hg doubles by 2100.
+
+### 10.2 Model vs observations: deep (> 1 m) Hg (5d preset P5F3, last year 2024; f_deep 0 = W6B000)
+
+| Quantity | Observations | TVC f_deep 1 (f_deep 0) | HPC f_deep 1 (f_deep 0) | Toolik proxy f_deep 1 |
+|---|---|---|---|---|
+| Hg:C, mineral > 1 m, background layers | 1.58 (0.94-3.09) Schuster; 1.35 (0.66-2.45) synthesis; TL core 1.53; Lim mineral 0.63 | 1.47 | 1.47 | 1.52 |
+| Hg:C, routed layer (contains z_deep 1.5 m) | p75 2.45, p90 3.80 | **3.55** (1.47), 1.28-1.58 m | **3.16** (1.47), 1.29-1.59 m | **3.50**, 1.26-1.56 m |
+| Hg:C, 1-3 m column | as above | 2.01 (1.47) | 1.94 (1.49) | 1.84 |
+| Hg per m depth, background > 1 m (mg/m2 per m) | 21.6 (13-30), frozen BD 0.44 | 32-37 | 13-14 | 32-40 |
+| Hg per m depth, routed layer | - | 84 (35) | 31 (14) | 88 |
+| Concentration (ng/g) at assumed mineral BD 1.3 g/cm3 (1.0-1.6) | 48 (35-97) Schuster; 38 (23-91) synthesis; Olson frozen 56; TL 113 | 26-28; routed 65 | 10-11; routed 23 | 25-31; routed 68 |
+| Stock 0-1 m (mg/m2) | Olson Toolik AL pool 41.9 (16.6-136.5); Schuster 28 per m (all samples) | 24.8 (30.9) | 18.2 (20.5) | 26.2 |
+| Stock 1-3 m (mg/m2) | about 43 (2 m x 21.6) | 55.3 (40.5) | 21.1 (16.2) | 86.9 |
+| Deep accumulation (ug/m2/yr) | 0.8-9.3 (dated cores, Hg accumulating with C) | 3.48 (0) | 1.81 (0) | - |
+
+Notes. The model mineral bulk density is not output. The ng/g row divides the stock density by an assumed 1.3 g/cm3. The
+observed stock density uses the ice-rich frozen BD, so the two density rows are not like-for-like. At TVC and HPC the model has
+no C, and so no Hg, below about 2.2 m: Hg is initialized as C x RHgC. Observed mineral and rock Hg there is about 47-56 ug/kg,
+so the model underestimates the deep stock at 2.2-5 m. This is a separate issue from the routed store.
+
+Assessment.
+1. Background deep mineral Hg:C (1.47-1.52) sits at the observed medians, and the 0-1 m stocks are within the observed ranges.
+2. The 5d routed layer is a 0.3-m Hg:C hotspot at 2.2-2.4x background: 3.2-3.6 ug/g C, between p75 and p90 of the deep
+   mineral samples. It contains 14.8 (TVC) / 4.9 (HPC) mg/m2 of excess Hg. At the current rates that is the
+   equivalent of 4.3 / 2.7 kyr of accumulation, which the 5000-yr spin-up jump put there.
+3. The rate is plausible. 3.5 / 1.8 ug/m2/yr is inside the 0.8-9.3 ug/m2/yr of Holocene dated-core intervals, and 10 kyr at
+   that rate (35 / 18 mg/m2) is similar to the observed 1-3 m stocks (about 43 mg/m2).
+4. The placement is not plausible. In the cores, Hg accumulates with C (syngenetic aggradation): Hg:C stays near 1.5 over
+   metres, with no Hg-only layer at a fixed depth. In the model, routing adds Hg without C to one fixed layer, so its Hg:C
+   rises by 0.49 (TVC) / 0.62 (HPC) ug/g C per kyr. After 10 kyr that reaches 6.4 / 7.7 ug/g C, above the observed deep
+   mineral p99 of 4.6 (figure 18c).
+5. Over the model's 5-kyr spin-up horizon, the hotspot stays within the observed range (< p90). Over Holocene-scale storage it
+   would not.
+
+### 10.3 Warming test (TVC, HPC; from the 5d 2024 state)
+Set-up (new dirs only):
+- Each base run's main/output/restart-sc.nc is copied to output/restart-tr.nc of a new run dir under out/W6_*. The Hg state is
+  already spun (hg.spun = 1), so there is no new jump.
+- Copied inputs get a new projected-climate.nc (the original is kept as projected-climate_orig.nc in the copy).
+- hg_sc_year0 is 2025: deposition is held at its 2020 values (end of the file) in every scenario.
+- Segment 1 is 75 yr, 2025-2099:
+  - ctl: the case's own 2000-2024 daily forcing, recycled 3x;
+  - proj: the case's existing projected forcing for 2025-2099 (+1.7 to 2 C, the transient forcing in the setup);
+  - w8: ctl plus a linear tair ramp from 0 to +8 C, with vapor_press scaled to keep RH constant.
+- Segment 2 is 75 yr: ctl2 continues ctl, and w8h continues w8 with +8 C held. The CO2 file ends in 2100, so segment 2
+  repeats the 2025-2099 CO2 in both runs.
+- Bases are f_deep 1 (P5F3), 0.5 (W6B050) and 0 (W6B000; retention to the first mineral layer). The bases with f_deep < 1 are
+  the 5d preset with only hg_f_deep changed, so they are not refit. At f_deep 0.5: TVC Ro 0.488, export 4.59; HPC Ro 0.308,
+  Rm 1.631. At f_deep 0: TVC Ro 0.590, export 5.37.
+- All 30 runs: run_status 100, balance error <= 2e-9 ug/m2.
+
+| TVC (f_deep 1 unless noted) | ctl | proj | w8 (yr 1-75) | w8h (yr 76-150) |
+|---|---|---|---|---|
+| ALD, last 20 yr mean / max (m) | 0.70 / 0.79 | 0.89 / 1.18 | 1.26 / 1.72 | 2.22 / 2.69 |
+| Years with ALD above the routed-layer top (1.28 m) | 0 | 0 | 10 | 69 |
+| Deep Hg in the thawed zone, last 20 yr (mg/m2) | 0 | 0.8 | 13.9 | 47.8 |
+| Routed-layer Hg, warm - ctl at end (mg/m2) | - | +0.65 | -0.21 | -1.71 |
+| Hg below 1 m, warm - ctl at end (f_deep 1 / 0.5 / 0) | - | -0.48 | -1.20 / -1.23 / -1.28 | -2.02 / -2.08 / -2.18 |
+| Excess routed Hg below 1 m (f_deep 1 - f_deep 0) | 15.09 | - | 15.17 | 15.48 (ctl2 15.32) |
+| Hg 0-1 m, warm - ctl at end | - | +0.43 | +1.03 | +1.54 |
+| Column Hg, warm - ctl at end (f_deep 1 / 0) | - | -0.04 | -0.17 / -0.25 | -0.47 / -0.73 |
+| Soil C below 1 m (kg/m2) | 27.5 -> 27.9 | - | 27.5 -> 24.5 | 24.4 -> 14.1 |
+| Export, last 20 yr (ug/m2/yr) | 3.49 | 4.17 (+0.67) | 6.06 (+2.56) | 6.52 (+3.03) |
+| Export change, f_deep 1 / 0.5 / 0 | - | - | +2.56 / +3.06 / +3.71 | +3.03 / +3.68 / +4.52 |
+| Evasion change, f_deep 1 / 0.5 / 0 | - | +0.48 | +1.59 / +1.95 / +2.43 | +0.87 / +1.24 / +1.73 |
+| Net Hg(0) uptake change, f_deep 1 / 0.5 / 0 | - | +0.04 | -1.64 / -2.01 / -2.48 | -1.11 / -1.48 / -1.97 |
+
+| HPC (f_deep 1 unless noted) | ctl | proj | w8 | w8h |
+|---|---|---|---|---|
+| ALD, last 20 yr mean / max (m) | 0.75 / 0.83 | 0.98 / 1.43 | 1.22 / 1.43 | 1.24 / 1.42 |
+| Years with ALD above the routed-layer top (1.29 m) | 0 | 4 | 6 | 23 (never below 1.59 m) |
+| Hg below 1 m, warm - ctl at end (f_deep 1 / 0.5 / 0) | - | -0.09 | -0.11 / -0.11 / -0.11 | -0.02 / -0.03 / -0.03 |
+| Export, last 20 yr | 1.98 | 1.89 (-0.09) | 2.41 (+0.43) | 2.72 (+0.66) |
+| Export change, f_deep 1 / 0.5 / 0 | - | - | +0.43 / +0.46 / +0.50 | +0.66 / +0.71 / +0.77 |
+| Evasion change, f_deep 1 / 0 | - | +0.19 | +1.62 / +1.93 | +1.56 / +1.91 |
+| Net Hg(0) uptake (change), f_deep 1 | 1.38 | 1.21 | -0.58 (-1.95), a net source | -1.04 (-2.07) |
+
+Findings.
+1. The existing projected forcing (2025-2099) does not reach the routed layer at TVC: ALD max is 1.18 m. HPC reaches it in
+   4 yr. So under the setup's transient forcing the deep store simply keeps accumulating to 2100. The export change is
+   +0.67 (TVC, +19 %) and -0.09 (HPC).
+2. Under the +8 C stress test the TVC active layer reaches the routed layer in segment 1 (10 yr) and thaws through it in
+   segment 2 (ALD about 2.2 m).
+   - The routed excess is barely remobilized. The routed layer loses 1.7 mg/m2 of its 15 mg/m2 excess to the neighbouring
+     deep layers by thaw-zone mixing. The excess below 1 m is unchanged (15.1 -> 15.5 mg/m2), because the routing keeps
+     adding to it.
+   - The deep Hg that does leave (about 2 mg/m2 in 150 yr, about 13 ug/m2/yr, mostly into 0-1 m) is background Hg. The loss
+     is the same for f_deep 1, 0.5 and 0.
+3. The export and evasion responses come from active-layer deepening and soil warming, not from the routed Hg.
+   - At TVC, export rises 2.6-4.5 ug/m2/yr and evasion 0.9-2.4 ug/m2/yr; net Hg(0) uptake falls 1.1-2.5 ug/m2/yr.
+   - The rises are smallest with f_deep 1, because routing still diverts part of the extra flow-path Hg to depth. The response
+     depends on f_deep only through that diversion: about 1.5 ug/m2/yr of export between f_deep 1 and 0.
+4. HPC: the modelled ALD stays at or below about 1.45 m even at +8 C, so the response is mostly evasion (+1.6) and HPC
+   becomes a net Hg(0) source.
+5. A structural gap shows up with deep thaw: TVC loses 42 % of its soil C below 1 m in segment 2 (24.4 -> 14.1 kg/m2), but
+   the deep Hg stays.
+   - Decay-released Hg goes to the dissolved pool of its own layer, and its re-emitted share falls off with depth (ev_z 0.3 m),
+     so in thawed mineral layers it re-sorbs (mineral Kd) and remains. Deep Hg:C rises from 2.0 to 3.9 ug/g C.
+   - For comparison, the Schaefer et al. 2020 decay release (16 % evades, 1.5 % exported) applied to the same C loss
+     (10 kg C x 2 ug/g = 20 mg/m2 of Hg released) would give about 3 mg/m2 evaded and 0.3 mg/m2 exported over 75 yr (about
+     45 ug/m2/yr). That is roughly 10x the model's whole-column loss.
+   - So in the model, thaw-released permafrost Hg is retained, not released. That is a bigger issue for thaw projections
+     than the value of f_deep.
+
+### 10.4 Recommendation
+- **Keep f_deep = 1 (z_deep 1.5) in the preset.** Lowering it raises Ro and export out of their bands: f_deep 0.5 gives TVC
+  Ro 0.49 and export 4.6. It does not change the century-scale warming response, which differs by only about 0.5-1.5 ug/m2/yr
+  of export between f_deep 1 and 0. The 5d deep Hg:C and stocks are within the observed ranges.
+- **Do not lower f_deep to fix the deep store; change where it goes, if needed.** For runs longer than the spin-up horizon, or
+  for Holocene-consistency, spread the routed Hg over the permafrost layers below the maximum ALD in proportion to their
+  soil C, instead of into the single layer holding z_deep. Optionally, make z_deep relative to the running maximum ALD so the
+  target moves down as permafrost degrades.
+  - This keeps the export and Ro fit (same f_conn / f_deep) and removes the Hg:C hotspot, which would exceed the observed p99
+    after about 6 kyr.
+  - Cost: code + tests + a check run, about 0.1 core-h. No refit is expected.
+- **Add a thaw-release coupling for decay-released Hg in thawed formerly frozen layers. This matters more than f_deep.** In
+  layers below the historical maximum ALD (newly thawed permafrost), send a fraction of the decay-released Hg to export
+  (DOC-bound, about 1.5 % as in Schaefer 2020, or tied to the drainage) and to Hg(0) evasion with a depth attenuation bounded
+  by the ALD rather than ev_z.
+  - Default off, so all current results stay bit-identical. Constrain it with thaw-chronosequence or RTS data if they can be
+    found.
+  - Without it, the model's warming response of deep Hg is a lower bound.
+- No change is needed for runs to 2100 with the setup's projected forcing: the routed layer stays frozen (TVC) or thaws only
+  briefly (HPC).
+
+### Cost (core-h, LEDGER.txt section "PHASE 6a")
+
+| Item | Core-h |
+|---|---|
+| Segment 1: P5F3 ctl/w8/proj (6 runs) | 0.040 |
+| Bases W6B050, W6B000 (TVC/HPC, spin 20 + main 75) | 0.037 |
+| Segment 1 ctl/w8 for W6B050, W6B000 (8 runs) | 0.054 |
+| Segment 2 ctl2/w8h for 3 bases (12 runs) | 0.080 |
+| **Phase 6a total** | **0.212 of 0.5** |
+
+Rules: <= 4 processes; all segments 75 yr; nohup; restarts copied only (never reused in place); climate inputs changed only in
+copies under out/W6_*; no parameters/ edits; no deletions (a partial dir from a failed set-up assertion was renamed to
+out/W6_P5F3_TVC_ctl2.partial1); no GCS. No code or preset change in 6a, so the identity and unit suites were not rerun (5d
+results stand).
+
+![fig18](figures_hg_t2/hg_t2_fig18_deep_obs.png)
+![fig19](figures_hg_t2/hg_t2_fig19_warming.png)
