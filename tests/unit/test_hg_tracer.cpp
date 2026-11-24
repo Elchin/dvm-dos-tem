@@ -1323,6 +1323,15 @@ TEST_CASE("hg_t2_thawrel: decay-released Hg below zpf evades / is exported at th
   for (int l = 0; l < 4; l++) { CHECK(s3.soil[l] == s0.soil[l]); CHECK(s3.diss[l] == s0.diss[l]); }
   CHECK(s3.diss[4] < s0.diss[4]);
   CHECK(std::fabs(s3.balance_error()) < 1e-13 * s3.total());
+  // frozen (T <= 0) layers below zpf: frozen-soil decomposition re-sorbs in place as with the switch off (no thaw release)
+  for (int l = 4; l < 6; l++) { f.ts[l] = (l == 4) ? 0.0 : -1.5; }
+  hgtr::State s4 = run(q, 0.25), s5 = run(p, 0.25);
+  CHECK(s4.m.thawev == 0.0); CHECK(s4.m.thawex == 0.0); CHECK(s4.m.export_ == s5.m.export_); CHECK(s4.m.evasion == s5.m.evasion);
+  for (int l = 0; l < 6; l++) { CHECK(s4.soil[l] == s5.soil[l]); CHECK(s4.diss[l] == s5.diss[l]); }
+  f.ts[4] = 0.5;   // only layer 4 thawed
+  hgtr::State s6 = run(q, 0.25);
+  CHECK(s6.m.thawev == doctest::Approx(0.16 * r4).epsilon(1e-12)); CHECK(s6.m.thawex == doctest::Approx(0.015 * r4).epsilon(1e-12));
+  CHECK(std::fabs(s6.balance_error()) < 1e-13 * s6.total());
   std::remove(T2DEP);
 }
 

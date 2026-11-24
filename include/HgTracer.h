@@ -312,7 +312,7 @@ struct Params {
 //     mineral layer down), instead of the single layer containing hg_z_deep (used only while no such layer has C).
 //   hg_t2_thawrel = 1 (needs hg_t2 = 1, hg_t2_diss = 1, hg_transport = 1): Hg released by the decay of C in layers
 //     below the permafrost reference depth (State::zpf: maximum thaw depth in years <= hg_t2_thaw_ref_year, frozen
-//     afterwards), i.e. newly thawed, previously perennially frozen layers, is re-emitted at hg_f_thaw_evade (0.16) and
+//     afterwards) and thawed in that month (layer T > 0 C), i.e. newly thawed, previously perennially frozen layers, is re-emitted at hg_f_thaw_evade (0.16) and
 //     exported at hg_f_thaw_export (0.015) (Schaefer et al. 2020 Nat Commun 11:4650) instead of the depth-attenuated
 //     fd / ev_z share; the rest goes to the layer's dissolved pool as before. HG_THAWEV / HG_THAWEX (parts of evasion
 //     and export). Thaw depth: bottom of the deepest layer of the contiguous thawed (not ice-dominated) zone from the
@@ -978,14 +978,15 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
     for (int l = 0; l < na; l++) { const double d = std::fmax(0.0, a.dz[l]); fev[l] = fev_layer(p, fsn, z + 0.5 * d, f.ts[l]); z += d; }
     fev_wd = fev_layer(p, fsn, 0.0, f.ta);
   }
-  // T2 phase 6b (hg_t2_thawrel): layers (start geometry) below the permafrost reference depth release at the thaw fractions
+  // T2 phase 6b (hg_t2_thawrel): layers (start geometry) below the permafrost reference depth that are thawed this month
+  // (layer T > 0 C; frozen-soil decomposition below zpf re-sorbs as before) release at the thaw fractions
   const bool thr = (p.t2_thawrel == 1 && td && f.t2 == 1 && s.zpf >= 0.0);
   bool thl[MAX_SOI_LAY] = {}; double fxl[MAX_SOI_LAY]; bool thany = false;
   for (int l = 0; l < MAX_SOI_LAY; l++) { fxl[l] = f_exp; }
   if (thr) {
     double z = 0.0;
     for (int l = 0; l < na; l++) {
-      if (z >= s.zpf && f.decomp[l] > 0.0) { thl[l] = true; thany = true; fev[l] = p.f_thaw_evade; fxl[l] = p.f_thaw_export; }
+      if (z >= s.zpf && f.ts[l] > 0.0 && f.decomp[l] > 0.0) { thl[l] = true; thany = true; fev[l] = p.f_thaw_evade; fxl[l] = p.f_thaw_export; }
       z += std::fmax(0.0, a.dz[l]);
     }
   }
