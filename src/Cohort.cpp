@@ -753,6 +753,16 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
       // lateral drainage of the month by soil layer: Richards layer_drain is 1-based (element il + 1 = soil layer il)
       if (il + 1 < MAX_SOI_LAY) { for (int id = 0; id < std::min(dinmcurr, 31); id++) { ft.drain_l[il] += pos(edall->daily_layer_drain[id][il + 1]); } }
     }
+    if (md->hg.t2 == 1 && md->hg.t2_diss == 1) {   // T2 phase 2: the month's days for the dissolved-Hg sub-steps
+      ft.nd = std::min(dinmcurr, 31);
+      for (int id = 0; id < ft.nd; id++) {
+        ft.dq_in[id] = pos(edall->daily_qinfl[id]); ft.dq_over[id] = pos(edall->daily_qover[id]);
+        for (int il = 0; il < std::min(cd.m_soil.numsl, MAX_SOI_LAY); il++) {
+          ft.d_liq[id][il] = pos(hg_dliq[id][il]); ft.d_ice[id][il] = pos(hg_dice[id][il]);
+          if (il + 1 < MAX_SOI_LAY) { ft.d_drain[id][il] = pos(edall->daily_layer_drain[id][il + 1]); }
+        }
+      }
+    }
     hg_do_step(hg_a, hg_a, ft);
   }
   if (nbal_diag) {
@@ -1376,6 +1386,10 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
     edall->veg_endOfDay(dinmcurr); //be sure 'getEd4allpfts_daily' called above
     dwout::record_tran(*edall, id); // v5p-daily-water-fix: daily TRANSPIRATION output (output only)
     edall->grnd_endOfDay(dinmcurr, doy);
+    if (md->hg.tracer == 1 && md->hg.t2 == 1 && md->hg.t2_diss == 1 && id >= 0 && id < 31) {   // T2 phase 2: Hg-only copy
+      for (int il = 0; il < std::min(cd.m_soil.numsl, MAX_SOI_LAY); il++) { hg_dliq[id][il] = edall->d_sois.liq[il]; hg_dice[id][il] = edall->d_sois.ice[il]; }
+      for (int il = std::min(cd.m_soil.numsl, MAX_SOI_LAY); il < MAX_SOI_LAY; il++) { hg_dliq[id][il] = 0.0; hg_dice[id][il] = 0.0; }
+    }
 
     // accumulate yearly vars at the last day of a month for all pfts
     if(id==dinmcurr-1) {

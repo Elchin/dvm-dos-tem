@@ -291,10 +291,10 @@ TEST_CASE("hg_spinup closure: non-periodic record (C drift, layer re-division) =
   CHECK(std::isfinite(k.total()));
 }
 
-TEST_CASE("hg restart layout v3 round trip (spin, spun) and v1 still read") {
+TEST_CASE("hg restart layout v4 round trip (spin, spun) and v1 still read") {
   hgtr::Params p; hgtr::State s; hgtr::Snap a = column(6); hgtr::initialize(p, s, a);
   s.cum.spin = 12.5; s.spun = 1; s.mehg[1] = 0.25;
-  double v[hgtr::NSTATE]; hgtr::pack(s, v); CHECK(v[0] == 3.0);   // T2: layout v3 (+ snow)
+  double v[hgtr::NSTATE]; hgtr::pack(s, v); CHECK(v[0] == 4.0);   // T2: layout v4 (+ snow, + diss)
   hgtr::State t; REQUIRE(hgtr::unpack(t, v, 6));
   CHECK(t.spun == 1); CHECK(t.cum.spin == 12.5); CHECK(t.balance_error() == doctest::Approx(s.balance_error()));
   v[0] = 1.0; hgtr::State u; REQUIRE(hgtr::unpack(u, v, 6)); CHECK(u.spun == 0); CHECK(u.cum.spin == 0.0);
@@ -536,7 +536,7 @@ TEST_CASE("hg_t2 foliar uptake: leaf Hg from LAI x canopy x dry deposition (snow
 }
 
 TEST_CASE("hg_t2 snowpack: accumulation, photic photoreduction, melt / sublimation release, exact balance") {
-  hgtr::Params p = t2params(); hgtr::State s; hgtr::Snap a = column(6); hgtr::initialize(p, s, a);
+  hgtr::Params p = t2params(); p.snow_sublim_loss = 1;  /* ORCHIDEE form: sublimation share lost */ hgtr::State s; hgtr::Snap a = column(6); hgtr::initialize(p, s, a);
   const double soil0 = s.soiltot();
   // winter month, deep snow, polar night: everything Hg(II) goes to the snow, nothing reduced or released
   hgtr::Flux w = t2flux(0.5, 0.0, 120.0, 0.0, 0.0, 0.0);
@@ -624,8 +624,155 @@ TEST_CASE("hg_t2 spin-up jump with the snowpack == explicit repetition; restart 
   CHECK(j.snow == doctest::Approx(e.snow).epsilon(1e-9)); CHECK(j.vegtot() == doctest::Approx(e.vegtot()).epsilon(1e-9));
   CHECK(std::fabs(j.balance_error()) < 1e-8 * j.total());
   // restart
-  s.snow = 0.75; double v[hgtr::NSTATE]; hgtr::pack(s, v); CHECK(v[0] == 3.0); CHECK(v[hgtr::NSTATE - 1] == 0.75);
+  s.snow = 0.75; double v[hgtr::NSTATE]; hgtr::pack(s, v); CHECK(v[0] == 4.0); CHECK(v[hgtr::NSTATE - 1 - MAX_SOI_LAY] == 0.75);
   hgtr::State t; REQUIRE(hgtr::unpack(t, v, 5)); CHECK(t.snow == 0.75); CHECK(t.total() == s.total());
   v[0] = 2.0; hgtr::State u; REQUIRE(hgtr::unpack(u, v, 5)); CHECK(u.snow == 0.0);
+  std::remove(T2DEP);
+}
+
+// ---------------- T2 phase 2 (hg_t2_diss): dissolved pool, daily export, mixing ----------------
+namespace {
+hgtr::Params t2dparams() { hgtr::Params p = t2params(); p.t2_diss = 1; return p; }
+// transport sub-step with nd days of constant water
+hgtr::Flux dflux(int nl, int nd, double qin, double qover, double drain_l2, double liq, int frozen_from = 99) {
+  hgtr::Flux f; f.tr = 1; f.nd = nd;
+  for (int l = 0; l < nl; l++) { f.liq[l] = liq; f.ice[l] = (l >= frozen_from) ? 100.0 : 0.0; f.por[l] = 0.5; }
+  for (int d = 0; d < nd; d++) {
+    f.dq_in[d] = qin; f.dq_over[d] = qover;
+    for (int l = 0; l < nl; l++) { f.d_liq[d][l] = liq; f.d_ice[d][l] = (l >= frozen_from) ? 100.0 : 0.0; }
+    if (nl > 2) f.d_drain[d][2] = drain_l2;
+  }
+  return f;
+}
+}
+
+TEST_CASE("hg_t2_diss parse: defaults, needs hg_t2; D7 default keeps sublimated snow Hg in the pack") {
+  hgtr::Params p; REQUIRE(hgtr::parse(ms0(), p) == "");
+  CHECK(p.t2_diss == 0); CHECK(p.tau_sorb == 5.0); CHECK(p.v_adv == 0.2); CHECK(p.z_runoff == 0.045); CHECK(p.d_cryo == 1e-3); CHECK(p.d_bio == 1e-4);
+  CHECK(p.snow_sublim_loss == 0);
+  Json::Value a = ms0(); a["hg_tracer"] = 1; a["hg_t2_diss"] = 1; CHECK(hgtr::parse(a, p) != "");
+  hgtr::Params q = t2params(); hgtr::State s; hgtr::Snap c = column(5); hgtr::initialize(q, s, c);
+  s.snow = 1.0; s.h_init += 1.0; const double so = s.soiltot();
+  hgtr::Flux m = t2flux(0.5, 0.0, 40.0, 60.0, 20.0, 0.0); m.dep_wet = 0; m.dep_dry2 = 0; m.dep_dry0 = 0; m.dep_soil0 = 0;
+  hgtr::step(q, s, c, c, m);
+  CHECK(s.m.snowmelt == doctest::Approx(60.0 / 100.0)); CHECK(s.m.snowred == 0.0); CHECK(s.snow == doctest::Approx(0.4));
+  CHECK(s.soiltot() - so == doctest::Approx(0.6)); CHECK(std::fabs(s.balance_error()) < 1e-14 * s.total());
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_diss: decay-released Hg goes to the dissolved pool, no f_export; geometry change re-sorbs; exact balance") {
+  hgtr::Params p = t2dparams(); hgtr::State s; hgtr::Snap a = column(6); hgtr::initialize(p, s, a);
+  const double h1 = s.soil[1];
+  hgtr::Snap b = a; hgtr::Flux f; f.decomp[1] = 20.0; b.soil[1] -= 20.0;
+  hgtr::step(p, s, a, b, f);
+  const double rel = 20.0 * h1 / a.soil[1];
+  CHECK(s.m.export_ == 0.0); CHECK(s.m.evasion == doctest::Approx(rel * p.f_evade));
+  CHECK(s.diss[1] == doctest::Approx(rel * (1 - p.f_evade)));
+  CHECK(std::fabs(s.balance_error()) < 1e-14 * s.total());
+  hgtr::Snap g = b; g.nsl = 7; for (int l = 0; l < 7; l++) { g.soil[l] = (l < 6) ? b.soil[l] * 6.0 / 7.0 : 0.0; g.dz[l] = 0.06; g.type[l] = (l < 3) ? 1 : 3; }
+  double c0 = 0, c1 = 0; for (int l = 0; l < 6; l++) c0 += b.soil[l]; for (int l = 0; l < 7; l++) c1 += g.soil[l]; g.soil[0] += c0 - c1;
+  hgtr::step(p, s, b, g, hgtr::Flux());
+  CHECK(s.disstot() == 0.0); CHECK(std::fabs(s.balance_error()) < 1e-13 * s.total());
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_diss sorption: no water flow -> dissolved fraction relaxes to liq / (liq + Kd M); no export") {
+  hgtr::Params p = t2dparams(); p.d_cryo = 0; p.d_bio = 0; hgtr::State s; hgtr::Snap a = column(5); hgtr::initialize(p, s, a);
+  const double h0 = s.total();
+  for (int m = 0; m < 6; m++) { hgtr::Flux f = dflux(5, 30, 0.0, 0.0, 0.0, 30.0); hgtr::step(p, s, a, a, f); }
+  const double kdo = std::pow(10.0, p.t2_log_kd_org), kdm = std::pow(10.0, p.log_kd_min);
+  for (int l = 0; l < 5; l++) {
+    const bool mn = hgtr::is_mineral(a.type[l]);
+    const double M = mn ? 0.5 * a.dz[l] * 2650.0 : a.soil[l] * 2e-3, phi = 30.0 / (30.0 + (mn ? kdm : kdo) * M);
+    CHECK(s.diss[l] / (s.diss[l] + s.soil[l]) == doctest::Approx(phi).epsilon(1e-6));
+  }
+  CHECK(s.cum.export_ == 0.0); CHECK(std::fabs(s.total() - h0) < 1e-13 * h0);
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_diss transport: overland from the top zone, lateral drainage, vertical advection; frozen layer stops it; exact balance") {
+  hgtr::Params p = t2dparams(); p.d_cryo = 0; p.d_bio = 0; hgtr::State s; hgtr::Snap a = column(6); hgtr::initialize(p, s, a);
+  for (int l = 0; l < 6; l++) { s.diss[l] = 1.0; }
+  const double h0 = s.total();
+  hgtr::Flux f = dflux(6, 1, 10.0, 5.0, 2.0, 20.0, 4); p.tau_sorb = 1e5;   // ~no sorption in 1 day
+  hgtr::step(p, s, a, a, f);
+  CHECK(s.m.runoff > 0.0); CHECK(s.m.drain > 0.0);
+  CHECK(s.m.export_ == doctest::Approx(s.m.runoff + s.m.drain));
+  CHECK(s.diss[4] == doctest::Approx(1.0).epsilon(1e-4)); CHECK(s.diss[5] == doctest::Approx(1.0).epsilon(1e-4));   // frozen: untouched (sorption ~0)
+  CHECK(s.diss[3] > 1.0);   // receives from above, no outflow into the frozen layer
+  CHECK(std::fabs(s.total() - (h0 - s.m.export_)) < 1e-13 * h0);
+  // all frozen: nothing moves
+  hgtr::State t = s; t.m.clear(); hgtr::Flux z = dflux(6, 3, 10.0, 5.0, 2.0, 20.0, 0); hgtr::step(p, t, a, a, z); CHECK(t.m.export_ == 0.0);
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_diss mixing: uniform concentration -> no flux; gradient -> downward, conservative, pools >= 0") {
+  hgtr::Params p = t2dparams(); p.d_cryo = 1.0; hgtr::State s; hgtr::Snap a = column(6); hgtr::initialize(p, s, a);
+  for (int l = 0; l < 6; l++) { s.soil[l] = 10.0 * a.dz[l]; s.diss[l] = 0.0; }
+  s.h_init = s.total(); s.cum.clear();
+  hgtr::Flux f = dflux(6, 0, 0, 0, 0, 20.0);
+  hgtr::State u = s; hgtr::step(p, u, a, a, f);
+  for (int l = 0; l < 6; l++) CHECK(u.soil[l] == doctest::Approx(s.soil[l]).epsilon(1e-12));
+  s.soil[0] = 5.0; s.h_init = s.total();
+  const double h0 = s.total(); hgtr::step(p, s, a, a, f);
+  CHECK(s.soil[0] < 5.0); CHECK(s.soil[1] > 0.5); CHECK(std::fabs(s.total() - h0) < 1e-13 * h0);
+  for (int l = 0; l < 6; l++) CHECK(s.soil[l] >= 0.0);
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_diss random steps (geometry changes, fire, snow, daily transport): balance to roundoff, pools >= 0") {
+  std::mt19937 rng(23); std::uniform_real_distribution<double> U(0.0, 1.0);
+  hgtr::Params p = t2dparams(); hgtr::State s; hgtr::Snap a = column(8, 3000.0); hgtr::initialize(p, s, a);
+  for (int it = 0; it < 2000; it++) {
+    const int mth = it % 12;
+    hgtr::Snap b = a; hgtr::Flux f = t2flux(3 * U(rng), U(rng), (mth < 5 || mth > 9) ? 200 * U(rng) : 0.0, 30 * U(rng), 5 * U(rng), 0.4 * U(rng));
+    for (int i = 0; i < NUM_PFT; i++) for (int j = 0; j < NUM_PFT_PART; j++) {
+      if (a.veg[i][j] <= 0) continue;
+      f.npp[i][j] = 10 * U(rng) - 1; b.veg[i][j] = std::fmax(0.0, a.veg[i][j] + f.npp[i][j] - 8 * U(rng));
+    }
+    if (U(rng) < 0.6) {
+      for (int l = 0; l < a.nsl; l++) { f.decomp[l] = 5 * U(rng); b.soil[l] = std::fmax(0.0, a.soil[l] - f.decomp[l] + 4 * U(rng)); }
+    } else {
+      int n = 3 + int(U(rng) * 15); b.nsl = n;
+      double c0 = 0; for (int l = 0; l < a.nsl; l++) c0 += a.soil[l];
+      double c1 = c0 * (0.97 + 0.05 * U(rng));
+      double w[MAX_SOI_LAY], ws = 0; for (int l = 0; l < n; l++) { w[l] = 0.2 + U(rng); ws += w[l]; }
+      for (int l = 0; l < MAX_SOI_LAY; l++) { b.soil[l] = (l < n) ? c1 * w[l] / ws : 0; b.dz[l] = (l < n) ? 0.05 + 0.1 * U(rng) : 0; b.type[l] = (l < 2) ? 1 : 3; }
+      if (U(rng) < 0.5) { f.burn = std::fmax(0.0, c0 - c1) * U(rng); f.lateral = 3 * U(rng); f.pot_decomp = 2 * U(rng); }
+    }
+    hgtr::step(p, s, a, b, f);
+    hgtr::Flux t = dflux(b.nsl, 30, 20 * U(rng), 10 * U(rng), 3 * U(rng), 5 + 40 * U(rng), (mth < 5 || mth > 9) ? int(U(rng) * 3) : 99);
+    hgtr::step(p, s, b, b, t);
+    a = b;
+    if (it % 12 == 11) { s.m.clear(); }
+  }
+  CHECK(std::fabs(s.balance_error()) < 1e-8 * std::fmax(1.0, s.total()));
+  for (int l = 0; l < MAX_SOI_LAY; l++) { CHECK(s.soil[l] >= 0.0); CHECK(s.diss[l] >= 0.0); }
+  CHECK(s.cum.export_ > 0.0);
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_diss spin-up jump == explicit repetition (dissolved pool in the affine vector); restart v4 / v3") {
+  hgtr::Params p = t2dparams(); p.spinup = 1; p.spinup_cycle = 1; p.spinup_years = 19;
+  hgtr::Snap c = column(5);
+  std::vector<hgtr::Rec> yr = synth_year(c);
+  std::vector<hgtr::Rec> rec;
+  for (size_t k = 0; k < yr.size(); k++) {
+    rec.push_back(yr[k]);
+    if (k % 2 == 1) {   // after each month: a transport sub-step with daily water
+      const int mth = (int)(k / 2);
+      hgtr::Rec t; t.a = c; t.b = c; t.f = dflux(5, 30, (mth >= 4 && mth <= 8) ? 3.0 : 0.0, mth == 4 ? 4.0 : 0.0, 0.5, 25.0, (mth < 4 || mth > 9) ? 1 : 99);
+      rec.push_back(t);
+    }
+  }
+  hgtr::State s; hgtr::initialize(p, s, c);
+  for (const hgtr::Rec& r : rec) hgtr::step(p, s, r.a, r.b, r.f);
+  hgtr::State e = s; for (int y = 0; y < 19; y++) for (const hgtr::Rec& r : rec) hgtr::step(p, e, r.a, r.b, r.f);
+  hgtr::State j = s; REQUIRE(hgtr::spinup_jump(p, j, rec, c.nsl));
+  for (int l = 0; l < 5; l++) { CHECK(j.soil[l] == doctest::Approx(e.soil[l]).epsilon(1e-9)); CHECK(j.diss[l] == doctest::Approx(e.diss[l]).epsilon(1e-9)); }
+  CHECK(std::fabs(j.balance_error()) < 1e-8 * j.total());
+  double v[hgtr::NSTATE]; hgtr::pack(e, v); CHECK(v[0] == 4.0);
+  hgtr::State t; REQUIRE(hgtr::unpack(t, v, 5)); for (int l = 0; l < 5; l++) CHECK(t.diss[l] == e.diss[l]); CHECK(t.total() == e.total());
+  v[0] = 3.0; hgtr::State u; REQUIRE(hgtr::unpack(u, v, 5)); CHECK(u.disstot() == 0.0); CHECK(u.snow == e.snow);
   std::remove(T2DEP);
 }

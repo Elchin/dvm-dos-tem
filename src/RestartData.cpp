@@ -588,13 +588,15 @@ void RestartData::read_px_hg_vars(const std::string& fname, const int rowidx, co
   if (nc_inq_varid(ncid, "hg_state", &v) == NC_NOERR) {
     temutil::nc( nc_inq_vardimid(ncid, v, d) );
     temutil::nc( nc_inq_dimlen(ncid, d[2], &len) );
-    // layout v3 (HG_NSTATE values), v2 (T1b-T1d: 1 fewer, no T2 snow) or v1 (T1: 3 fewer, no spin-up fields); the rest zero-filled
-    if (len == (size_t)HG_NSTATE || len == (size_t)(HG_NSTATE - 1) || len == (size_t)(HG_NSTATE - 3)) {
+    // layout v4 (HG_NSTATE values), v3 (T2 phase 1: MAX_SOI_LAY fewer, no diss), v2 (T1b-T1d: 1 more fewer, no snow) or
+    // v1 (T1: 2 more fewer, no spin-up fields); the rest zero-filled
+    const size_t n3 = HG_NSTATE - MAX_SOI_LAY, n2 = n3 - 1, n1 = n3 - 3;
+    if (len == (size_t)HG_NSTATE || len == n3 || len == n2 || len == n1) {
       for (int i = 0; i < HG_NSTATE; i++) { hg_state[i] = 0.0; }
       size_t s3[3] = {(size_t)rowidx, (size_t)colidx, 0};
       size_t c3[3] = {1, 1, len};
       temutil::nc( nc_get_vara_double(ncid, v, s3, c3, &hg_state[0]) );
-      has_hg_state = (len == (size_t)HG_NSTATE) ? (hg_state[0] == 3.0) : (len == (size_t)(HG_NSTATE - 1)) ? (hg_state[0] == 2.0) : (hg_state[0] == 1.0);
+      has_hg_state = (len == (size_t)HG_NSTATE) ? (hg_state[0] == 4.0) : (len == n3) ? (hg_state[0] == 3.0) : (len == n2) ? (hg_state[0] == 2.0) : (hg_state[0] == 1.0);
     }
   }
   temutil::nc( nc_close(ncid) );

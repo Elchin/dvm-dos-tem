@@ -2791,7 +2791,9 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
           if (output_this_timestep) { output_nc_4dim(&sp, file_stage_suffix, &buf[0][0], MAX_SOI_LAY, year_start_idx, years_to_output); buf.clear(); }
         } else { buf.clear(); }
       };
-      layered("HGSOIL", h.soil);
+      { double ht[MAX_SOI_LAY]; for (int i = 0; i < MAX_SOI_LAY; i++) { ht[i] = h.soil[i] + h.diss[i]; }   // T2: sorbed + dissolved
+        layered("HGSOIL", ht); }
+      layered("HGDISS", h.diss);
       layered("MEHGSOIL", h.mehg);
       scalar("HGVEG", h.vegtot(), h.vegtot());
       scalar("HGDEAD", h.deadtot(), h.deadtot());
@@ -2809,6 +2811,8 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
       scalar("HG_SNOWRED", h.m.snowred, h.y.snowred);
       scalar("HG_SNOWMELT", h.m.snowmelt, h.y.snowmelt);
       scalar("HG_PHOTORED", h.m.photored, h.y.photored);
+      scalar("HG_RUNOFF", h.m.runoff, h.y.runoff);
+      scalar("HG_MIXDOWN", h.m.mixdown, h.y.mixdown);
       scalar("MEHGPROD", h.mehg_prod_m, h.mehg_prod_y);
       scalar("HG_BALERR", h.balance_error(), h.balance_error());
     }

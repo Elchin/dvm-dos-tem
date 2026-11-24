@@ -159,6 +159,7 @@ public :
   hgtr::State hg;
   hgtr::Snap hg_prev;           // C at the end of the previous month (gap step)
   bool hg_have_prev = false;
+  double hg_dliq[31][MAX_SOI_LAY] = {}, hg_dice[31][MAX_SOI_LAY] = {};   // T2 phase 2 (hg_t2_diss): daily layer liq / ice (mm)
   void hg_snap(hgtr::Snap & s) const;
   void hg_track(hgtr::Snap & a, const hgtr::Flux & f, const char * label);
   void hg_month_begin(const int currmind, hgtr::Snap & a);
