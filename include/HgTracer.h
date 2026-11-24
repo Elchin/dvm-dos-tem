@@ -233,7 +233,8 @@ struct Params {
   double gem         = 1.3;   // hg_gem (ng/m3): atmospheric Hg(0) (Arctic background 1.2-1.5, AMAP 2021), x veg_scale
   double gs_m        = 4.0;   // hg_gs_m: Medlyn 1 + g1 / sqrt(D) (g1 2.2-4.5 kPa^0.5 CLM5 arctic grass / boreal shrub,
                               // D 0.5-1 kPa): stomatal conductance g_sw = 1.6 m A / c_a (Yuan et al. 2023 Environ Int 174:107904)
-  double gs_eff      = 1.0;   // hg_gs_eff: calibration factor of the stomatal Hg(0) uptake (hg_t2_foliar = 2; decision D3)
+  double gs_eff      = 0.75;  // hg_gs_eff: calibration factor of the stomatal Hg(0) uptake (hg_t2_foliar = 2; decision D3):
+                              // phase-3 fit to the Toolik vegetation Hg(0) uptake ~4.1 ug/m2/yr (Obrist 2017; 1.0 gave 5.3)
   int    gs_ingpp    = 1;     // hg_gs_ingpp: 1 the stomatal uptake follows the PFT's N-unlimited GPP (INGPP; dvmdostem's canopy
                               // conductance is not N-limited, its N limitation scales GPP afterwards), 0 the N-limited GPP
   bool   dep_comp    = false; // the deposition file has components (hg2_wet / hg2_dry / hg0_soil columns)

@@ -800,7 +800,7 @@ TEST_CASE("hg_t2_diss spin-up jump == explicit repetition (dissolved pool in the
 TEST_CASE("hg_t2 phase 3 parse: defaults off, ranges, dependencies") {
   hgtr::Params p = t2params();
   CHECK(p.t2_evasion == 0); CHECK(p.t2_meltroute == 0); CHECK(p.t2_foliar == 1);
-  CHECK(p.fd == 0.053); CHECK(p.ev_z == 0.05); CHECK(p.v_ground == 8.5e-5); CHECK(p.gem == 1.3); CHECK(p.gs_m == 4.0); CHECK(p.gs_eff == 1.0); CHECK(p.gs_ingpp == 1);
+  CHECK(p.fd == 0.053); CHECK(p.ev_z == 0.05); CHECK(p.v_ground == 8.5e-5); CHECK(p.gem == 1.3); CHECK(p.gs_m == 4.0); CHECK(p.gs_eff == 0.75); CHECK(p.gs_ingpp == 1);
   Json::Value a = ms0(); a["hg_tracer"] = 1; a["hg_t2_evasion"] = 1; CHECK(hgtr::parse(a, p) != "");          // needs hg_t2
   Json::Value b = ms0(); b["hg_tracer"] = 1; b["hg_t2"] = 1; b["hg_dep_file"] = T2DEP; b["hg_t2_meltroute"] = 1;
   CHECK(hgtr::parse(b, p) != "");                                                                          // needs hg_t2_diss
@@ -849,7 +849,7 @@ TEST_CASE("hg_t2_foliar 2: stomatal Hg(0) uptake = k x GPP to the leaves (+ LAI 
   hgtr::State s; hgtr::Snap a = column(4); hgtr::initialize(p, s, a);
   hgtr::Flux f = t2flux(0.0, 0.0, 0, 0, 0, 0.3); f.gpp[0] = 60.0; f.gpp[3] = 20.0; f.ta = 10.0; f.co2 = 400.0;
   const double k = hgtr::stomatal_k(p, f);
-  const double kexp = 1.3 * 1.6 * 4.0 / (12.0 * 400e-6 * 3.3365 * (101325.0 / (8.314 * 283.15))) * 1e-3;
+  const double kexp = 0.75 * 1.3 * 1.6 * 4.0 / (12.0 * 400e-6 * 3.3365 * (101325.0 / (8.314 * 283.15))) * 1e-3;
   CHECK(k == doctest::Approx(kexp).epsilon(1e-12));
   const double l0 = s.veg[0][0], l3 = s.veg[3][0];
   hgtr::step(p, s, a, a, f);
