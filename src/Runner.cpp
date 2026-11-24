@@ -2800,6 +2800,8 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
       scalar("HG_SPINADJ", h.cum.spin, h.cum.spin);
       scalar("HG_EVASION", h.m.evasion, h.y.evasion);
       scalar("HG_EXPORT", h.m.export_, h.y.export_);
+      scalar("HG_DRAIN", h.m.drain, h.y.drain);
+      scalar("HG_DOWN", h.m.down, h.y.down);
       scalar("HG_FIRE", h.m.fire, h.y.fire);
       scalar("MEHGPROD", h.mehg_prod_m, h.mehg_prod_y);
       scalar("HG_BALERR", h.balance_error(), h.balance_error());

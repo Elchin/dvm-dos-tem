@@ -33,6 +33,19 @@
 //   Deposition and unassigned Hg go to the top soil layer that holds SOM C (the moss layer usually has
 //   none), so Hg cannot pile up in a layer without C turnover. HG_DIAG (env) prints a replay check.
 //
+// T1c additions (2026-11-23): downward transport of dissolved Hg (hg_transport, default 1 with the tracer),
+// spin-up on by default with the tracer (hg_spinup 1), GEOS-Chem site deposition files.
+//   Once a month (a C-neutral sub-step, recorded for the spin-up like every other step; any geometry) the
+//   Hg of each unfrozen layer partitions between the solid phase M (kg/m2: organic matter = C / 0.5;
+//   mineral (1 - porosity) dz 2650 kg/m3) and the layer water liq (L/m2) with Kd (L/kg); the dissolved
+//   (DOM-bound) part leaves with the model's lateral layer drainage (export, HG_DRAIN) and moves down with the
+//   percolating water (see transport_; frozen layers stop the water). Hg reaching the bottom is not lost: the
+//   vertical flux is zero at the frost table / bottom of the column (it can only leave by lateral drainage,
+//   HG_DRAIN). Kd: mineral 10^3.8 L/kg (Allison & Allison 2005, EPA/600/R-05/074, soil Hg(II) median,
+//   range 10^2.2-10^5.8); organic 10^3.3 calibrated to the Toolik organic-horizon Hg:C (0.29-0.41).
+//   hg_spinup_cycle default 10 years (was 1): a single recorded year can have almost no transport (snowmelt
+//   on frozen ground, dry summer), and the 5000-yr jump would then carry that year's state.
+//
 // Units: C in g C/m2, Hg and MeHg in ug/m2, ratios in ug Hg / g C, fluxes per model month.
 //
 // Pools (parallel to C): live vegetation per PFT x {leaf, stem, root}; standing dead per PFT; woody
@@ -85,14 +98,22 @@ struct Params {
   double f_evade    = 0.02;   // hg_f_evade: fraction of decay-released Hg that evades (0.16 Schaefer 2020; 0.02: Obrist 2017 Toolik net Hg(0) sink, see top)
   double f_export   = 0.015;  // hg_f_export: fraction of decay-released Hg exported (Schaefer 2020)
   double f_leach    = 0.0;    // hg_f_leach: fraction of decay-released Hg moved to the next soil layer down (DOC-bound), bottom -> export
+  // T1c downward transport of dissolved (DOM-bound) Hg with the percolating soil water, once a month, any
+  // geometry: Hg leaving layer l = q_l * Hg_l / (liq_l + Kd * M_l) (Kd partitioning between the solid phase
+  // M_l (kg/m2) and the layer water liq_l (L/m2)); q = infiltration at the top -> drainage at the bottom of the
+  // thawed zone (linear in depth); Hg leaving the deepest thawed layer leaves with the drainage (export).
+  int    transport  = 1;      // hg_transport: 1 on (with hg_tracer), 0 off
+  double log_kd_org = 3.3;    // hg_log_kd_org (log10 L/kg): organic layers; calibrated (T1c) to the Toolik organic-horizon Hg:C 0.29-0.41
+  double log_kd_min = 3.8;    // hg_log_kd_min (log10 L/kg): mineral layers; Allison & Allison 2005 soil Hg(II) median 3.8 (2.2-5.8)
   double dep_soil   = 0.0;    // hg_dep_soil: constant deposition to the top soil layer (ug/m2/yr); fallback without hg_dep_file
   std::string dep_file;       // hg_dep_file: optional CSV deposition series (see dep_at); "" = constant hg_dep_soil
   int    tr_year0   = 1901;   // hg_tr_year0: calendar year of tr-run year 0 (deposition lookup)
   int    sc_year0   = 2016;   // hg_sc_year0: calendar year of sc-run year 0
   int    spin_year  = 1850;   // hg_dep_spin_year: deposition year used in pre-run / eq-run / sp-run (pre-industrial)
-  int    spinup     = 0;      // hg_spinup: 0 off (default), 1 analytical spin-up after the first hg_spinup_cycle years
+  int    spinup     = 1;      // hg_spinup: 1 (default; acts only with hg_tracer = 1), 0 off; 1 = analytical spin-up after the first hg_spinup_cycle years
   double spinup_years = 5000; // hg_spinup_years: equivalent spin-up length (yr; Schaefer 2020: 5000)
-  int    spinup_cycle = 1;    // hg_spinup_cycle: number of model years whose C cycle is repeated (1-50)
+  int    spinup_cycle = 10;   // hg_spinup_cycle: model years whose C + water cycle is recorded and repeated (1-50); T1c: 10 (was 1)
+                              // so that the interannual variability of infiltration / thaw (transport) is averaged
   // deposition table (from hg_dep_file): rows with month 0 = annual (interpolated in year), 1-12 = monthly
   std::vector<int> dep_y, dep_m; std::vector<double> dep_v, dep_vs;
   int    mehg       = 0;      // hg_mehg: 0 off (default), 1 MeHg index
@@ -182,13 +203,13 @@ inline std::string parse(const Json::Value& ms, Params& p) {
   D ds[] = {{"hg_r_org", &p.r_org, 0, 1e3}, {"hg_r_min", &p.r_min, 0, 1e3}, {"hg_r_leaf", &p.r_leaf, 0, 1e3},
             {"hg_r_stem", &p.r_stem, 0, 1e3}, {"hg_r_root", &p.r_root, 0, 1e3}, {"hg_f_evade", &p.f_evade, 0, 1},
             {"hg_f_export", &p.f_export, 0, 1}, {"hg_f_leach", &p.f_leach, 0, 1}, {"hg_dep_soil", &p.dep_soil, 0, 1e4},
-            {"hg_spinup_years", &p.spinup_years, 1, 1e6},
+            {"hg_spinup_years", &p.spinup_years, 1, 1e6}, {"hg_log_kd_org", &p.log_kd_org, 0, 9}, {"hg_log_kd_min", &p.log_kd_min, 0, 9},
             {"hg_k_meth_ch4", &p.k_meth_ch4, 0, 1e9}, {"hg_k_meth_proxy", &p.k_meth_proxy, 0, 1e9},
             {"hg_k_demeth", &p.k_demeth, 1e-9, 1e6}, {"hg_q10_meth", &p.q10_meth, 1e-3, 100},
             {"hg_q10_demeth", &p.q10_demeth, 1e-3, 100}, {"hg_t_ref", &p.t_ref, -50, 50}};
   struct I { const char* k; int* v; int lo, hi; };
   I is[] = {{"hg_tracer", &p.tracer, 0, 1}, {"hg_mehg", &p.mehg, 0, 1}, {"hg_mehg_driver", &p.mehg_driver, 0, 1},
-            {"hg_spinup", &p.spinup, 0, 1}, {"hg_spinup_cycle", &p.spinup_cycle, 1, 50}, {"hg_tr_year0", &p.tr_year0, -100000, 100000},
+            {"hg_spinup", &p.spinup, 0, 1}, {"hg_transport", &p.transport, 0, 1}, {"hg_spinup_cycle", &p.spinup_cycle, 1, 50}, {"hg_tr_year0", &p.tr_year0, -100000, 100000},
             {"hg_sc_year0", &p.sc_year0, -100000, 100000}, {"hg_dep_spin_year", &p.spin_year, -100000, 100000}};
   for (const std::string& key : ms.getMemberNames()) {
     if (key.rfind("hg_", 0) != 0) { continue; }
@@ -219,7 +240,7 @@ inline std::string parse(const Json::Value& ms, Params& p) {
     if (!known) { return "model_settings." + key + ": unknown hg_* setting"; }
   }
   if (p.f_evade + p.f_export + p.f_leach > 1.0) { return "model_settings.hg_f_evade + hg_f_export + hg_f_leach must be <= 1"; }
-  if (p.spinup == 1 && p.tracer != 1) { return "model_settings.hg_spinup = 1 needs hg_tracer = 1"; }
+  // hg_spinup (default 1) and hg_transport (default 1) act only with hg_tracer = 1 (ignored otherwise)
   if (!p.dep_file.empty()) { std::string e = load_dep(p.dep_file, p); if (!e.empty()) { return e; } }
   if (p.mehg == 1 && p.tracer != 1) { return "model_settings.hg_mehg = 1 needs hg_tracer = 1"; }
   return "";
@@ -249,14 +270,20 @@ struct Flux {
   double burn = 0.0;                        // fire C emission (aggregate, from the donor pot)
   double lateral = 0.0;                     // RTS lateral C export (aggregate, from the donor pot)
   double pot_decomp = 0.0;                  // RTS respiration (aggregate decomposition from the pot)
+  // T1c transport sub-step (tr = 1; C unchanged): month's water (mm = L/m2) and layer state
+  int    tr = 0;
+  double q_in = 0.0, q_out = 0.0;           // infiltration, total drainage (mm/month; q_out: record only)
+  double drain_l[MAX_SOI_LAY] = {};         // lateral drainage by soil layer (mm/month; Richards layer_drain)
+  double liq[MAX_SOI_LAY] = {}, ice[MAX_SOI_LAY] = {}, por[MAX_SOI_LAY] = {};   // monthly mean liq / ice (mm), porosity (-)
 };
 
 struct Acc {
   double uptake = 0, dep = 0, evasion = 0, export_ = 0, fire = 0, unexpl_closs = 0, unexpl_cgain = 0, spin = 0;
+  double drain = 0, down = 0;   // T1c diagnostics: drainage export (part of export_), organic -> mineral transfer
   void clear() { *this = Acc(); }
   void add(const Acc& o) {
     uptake += o.uptake; dep += o.dep; evasion += o.evasion; export_ += o.export_; fire += o.fire;
-    unexpl_closs += o.unexpl_closs; unexpl_cgain += o.unexpl_cgain; spin += o.spin;
+    unexpl_closs += o.unexpl_closs; unexpl_cgain += o.unexpl_cgain; spin += o.spin; drain += o.drain; down += o.down;
   }
   double net() const { return uptake + dep - evasion - export_ - fire + spin; }   // spin: spin-up jump
 };
@@ -311,6 +338,54 @@ inline bool same_geometry(const Snap& a, const Snap& b) {
   if (a.nsl != b.nsl) { return false; }
   for (int l = 0; l < a.nsl; l++) { if (a.dz[l] != b.dz[l]) { return false; } }
   return true;
+}
+
+// T1c: transport of dissolved Hg (see Params). Contiguous unfrozen layers from the top (not ice-dominated:
+// ice <= 0.5 mm or ice <= liq; a dry moss layer passes the water). Water of the month (mm = L/m2):
+//   lateral drainage d_l = the model's own layer drainage (Richards layer_drain, saturated layers above the
+//   drainage depth) -> its dissolved Hg is exported (HG_DRAIN);
+//   vertical flux at the bottom of layer l: (q_in - D) (1 - z_l / Z) + (D - sum_{k<=l} d_k) >= 0, i.e. the
+//   infiltration not drained laterally (ET, storage) is removed linearly with depth, the drained water where
+//   the model drains it; zero at the bottom of the unfrozen zone (no flow into frozen ground).
+// Dissolved concentration c_l = Hg_l / (liq_l + Kd M_l); M: organic layers C / 0.5 (organic matter),
+// mineral (1 - por) dz 2650 kg/m3. MeHg moves with its layer's Hg (same fraction). Explicit upwind, outflow
+// fraction capped at 0.9. Linear in Hg.
+inline void transport_(const Params& p, State& s, const Snap& b, const Flux& f, Acc& acc) {
+  const int nb = std::min(b.nsl, MAX_SOI_LAY);
+  const double qi = std::fmax(0.0, f.q_in);
+  int tb = -1; double Z = 0.0, D = 0.0;
+  for (int l = 0; l < nb; l++) {
+    if (f.ice[l] > 0.5 && f.ice[l] > f.liq[l]) { break; }   // frozen (ice-dominated) layer: the water stops
+    tb = l; Z += std::fmax(0.0, b.dz[l]); D += std::fmax(0.0, f.drain_l[l]);
+  }
+  if (tb < 0 || !(Z > 0.0) || !(qi > 0.0 || D > 0.0)) { return; }
+  const double kdo = std::pow(10.0, p.log_kd_org), kdm = std::pow(10.0, p.log_kd_min);
+  double out[MAX_SOI_LAY] = {}, lat[MAX_SOI_LAY] = {}, mout[MAX_SOI_LAY] = {}, z = 0.0, Dc = 0.0;
+  for (int l = 0; l <= tb; l++) {
+    z += std::fmax(0.0, b.dz[l]); const double dl = std::fmax(0.0, f.drain_l[l]); Dc += dl;
+    const double qv = (l < tb) ? std::fmax(0.0, (qi - D) * (1.0 - z / Z) + (D - Dc)) : 0.0;
+    const bool mn = is_mineral(b.type[l]);
+    const double M = mn ? (1.0 - std::fmin(1.0, std::fmax(0.0, f.por[l]))) * std::fmax(0.0, b.dz[l]) * 2650.0
+                        : std::fmax(0.0, b.soil[l]) * 2.0e-3;
+    const double den = f.liq[l] + (mn ? kdm : kdo) * M;
+    if (!(den > 0.0)) { continue; }
+    double fv = qv / den, fl = dl / den; const double ft = fv + fl;
+    if (ft > 0.9) { fv *= 0.9 / ft; fl *= 0.9 / ft; }
+    const double h = std::fmax(0.0, s.soil[l]), m = std::fmax(0.0, s.mehg[l]);
+    out[l] = fv * h; lat[l] = fl * h; mout[l] = (fv + fl) * m;
+  }
+  for (int l = 0; l <= tb; l++) {
+    s.soil[l] -= out[l] + lat[l];
+    const double mfrac = (out[l] + lat[l] > 0.0) ? out[l] / (out[l] + lat[l]) : 0.0;
+    s.mehg[l] -= mout[l];
+    acc.export_ += lat[l]; acc.drain += lat[l];
+    if (l < tb) {
+      s.soil[l + 1] += out[l]; s.mehg[l + 1] += mout[l] * mfrac;
+      if (!is_mineral(b.type[l]) && is_mineral(b.type[l + 1])) { acc.down += out[l]; }
+    }
+    if (s.mehg[l] > s.soil[l]) { s.mehg[l] = std::fmax(0.0, s.soil[l]); }
+    if (s.mehg[l] < 0.0) { s.mehg[l] = 0.0; }
+  }
 }
 
 // One sub-step. a, b: C before / after; f: the sub-step's external C fluxes. Updates s (and s.m, s.cum).
@@ -482,6 +557,7 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
   }
   if (acc.dep > 0.0) { s.soil[topc] += acc.dep; }
   acc.unexpl_cgain = std::fmax(0.0, R - (cflow - std::fmin(S, cflow)));
+  if (f.tr == 1 && p.transport == 1) { transport_(p, s, b, f, acc); }
   s.nsl = nb;
   s.m.add(acc); s.y.add(acc); s.cum.add(acc);
 }

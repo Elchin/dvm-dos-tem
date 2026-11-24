@@ -734,6 +734,17 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
   // old values.
   this->bdall->soil_updatePools(currmind);
   if (hg_on) { hg_track(hg_a, hg_nof, "end"); hg_prev = hg_a; hg_have_prev = true; }
+  if (hg_on && md->hg.transport == 1) {   // Hg tracer: downward transport of dissolved Hg with the month's soil water
+    hgtr::Flux ft; ft.tr = 1;
+    auto pos = [](double v) { return (std::isfinite(v) && v > 0.0 && v < 1.0e5) ? v : 0.0; };
+    ft.q_in = pos(edall->m_soi2l.qinfl); ft.q_out = pos(edall->m_soi2l.qdrain);
+    for (int il = 0; il < std::min(cd.m_soil.numsl, MAX_SOI_LAY); il++) {
+      ft.liq[il] = pos(edall->m_sois.liq[il]); ft.ice[il] = pos(edall->m_sois.ice[il]); ft.por[il] = pos(cd.m_soil.por[il]);
+      // lateral drainage of the month by soil layer: Richards layer_drain is 1-based (element il + 1 = soil layer il)
+      if (il + 1 < MAX_SOI_LAY) { for (int id = 0; id < std::min(dinmcurr, 31); id++) { ft.drain_l[il] += pos(edall->daily_layer_drain[id][il + 1]); } }
+    }
+    hg_do_step(hg_a, hg_a, ft);
+  }
   if (nbal_diag) {
     const ThermokarstData & t = year_tkdata[currmind];
     // plant N uptake not taken from any soil layer (non-vascular uptake is a
@@ -3110,7 +3121,16 @@ void Cohort::hg_track(hgtr::Snap & a, const hgtr::Flux & f, const char * label) 
 /** One tracer step (recorded for the spin-up while hg_recording). */
 void Cohort::hg_do_step(const hgtr::Snap & a, const hgtr::Snap & b, const hgtr::Flux & f) {
   if (hg_recording) { hgtr::Rec r; r.a = a; r.b = b; r.f = f; hg_rec.push_back(r); }
+  static const bool diag2 = getenv("HG_DIAG2") != NULL;   // diagnostic: Hg in organic / mineral layers per step
+  double o0 = 0, m0 = 0;
+  if (diag2) { for (int l = 0; l < std::min(a.nsl, MAX_SOI_LAY); l++) { (hgtr::is_mineral(a.type[l]) ? m0 : o0) += hg.soil[l]; } }
   hgtr::step(md->hg, hg, a, b, f);
+  if (diag2) {
+    double o1 = 0, m1 = 0;
+    for (int l = 0; l < std::min(b.nsl, MAX_SOI_LAY); l++) { (hgtr::is_mineral(b.type[l]) ? m1 : o1) += hg.soil[l]; }
+    fprintf(stderr, "HG2 %d %d tr %d same %d nsl %d %d org %.6g min %.6g dorg %.6g dmin %.6g\n", cd.year, cd.month, f.tr,
+            (int)hgtr::same_geometry(a, b), a.nsl, b.nsl, o1, m1, o1 - o0, m1 - m0);
+  }
 }
 
 /** Calendar year for the deposition series: tr-run hg_tr_year0 + yrcnt, sc-run hg_sc_year0 + yrcnt,
@@ -3138,8 +3158,13 @@ void Cohort::hg_month_begin(const int currmind, hgtr::Snap & a) {
   if (md->hg.spinup == 1 && hg.init && hg.spun == 0 && currmind == 0) {
     if (hg_recording) {
       hg_rec_years++;
-      if (hg_rec_years >= md->hg.spinup_cycle) {
+      hg_rec_ys.push_back(hg_rec.size()); hg_rec_yn.push_back(hg.nsl);
+      // sliding window: the last hg_spinup_cycle full years whose first January had today's layer count
+      const int k0 = hg_rec_years - md->hg.spinup_cycle;
+      if (k0 >= 0 && hg_rec_yn[k0] == hg.nsl) {
         hg_recording = false;
+        hg_rec.erase(hg_rec.begin(), hg_rec.begin() + hg_rec_ys[k0]);
+        hg_rec_nsl0 = hg_rec_yn[k0];
         const double t0 = hg.total();
         static const bool sdiag = getenv("HG_DIAG") != NULL;
         hgtr::State pre = hg;
@@ -3158,14 +3183,21 @@ void Cohort::hg_month_begin(const int currmind, hgtr::Snap & a) {
             }
           }
           BOOST_LOG_SEV(glg, info) << "Hg spin-up: " << md->hg.spinup_years << " yr jump, total Hg " << t0 << " -> " << hg.total() << " ug/m2";
-        } else if (++hg.spin_tries >= 10) {
+        } else {
           hg.spun = 2;
-          BOOST_LOG_SEV(glg, warn) << "Hg spin-up: soil layer count never repeated over a cycle; spin-up skipped";
+          BOOST_LOG_SEV(glg, warn) << "Hg spin-up: jump not finite; spin-up skipped";
         }
-        hg_rec.clear(); hg_rec.shrink_to_fit();
+        hg_rec.clear(); hg_rec.shrink_to_fit(); hg_rec_ys.clear(); hg_rec_yn.clear();
+      } else if (k0 >= 10) {
+        hg_recording = false; hg.spun = 2;
+        hg_rec.clear(); hg_rec.shrink_to_fit(); hg_rec_ys.clear(); hg_rec_yn.clear();
+        BOOST_LOG_SEV(glg, warn) << "Hg spin-up: soil layer count never repeated over a cycle (10 windows); spin-up skipped";
       }
     }
-    if (hg.spun == 0 && !hg_recording) { hg_recording = true; hg_rec_years = 0; hg_rec_nsl0 = hg.nsl; hg_rec.clear(); }
+    if (hg.spun == 0 && !hg_recording) {
+      hg_recording = true; hg_rec_years = 0; hg_rec_nsl0 = hg.nsl; hg_rec.clear();
+      hg_rec_ys.assign(1, 0); hg_rec_yn.assign(1, hg.nsl);
+    }
   }
   hg.m.clear(); hg.mehg_prod_m = 0.0;
   if (currmind == 0) { hg.y.clear(); hg.mehg_prod_y = 0.0; }

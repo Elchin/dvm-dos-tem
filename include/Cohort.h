@@ -167,6 +167,7 @@ public :
   std::vector<hgtr::Rec> hg_rec;
   bool hg_recording = false;
   int hg_rec_years = 0, hg_rec_nsl0 = 0;
+  std::vector<size_t> hg_rec_ys; std::vector<int> hg_rec_yn;   // record index / layer count at each January
   void hg_do_step(const hgtr::Snap & a, const hgtr::Snap & b, const hgtr::Flux & f);
   int hg_cal_year(const int yrcnt, const std::string & stage) const;
 

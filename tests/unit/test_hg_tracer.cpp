@@ -27,7 +27,7 @@ TEST_CASE("hg_tracer parse: absent = off, defaults, errors") {
   CHECK(hgtr::parse(ms0(), p) == "");
   CHECK(p.tracer == 0); CHECK(p.mehg == 0);
   CHECK(p.f_evade == doctest::Approx(0.02)); CHECK(p.f_export == doctest::Approx(0.015)); CHECK(p.f_leach == 0.0);
-  CHECK(p.spinup == 0); CHECK(p.dep_file.empty()); CHECK(hgtr::dep_at(p, 2000, 6).rate == 0.0);
+  CHECK(p.spinup == 1); CHECK(p.spinup_cycle == 10); CHECK(p.transport == 1); CHECK(p.log_kd_min == doctest::Approx(3.8)); CHECK(p.dep_file.empty()); CHECK(hgtr::dep_at(p, 2000, 6).rate == 0.0);
   CHECK(p.r_org == doctest::Approx(0.35)); CHECK(p.r_min == doctest::Approx(1.47));
   Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_r_min"] = 1.6; m["other_switch"] = 3;
   CHECK(hgtr::parse(m, p) == ""); CHECK(p.tracer == 1); CHECK(p.r_min == doctest::Approx(1.6));
@@ -189,7 +189,7 @@ TEST_CASE("hg_dep_file: CSV parse, annual interpolation, monthly rows, veg_scale
   CHECK(hgtr::parse(m, p) != "");                                           // negative
   Json::Value b = ms0(); b["hg_tracer"] = 1; b["hg_dep_file"] = "/nonexistent/x.csv"; CHECK(hgtr::parse(b, p) != "");
   Json::Value c = ms0(); c["hg_tracer"] = 1; c["hg_dep_file"] = 3; CHECK(hgtr::parse(c, p) != "");
-  Json::Value d = ms0(); d["hg_spinup"] = 1; CHECK(hgtr::parse(d, p) != "");    // needs the tracer
+  Json::Value d = ms0(); d["hg_spinup"] = 1; CHECK(hgtr::parse(d, p) == "");    // T1c: ignored without the tracer
   Json::Value e = ms0(); e["hg_tracer"] = 1; e["hg_f_leach"] = 0.99; CHECK(hgtr::parse(e, p) != "");
   std::remove(fn);
 }
@@ -269,4 +269,82 @@ TEST_CASE("hg deposition goes to the top soil layer that holds C (moss layer wit
   hgtr::step(p, s, a, b, f);
   CHECK(s.soil[0] == 0.0); CHECK(s.soil[1] == doctest::Approx(h1 + 0.5));
   CHECK(std::fabs(s.balance_error()) < 1e-12);
+}
+
+namespace {
+// transport flux: infiltration qin, total lateral drainage D spread evenly over the n layers (mm/month)
+hgtr::Flux tr_flux(int n, double qin, double D, double liq = 40.0) {
+  hgtr::Flux f; f.tr = 1; f.q_in = qin; f.q_out = D;
+  for (int l = 0; l < n; l++) { f.liq[l] = liq; f.ice[l] = 0.0; f.por[l] = 0.5; f.drain_l[l] = D / n; }
+  return f;
+}
+}
+
+TEST_CASE("hg_transport: dissolved Hg moves down with the water, deepest thawed layer -> drainage export, exact balance") {
+  hgtr::Params p; hgtr::State s; hgtr::Snap a = column(6); hgtr::initialize(p, s, a);
+  for (int l = 0; l < 6; l++) s.mehg[l] = 0.01 * s.soil[l];
+  const hgtr::State s0 = s;
+  hgtr::Flux f = tr_flux(6, 30.0, 10.0);
+  hgtr::step(p, s, a, a, f);
+  CHECK(s.soil[0] < s0.soil[0]);                                                   // top layer loses
+  CHECK(s.m.drain > 0.0); CHECK(s.m.export_ == doctest::Approx(s.m.drain));       // only the drainage leaves
+  CHECK(s.m.down > 0.0);                                                           // organic -> mineral (layer 2 -> 3)
+  CHECK(s.soiltot() == doctest::Approx(s0.soiltot() - s.m.drain).epsilon(1e-13));
+  CHECK(std::fabs(s.balance_error()) < 1e-12 * s.total());
+  for (int l = 0; l < 6; l++) { CHECK(s.mehg[l] <= s.soil[l]); CHECK(s.mehg[l] == doctest::Approx(0.01 * s.soil[l]).epsilon(1e-9)); }
+  // analytic check of the top layer: phi = (q_v + d_0) / (liq + Kd M), q_v = (qin - D)(1 - z/Z) + (D - d_0)
+  const double Z = 0.05 * 3 + 0.1 * 3, d0 = 10.0 / 6, qv0 = (30.0 - 10.0) * (1.0 - 0.05 / Z) + (10.0 - d0);
+  const double phi0 = (qv0 + d0) / (40.0 + std::pow(10.0, p.log_kd_org) * a.soil[0] * 2.0e-3);
+  CHECK(s.soil[0] == doctest::Approx(s0.soil[0] * (1.0 - phi0)).epsilon(1e-12));
+  // C unchanged by the transport sub-step: no uptake / evasion / unexplained C
+  CHECK(s.m.uptake == 0.0); CHECK(s.m.evasion == 0.0); CHECK(s.m.unexpl_closs == 0.0); CHECK(s.m.unexpl_cgain == 0.0);
+}
+
+TEST_CASE("hg_transport: frozen layer stops the water; off switch; no water no change; works after a geometry change") {
+  hgtr::Params p; hgtr::State s; hgtr::Snap a = column(6); hgtr::initialize(p, s, a);
+  const hgtr::State s0 = s;
+  hgtr::Flux f = tr_flux(6, 30.0, 5.0); f.liq[2] = 1.0; f.ice[2] = 80.0;          // layer 2 frozen
+  hgtr::step(p, s, a, a, f);
+  for (int l = 2; l < 6; l++) CHECK(s.soil[l] == s0.soil[l]);                      // nothing reaches below the frost
+  CHECK(s.soil[1] != s0.soil[1]); CHECK(s.m.drain > 0.0); CHECK(s.m.down == 0.0);
+  CHECK(std::fabs(s.balance_error()) < 1e-12 * s.total());
+  hgtr::Params q = p; q.transport = 0; hgtr::State t = s0; hgtr::step(q, t, a, a, tr_flux(6, 30.0, 5.0));
+  for (int l = 0; l < 6; l++) CHECK(t.soil[l] == s0.soil[l]);
+  hgtr::State w = s0; hgtr::Flux fd = tr_flux(6, 30.0, 5.0); fd.liq[0] = 0.0;   // dry top layer passes the water
+  hgtr::step(p, w, a, a, fd); CHECK(w.m.drain > 0.0); CHECK(w.soil[5] != s0.soil[5]);
+  hgtr::State nd = s0; hgtr::step(p, nd, a, a, tr_flux(6, 30.0, 0.0));        // no drainage: Hg moves down, nothing leaves
+  CHECK(nd.m.drain == 0.0); CHECK(nd.soiltot() == doctest::Approx(s0.soiltot()).epsilon(1e-14)); CHECK(nd.soil[5] > s0.soil[5]);
+  hgtr::State u = s0; hgtr::step(p, u, a, a, tr_flux(6, 0.0, 0.0));
+  for (int l = 0; l < 6; l++) CHECK(u.soil[l] == s0.soil[l]);
+  // geometry change in the same sub-step (split of layer 4): transport applies on the new geometry, conserves
+  hgtr::Snap b = a; b.nsl = 7; b.soil[6] = b.soil[5] * 0.5; b.soil[5] *= 0.5; b.dz[5] = 0.05; b.dz[6] = 0.05; b.type[6] = 3;
+  hgtr::State v = s0; hgtr::step(p, v, a, b, tr_flux(7, 30.0, 10.0));
+  CHECK(v.nsl == 7); CHECK(v.m.drain > 0.0); CHECK(std::fabs(v.balance_error()) < 1e-12 * v.total());
+}
+
+TEST_CASE("hg_transport: spin-up jump with transport sub-steps == explicit repetition") {
+  hgtr::Params p; p.tracer = 1; p.dep_soil = 0.0; p.spinup_years = 23; p.spinup_cycle = 1;
+  hgtr::Snap c = column(5);
+  std::vector<hgtr::Rec> yr;
+  for (int m = 0; m < 12; m++) {
+    hgtr::Rec r; r.a = c; r.b = c;
+    for (int l = 0; l < 5; l++) { r.f.decomp[l] = 2.0 + l; r.b.soil[l] = c.soil[l]; }
+    r.f.npp[0][0] = 3.0; r.b.veg[0][0] = c.veg[0][0]; r.f.dep_soil = 0.4;
+    for (int l = 0; l < 5; l++) { r.b.soil[l] += 0.0; }
+    yr.push_back(r);
+    hgtr::Rec t; t.a = c; t.b = c; t.f = tr_flux(5, (m > 4 && m < 9) ? 40.0 : 0.0, (m > 4 && m < 9) ? 15.0 : 0.0); yr.push_back(t);
+  }
+  hgtr::State s; hgtr::initialize(p, s, c);
+  for (const hgtr::Rec& r : yr) hgtr::step(p, s, r.a, r.b, r.f);
+  hgtr::State e = s;
+  for (int y = 0; y < 23; y++) for (const hgtr::Rec& r : yr) hgtr::step(p, e, r.a, r.b, r.f);
+  hgtr::State j = s; REQUIRE(hgtr::spinup_jump(p, j, yr, c.nsl));
+  for (int l = 0; l < 5; l++) CHECK(j.soil[l] == doctest::Approx(e.soil[l]).epsilon(1e-9));
+  CHECK(std::fabs(j.balance_error()) < 1e-8 * j.total());
+}
+
+TEST_CASE("hg_spinup / hg_transport defaults are ignored without the tracer") {
+  hgtr::Params p; Json::Value m(Json::objectValue); m["hg_spinup"] = 1; m["hg_transport"] = 1;
+  CHECK(hgtr::parse(m, p) == ""); CHECK(p.tracer == 0);
+  Json::Value b(Json::objectValue); b["hg_log_kd_org"] = 12; CHECK(hgtr::parse(b, p) != "");
 }
