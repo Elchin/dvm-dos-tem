@@ -2820,6 +2820,8 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
       scalar("HG_PARTIC", h.m.partic, h.y.partic);
       scalar("HG_WASH", h.m.wash, h.y.wash);
       scalar("HG_MIXDOWN", h.m.mixdown, h.y.mixdown);
+      scalar("HG_THAWEV", h.m.thawev, h.y.thawev);   // T2 phase 6b
+      scalar("HG_THAWEX", h.m.thawex, h.y.thawex);
       scalar("MEHGPROD", h.mehg_prod_m, h.mehg_prod_y);
       scalar("HG_BALERR", h.balance_error(), h.balance_error());
     }

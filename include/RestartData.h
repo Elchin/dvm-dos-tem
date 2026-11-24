@@ -109,6 +109,10 @@ public :
   bool write_hg_state = false;
   bool has_hg_state = false;
   double hg_state[HG_NSTATE];
+  // T2 phase 6b: hg_thaw (Y,X,hgthaw = 2) double: max thaw depth, permafrost reference depth (m); written only with
+  // hg_t2_deepspread or hg_t2_thawrel = 1, read when present (with hg_state)
+  bool write_hg_thaw = false, has_hg_thaw = false;
+  double hg_thaw[2] = {-1.0, -1.0};
   void read_px_hg_vars(const std::string& fname, const int rowidx, const int colidx);
   void write_px_hg_vars(const std::string& fname, const int rowidx, const int colidx);
   // RTS CH4 scheme (b) pool (thermokarst_ch4 with thermokarst_ch4_scheme = 2 only; write_tk_ch4pool

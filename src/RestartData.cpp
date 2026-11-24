@@ -277,6 +277,7 @@ void RestartData::reinitValue() {
   write_fire_state = false; has_fire_state = false; mthsdist = MISSING_I;   // fire-balance fixes
   write_tk_state = false; has_tk_state = false;   // RTS (thermokarst)
   write_hg_state = false; has_hg_state = false;   // Hg tracer
+  write_hg_thaw = false; has_hg_thaw = false; hg_thaw[0] = -1.0; hg_thaw[1] = -1.0;   // Hg tracer T2 phase 6b
   tk_drainage_type = MISSING_I; tk_init = MISSING_I; tk_exinit = MISSING_I; tk_subsidence = MISSING_D;
   for (int il = 0; il < MAX_SOI_LAY; il++) { tk_exice[il] = MISSING_D; }
   has_tk_rg_state = false;
@@ -599,6 +600,16 @@ void RestartData::read_px_hg_vars(const std::string& fname, const int rowidx, co
       has_hg_state = (len == (size_t)HG_NSTATE) ? (hg_state[0] == 4.0) : (len == n3) ? (hg_state[0] == 3.0) : (len == n2) ? (hg_state[0] == 2.0) : (hg_state[0] == 1.0);
     }
   }
+  has_hg_thaw = false;   // T2 phase 6b: optional hg_thaw
+  if (nc_inq_varid(ncid, "hg_thaw", &v) == NC_NOERR) {
+    temutil::nc( nc_inq_vardimid(ncid, v, d) );
+    temutil::nc( nc_inq_dimlen(ncid, d[2], &len) );
+    if (len == 2) {
+      size_t s3[3] = {(size_t)rowidx, (size_t)colidx, 0}; size_t c3[3] = {1, 1, 2};
+      temutil::nc( nc_get_vara_double(ncid, v, s3, c3, &hg_thaw[0]) );
+      has_hg_thaw = std::isfinite(hg_thaw[0]) && std::isfinite(hg_thaw[1]) && hg_thaw[0] != MISSING_D && hg_thaw[1] != MISSING_D;
+    }
+  }
   temutil::nc( nc_close(ncid) );
 }
 
@@ -624,6 +635,21 @@ void RestartData::write_px_hg_vars(const std::string& fname, const int rowidx, c
   size_t s3[3] = {(size_t)rowidx, (size_t)colidx, 0};
   size_t c3[3] = {1, 1, (size_t)HG_NSTATE};
   temutil::nc( nc_put_vara_double(ncid, v, s3, c3, &hg_state[0]) );
+  if (write_hg_thaw) {   // T2 phase 6b
+    int vt;
+    if (nc_inq_varid(ncid, "hg_thaw", &vt) != NC_NOERR) {
+      int dv; temutil::nc( nc_inq_varid(ncid, "DZsoil", &dv) );
+      int d3[3]; temutil::nc( nc_inq_vardimid(ncid, dv, d3) );
+      temutil::nc( nc_redef(ncid) );
+      int dt; if (nc_inq_dimid(ncid, "hgthaw", &dt) != NC_NOERR) { temutil::nc( nc_def_dim(ncid, "hgthaw", 2, &dt) ); }
+      int d3t[3] = {d3[0], d3[1], dt};
+      temutil::nc( nc_def_var(ncid, "hg_thaw", NC_DOUBLE, 3, d3t, &vt) );
+      temutil::nc( nc_put_att_double(ncid, vt, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
+      temutil::nc( nc_enddef(ncid) );
+    }
+    size_t c3t[3] = {1, 1, 2};
+    temutil::nc( nc_put_vara_double(ncid, vt, s3, c3t, &hg_thaw[0]) );
+  }
   temutil::nc( nc_close(ncid) );
 #endif
 }

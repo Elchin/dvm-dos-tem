@@ -1248,3 +1248,112 @@ TEST_CASE("hg_t2_k_meth_ch4: T2 copy (default 3250 = T1 value), T1 name with hg_
   CHECK(s1.k_meth_ch4 == s0.k_meth_ch4);
   std::remove(T2DEP);
 }
+
+// ---- T2 phase 6b: deep spread of the routed retention (hg_t2_deepspread) and thaw release (hg_t2_thawrel)
+TEST_CASE("hg_t2 phase 6b parse: defaults off, Schaefer fractions, dependencies, ranges, preset unchanged") {
+  hgtr::Params p = t2params();   // writes T2DEP
+  CHECK(p.t2_deepspread == 0); CHECK(p.t2_thawrel == 0); CHECK(p.f_thaw_evade == 0.16); CHECK(p.f_thaw_export == 0.015); CHECK(p.thaw_ref_year == 2024);
+  Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_t2"] = 1; m["hg_dep_file"] = T2DEP;
+  hgtr::Params r; REQUIRE(hgtr::parse(m, r) == ""); CHECK(r.t2_deepspread == 0); CHECK(r.t2_thawrel == 0);   // preset: off
+  Json::Value a = m; a["hg_t2_deepspread"] = 1; a["hg_t2_thawrel"] = 1; a["hg_f_thaw_evade"] = 0.2; a["hg_f_thaw_export"] = 0.05; a["hg_t2_thaw_ref_year"] = 2010;
+  REQUIRE(hgtr::parse(a, r) == ""); CHECK(r.t2_deepspread == 1); CHECK(r.t2_thawrel == 1); CHECK(r.f_thaw_evade == 0.2); CHECK(r.f_thaw_export == 0.05); CHECK(r.thaw_ref_year == 2010);
+  Json::Value b = m; b["hg_t2_deeproute"] = 0; b["hg_t2_deepspread"] = 1; CHECK(hgtr::parse(b, r) != "");   // needs deeproute
+  Json::Value b2 = m; b2["hg_t2_xpath"] = 0; REQUIRE(hgtr::parse(b2, r) == ""); CHECK(r.t2_deepspread == 0);   // preset: follows
+  Json::Value c = m; c["hg_t2_diss"] = 0; c["hg_t2_thawrel"] = 1; CHECK(hgtr::parse(c, r) != "");   // needs diss
+  Json::Value c2 = m; c2["hg_t2_thawrel"] = 1; c2["hg_transport"] = 0; CHECK(hgtr::parse(c2, r) != "");   // needs transport
+  Json::Value d = m; d["hg_f_thaw_evade"] = 0.9; d["hg_f_thaw_export"] = 0.2; CHECK(hgtr::parse(d, r) != "");   // sum > 1
+  Json::Value e = m; e["hg_f_thaw_evade"] = -0.1; CHECK(hgtr::parse(e, r) != "");
+  Json::Value w = ms0(); w["hg_tracer"] = 1; w["hg_t2_thawrel"] = 1; CHECK(hgtr::parse(w, r) != "");   // needs hg_t2
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2 phase 6b thaw_track: daily max thaw depth -> zmax (always), zpf (years <= ref); off: no change") {
+  hgtr::Params p = t2dparams(); hgtr::Snap a = column(6);   // tops 0 .05 .10 | .15 .25 .35, bottom .45
+  hgtr::State s; hgtr::initialize(p, s, a);
+  hgtr::Flux t = dflux(6, 10, 2.0, 0.0, 0.0, 20.0, 4); t.year = 2000;
+  hgtr::thaw_track(p, s, a, t); CHECK(s.zmax == -1.0); CHECK(s.zpf == -1.0);   // switches off
+  p.t2_thawrel = 1; hgtr::thaw_track(p, s, a, t); CHECK(s.zmax == doctest::Approx(0.25)); CHECK(s.zpf == doctest::Approx(0.25));
+  hgtr::Flux u = dflux(6, 10, 2.0, 0.0, 0.0, 20.0, 5); u.year = 2030;   // deeper thaw after the reference period
+  hgtr::thaw_track(p, s, a, u); CHECK(s.zmax == doctest::Approx(0.35)); CHECK(s.zpf == doctest::Approx(0.25));
+  hgtr::Flux v = dflux(6, 10, 2.0, 0.0, 0.0, 20.0, 1); v.year = 2000; for (int l = 0; l < 6; l++) { v.d_ice[3][l] = 0.0; }   // one thawed day
+  hgtr::State s2; hgtr::initialize(p, s2, a); hgtr::thaw_track(p, s2, a, v); CHECK(s2.zmax == doctest::Approx(0.45));   // daily maximum
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_deepspread: routed share to the frozen layers below zmax by soil C; zmax unset / no layer == deeproute") {
+  hgtr::Params p = t2dparams(); p.d_cryo = 0; p.d_bio = 0; p.tau_sorb = 1e5; p.t2_xpath = 1; p.f_conn = 0.4;
+  p.t2_deeproute = 1; p.f_deep = 1.0; p.z_deep = 0.3;
+  hgtr::Snap a = column(6); hgtr::Flux t = dflux(6, 10, 2.0, 6.0, 1.0, 20.0, 4);   // layers 4-5 frozen
+  auto run = [&](const hgtr::Params& q, double zmax) { hgtr::State s; hgtr::initialize(q, s, a); for (int l = 0; l < 6; l++) { s.diss[l] = 0.5 * s.soil[l]; s.soil[l] *= 0.5; }
+    s.zmax = zmax; s.h_init = s.total(); hgtr::step(q, s, a, a, t); return s; };
+  hgtr::State s0 = run(p, 0.25);                         // deeproute: all to layer 4
+  hgtr::Params q = p; q.t2_deepspread = 1;
+  hgtr::State s1 = run(q, -1.0), s2 = run(q, 10.0);     // unset / no layer below zmax: as deeproute (bit-identical)
+  for (int l = 0; l < 6; l++) { CHECK(s1.diss[l] == s0.diss[l]); CHECK(s1.soil[l] == s0.soil[l]); CHECK(s2.diss[l] == s0.diss[l]); }
+  hgtr::State s3 = run(q, 0.25);                         // layers 4 (C 1400) and 5 (C 1500)
+  const double d4 = s3.diss[4] + s3.soil[4] - s0.diss[4] - s0.soil[4], d5 = s3.diss[5] + s3.soil[5] - s0.diss[5] - s0.soil[5];
+  CHECK(d5 > 0.0); CHECK(d4 < 0.0);
+  const double moved = -d4;   // routed Hg that went to layer 5 instead of 4: share 1500 / 2900
+  hgtr::Params q0 = p; q0.t2_xpath = 1; q0.t2_deeproute = 0; hgtr::State sx = run(q0, 0.25);   // retention to lm (layer 3)
+  const double routed = (s0.diss[4] + s0.soil[4]) - (sx.diss[4] + sx.soil[4]);
+  CHECK(routed > 0.0); CHECK(d5 == doctest::Approx(routed * 1500.0 / 2900.0).epsilon(1e-6)); CHECK(moved == doctest::Approx(d5).epsilon(1e-9));
+  for (int l = 0; l < 4; l++) { CHECK(s3.diss[l] == s0.diss[l]); }
+  CHECK(s3.m.export_ == s0.m.export_); CHECK(s3.m.down == s0.m.down);
+  CHECK(std::fabs(s3.balance_error()) < 1e-13 * s3.total());
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_thawrel: decay-released Hg below zpf evades / is exported at the Schaefer fractions; zpf unset or below the column == off") {
+  hgtr::Params p = t2dparams(); p.t2_evasion = 1;
+  hgtr::Snap a = column(6);
+  hgtr::Flux f = t2flux(1.0, 0.0, 0.0, 0.0, 0.0, 0.2);
+  for (int l = 0; l < 6; l++) { f.decomp[l] = 5.0; f.ts[l] = 2.0; }
+  hgtr::Snap b = a; for (int l = 0; l < 6; l++) { b.soil[l] = a.soil[l] - 5.0; }
+  auto run = [&](const hgtr::Params& q, double zpf) { hgtr::State s; hgtr::initialize(q, s, a); s.zpf = zpf; s.h_init = s.total(); hgtr::step(q, s, a, b, f); return s; };
+  hgtr::State s0 = run(p, 0.25);
+  hgtr::Params q = p; q.t2_thawrel = 1;
+  hgtr::State s1 = run(q, -1.0), s2 = run(q, 5.0);
+  for (int l = 0; l < 6; l++) { CHECK(s1.soil[l] == s0.soil[l]); CHECK(s1.diss[l] == s0.diss[l]); CHECK(s2.soil[l] == s0.soil[l]); }
+  CHECK(s1.m.evasion == s0.m.evasion); CHECK(s1.m.export_ == s0.m.export_); CHECK(s1.m.thawev == 0.0);
+  hgtr::State s3 = run(q, 0.25);   // layers 4, 5 (tops .25, .35)
+  const double r4 = 5.0 * p.r_min, r5 = 5.0 * p.r_min;   // rel = decomp x Hg:C (mineral initial ratio)
+  CHECK(s3.m.thawev == doctest::Approx(0.16 * (r4 + r5)).epsilon(1e-12)); CHECK(s3.m.thawex == doctest::Approx(0.015 * (r4 + r5)).epsilon(1e-12));
+  CHECK(s3.m.export_ - s0.m.export_ == doctest::Approx(s3.m.thawex).epsilon(1e-9));
+  CHECK(s3.m.evasion > s0.m.evasion); CHECK(s3.m.soilev - s0.m.soilev == doctest::Approx(s3.m.evasion - s0.m.evasion).epsilon(1e-12));
+  for (int l = 0; l < 4; l++) { CHECK(s3.soil[l] == s0.soil[l]); CHECK(s3.diss[l] == s0.diss[l]); }
+  CHECK(s3.diss[4] < s0.diss[4]);
+  CHECK(std::fabs(s3.balance_error()) < 1e-13 * s3.total());
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2 phase 6b all on (deep spread + thaw release), random steps with geometry changes and thaw tracking: balance to roundoff, pools >= 0") {
+  std::mt19937 rng(67); std::uniform_real_distribution<double> U(0.0, 1.0);
+  hgtr::Params p = t2dparams(); p.t2_evasion = 1; p.t2_foliar = 2; p.t2_meltroute = 1; p.fire_ash = 0.2; p.t2_rts = 1; p.wash = 0.5;
+  p.t2_kdsplit = 1; p.t2_dlog_kd_hum = 0.4; p.t2_xpath = 1; p.f_conn = 0.3; p.t2_snowsink = 1; p.v_snow = 4e-4;
+  p.t2_deeproute = 1; p.f_deep = 0.8; p.z_deep = 0.5; p.t2_deepspread = 1; p.t2_thawrel = 1; p.thaw_ref_year = 2050;
+  hgtr::State s; hgtr::Snap a = column(8, 3000.0); hgtr::initialize(p, s, a);
+  double thaw = 0.0;
+  for (int it = 0; it < 1500; it++) {
+    const int mth = it % 12;
+    hgtr::Snap b = a; hgtr::Flux f = t2flux(3 * U(rng), U(rng), (mth < 5 || mth > 9) ? 200 * U(rng) : 0.0, 30 * U(rng), 5 * U(rng), 0.4 * U(rng));
+    for (int i = 0; i < NUM_PFT; i++) { f.gpp[i] = 50 * U(rng); }
+    f.ta = 30 * U(rng) - 15; f.co2 = 300 + 200 * U(rng); f.rain = 60 * U(rng);
+    for (int l = 0; l < a.nsl; l++) { f.ts[l] = 20 * U(rng) - 10; f.decomp[l] = 5 * U(rng); b.soil[l] = std::fmax(0.0, a.soil[l] - f.decomp[l] + 4 * U(rng)); }
+    if (U(rng) < 0.3) {
+      int n = 3 + int(U(rng) * 12); b.nsl = n; double c0 = 0; for (int l = 0; l < a.nsl; l++) c0 += a.soil[l];
+      for (int l = 0; l < MAX_SOI_LAY; l++) { b.soil[l] = (l < n) ? c0 / n : 0; b.dz[l] = (l < n) ? 0.05 + 0.1 * U(rng) : 0; b.type[l] = (l == 0) ? 0 : ((l < 2) ? 1 : ((l < 3) ? 2 : 3)); }
+    }
+    hgtr::step(p, s, a, b, f);
+    const int ff = (mth < 5 || mth > 9) ? int(U(rng) * 3) : 3 + int(U(rng) * ((it < 900) ? 3 : 8));   // deeper thaw later
+    hgtr::Flux t = dflux(b.nsl, 30, 20 * U(rng), 10 * U(rng), 3 * U(rng), 5 + 40 * U(rng), ff);
+    t.year = 2000 + it / 12;
+    for (int d = 0; d < 30; d++) t.d_melt[d] = (U(rng) < 0.3) ? 5 * U(rng) : 0.0;
+    hgtr::thaw_track(p, s, b, t);
+    hgtr::step(p, s, b, b, t);
+    a = b; thaw += s.m.thawev + s.m.thawex; s.m.clear();
+  }
+  CHECK(std::fabs(s.balance_error()) < 1e-8 * std::fmax(1.0, s.total()));
+  for (int l = 0; l < MAX_SOI_LAY; l++) { CHECK(s.soil[l] >= 0.0); CHECK(s.diss[l] >= 0.0); }
+  CHECK(s.zmax >= s.zpf); CHECK(s.zpf > 0.0); CHECK(s.cum.export_ > 0.0); CHECK(thaw > 0.0);
+  std::remove(T2DEP);
+}

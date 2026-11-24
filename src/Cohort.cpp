@@ -771,6 +771,8 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
         }
       }
     }
+    ft.year = hg_cal_year(yrcnt, stage);   // T2 phase 6b (thaw_track)
+    hgtr::thaw_track(md->hg, hg, hg_a, ft);
     hg_do_step(hg_a, hg_a, ft);
   }
   if (nbal_diag) {
@@ -2287,6 +2289,7 @@ void Cohort::set_state_from_restartdata() {
   hg = hgtr::State(); hg_have_prev = false; hg_recording = false; hg_rec.clear();
   if (md->hg.tracer == 1 && restartdata.has_hg_state) {
     hgtr::unpack(hg, restartdata.hg_state, cd.m_soil.numsl);
+    if (restartdata.has_hg_thaw) { hg.zmax = restartdata.hg_thaw[0]; hg.zpf = restartdata.hg_thaw[1]; }   // T2 phase 6b
   }
 
   //  FIX: how to handle ground?? and snwstate_dim?? Looks like it is
@@ -2327,6 +2330,9 @@ void Cohort::set_restartdata_from_state() {
   if (md->hg.tracer == 1 && hg.init) {   // Hg tracer state (written only when hg_tracer = 1)
     restartdata.write_hg_state = true;
     hgtr::pack(hg, restartdata.hg_state);
+    if (md->hg.t2 == 1 && (md->hg.t2_deepspread == 1 || md->hg.t2_thawrel == 1)) {   // T2 phase 6b: thaw state (only with a switch on)
+      restartdata.write_hg_thaw = true; restartdata.hg_thaw[0] = hg.zmax; restartdata.hg_thaw[1] = hg.zpf;
+    }
   }
   if (md->thermokarst == 1) {   // RTS state (written only when thermokarst = 1)
     restartdata.write_tk_state = true;
