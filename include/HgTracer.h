@@ -303,13 +303,13 @@ struct Params {
 // T2 phase 5: calibrated values of the hg_t2 settings (applied with hg_t2 = 1 and hg_t2_preset = 1 before the explicit
 // model_settings; WORK_NOTES_hg_t2 sections 5-6, config/hg_t2_calibrated.json). Never used with hg_t2 = 0.
 inline void t2_preset_(Params& p) {
-  // phase 5c fit (V8a; WORK_NOTES_hg_t2 section 8): flow-path retention 1 - f_conn routed below the mixing zone (z_deep
-  // 1.5 m, below the active layer at all sites); local Gauss-Newton / Broyden on site runs (P5J + 7 one-at-a-time runs + 4
-  // verification runs); dlog_kd_hum kept at the phase-5b value (no effect on the targets); snow_kred, D8, k_meth as phase 5a
+  // phase 5d (WORK_NOTES_hg_t2 section 9): ev_z 0.3, humic Kd offset 0 (switch kept on, no effect), deep route as phase 5c
+  // (f_deep 1: lowering it mixes retained Hg back into the organic layers); kd_org / f_conn / fd / v_ground / v_snow from the
+  // phase-5c Gauss-Newton / Broyden model (expansion at the ev_z 0.3 run V8b); snow_kred, D8, k_meth as phase 5a
   p.t2_diss = 1; p.t2_evasion = 1; p.t2_foliar = 2; p.t2_meltroute = 1; p.fire_ash = 0.1; p.t2_rts = 1; p.wash = 0.5;
-  p.t2_log_kd_org = 3.377; p.t2_kdsplit = 1; p.t2_dlog_kd_hum = 0.242; p.t2_xpath = 1; p.f_conn = 0.53582;
+  p.t2_log_kd_org = 3.356; p.t2_kdsplit = 1; p.t2_dlog_kd_hum = 0.0; p.t2_xpath = 1; p.f_conn = 0.53419;
   p.t2_deeproute = 1; p.f_deep = 1.0; p.z_deep = 1.5;
-  p.t2_snowsink = 1; p.v_ground = 4.3731e-5; p.v_snow = 1.3038e-4; p.fd = 0.068765; p.ev_z = 0.50; p.snow_kred = 0.090;
+  p.t2_snowsink = 1; p.v_ground = 4.1389e-5; p.v_snow = 1.3046e-4; p.fd = 0.071857; p.ev_z = 0.30; p.snow_kred = 0.090;
   p.t2_r_stem = 0.0044; p.t2_r_root = 0.0067; p.t2_k_meth_proxy = 71.0;
 }
 
