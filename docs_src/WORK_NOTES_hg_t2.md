@@ -1172,3 +1172,126 @@ push.
 
 ![fig20](figures_hg_t2/hg_t2_fig20_6b_deepspread.png)
 ![fig21](figures_hg_t2/hg_t2_fig21_6b_thawrel.png)
+
+## 12. Phase 6c: fixed thaw release at TVC/HPC, preset with deepspread + thawrel, warming rerun (2026-11-24)
+
+Approved by Elchin ("Go ahead"), with a budget of 0.12 core-h (LEDGER section "PHASE 6c"). The work is on local feat/hg-t2 on
+top of 037c3154 and has not been pushed.
+
+Commit: c38be089 (preset), plus a docs commit.
+
+Binaries:
+- binT2p6b: the 6b fix, 8d2732d4.
+- binT2p6c: the preset, c38be089.
+
+### 1. Present climate with the fixed code (P6C: binT2p6b, hg_t2 preset + explicit hg_t2_deepspread 1, hg_t2_thawrel 1)
+
+| Site / metric | P5F3 (5d) | P6C | change |
+|---|---|---|---|
+| TVC Ro / Rm | 0.4097 / 1.5618 | 0.4097 / 1.5617 | +0.0005 % / -0.001 % |
+| TVC export / net Hg(0) / winter | 3.995 / 2.828 / 0.562 | 3.995 / 2.828 / 0.562 | < 0.001 % |
+| TVC %MeHg | 0.708 | 0.712 | +0.57 % |
+| HPC Ro / Rm | 0.2878 / 1.7062 | 0.2878 / 1.7062 | +0.002 % / -0.001 % |
+| HPC export / net Hg(0) / winter | 2.077 / 1.063 / 1.394 | 2.077 / 1.063 / 1.394 | < 0.006 % |
+| HPC %MeHg | 0.0997 | 0.0997 | -0.001 % |
+| TLK Ro / Rm / export | 0.3767 / 1.4769 / 2.647 | 0.3767 / 1.4769 / 2.647 | < 0.001 % |
+| TLK net Hg(0) / winter | 6.504 / 0.369 | 6.503 / 0.369 | -0.0004 % |
+| TLK %MeHg (proxy) | 0.162 | 0.161 | -0.36 % |
+| max balance error (µg) | ≤ 2.2e-9 | ≤ 1.4e-9 | |
+
+- **The same 10 of 12 bands are met.** HPC Ro is 0.288 and HPC Rm is 1.706, both still about 1 % out, as in 5d.
+- **The %MeHg shifts come from deepspread** (identical in P6S).
+- **The fixed thaw release is 0 in the present climate:**
+  - TVC main (1950–2024), HPC spin and main, and Toolik tr: exactly 0.
+  - TVC spin000: 0.43 µg Hg(0) + 0.04 µg export in total, in 2 early years, before zpf reaches its maximum.
+
+### 2. Preset
+
+`t2_preset_` now sets `t2_deepspread = 1` and `t2_thawrel = 1`. config/hg_t2_calibrated.json lists them as well.
+
+The existing follow rules still apply under the preset:
+- deepspread turns off when deeproute is off.
+- thawrel turns off when diss is off.
+- Explicit settings win, and hg_t2_preset 0 gives component defaults (off).
+
+Unit test: the 6b parse test now checks the preset value, preset 0, an explicit 0 winning, and thawrel following diss off.
+
+### Checks
+
+**Unit tests.**
+- Standalone Hg suite: 61/61 test cases, 2770 assertions.
+- Full unit build (binT2p6c): 543/543; the 8 known may-fail assertions are unchanged.
+
+**Preset alone = explicit.** P6P (binT2p6c, only hg_mehg 1, hg_t2 1) against P6C (binT2p6b, explicit switches): 6 output sets
+(TVC/HPC spin and main, Toolik sp and tr), 0 differing variables out of 1694, restarts included (cmp_t2.py).
+
+**Explicit off reproduces 5d.** P6Q (binT2p6c, preset with hg_t2_deepspread 0 and hg_t2_thawrel 0) against P6X0 (5d preset,
+binT2p6a), Toolik proxy: 377 variables identical. Only run_status total_runtime (wall time) is excluded.
+
+**Hg-off and switches-off paths are unchanged by construction.** The preset applies only with hg_t2 = 1. The 6b identities
+still stand: P6I1 sub_off, P6I3 prod (8 cases) and the P6I2 all-on C/N/water/energy check.
+
+**Balance.** Every 6c run reaches run_status 100 or EXIT_CODE 0. Max |HG_BALERR| is ≤ 2.0e-9 µg.
+
+### 3. Warming rerun with the fixed code
+
+Setup:
+- 75-yr segments from copies of the P6P 2024 restarts, binT2p6c.
+- TVC ctl/w8, then ctl2/w8h (segment 2).
+- HPC w8 and proj.
+
+| Run | ALD max (m) | Thaw evasion, sum (mg/m²) | Thaw export, sum (mg/m²) | Evasion, last 25 yr | Export, last 25 yr | Net Hg(0), last 25 yr | Δ Hg below 1 m (mg/m²) | Deep Hg:C at end, 1–3 m |
+|---|---|---|---|---|---|---|---|---|
+| 6a TVC ctl | 0.79 | – | – | 5.85 | 3.45 | 2.61 | +0.81 | 2.01 |
+| **6c TVC ctl** | 0.79 | 0 | 0 | 5.85 | 3.45 | 2.61 | +0.97 | 1.95 |
+| 6a TVC w8 | 1.72 | – | – | 7.41 | 5.85 | 1.06 | -0.39 | 2.24 (routed layer 4.0) |
+| **6c TVC w8** | 1.72 | 0.452 | 0.042 | 25.5 | 7.55 | -17.0 | -1.16 | 2.13 (max 2.36) |
+| 6a TVC ctl2 | 0.80 | – | – | 5.94 | 3.44 | 2.56 | +0.42 | 2.02 |
+| **6c TVC ctl2** | 0.80 | 0 | 0 | 5.94 | 3.44 | 2.56 | +0.46 | 1.95 |
+| 6a TVC w8h | 2.69 | – | – | 6.85 | 6.33 | 1.45 | -0.42 | 3.85 (routed layer 6.8) |
+| **6c TVC w8h** | 2.69 | **3.635** | **0.341** | **25.3** | **8.07** | **-17.0** | **-4.53** | 3.36 (max 3.58) |
+| 6a HPC w8 | 1.43 | – | – | 7.18 | 2.31 | -0.26 | +0.055 | 1.96 (routed layer 3.21) |
+| **6c HPC w8** | 1.43 | 0 | 0 | 7.18 | 2.31 | -0.26 | +0.048 | 1.96 (max 2.03) |
+| 6a HPC proj | 1.43 | – | – | 6.02 | 1.77 | 1.19 | +0.077 | 1.95 (routed layer 3.20) |
+| **6c HPC proj** | 1.43 | 0 | 0 | 6.02 | 1.77 | 1.19 | +0.075 | 1.95 (max 2.02) |
+
+Fluxes are in µg/m²/yr; the last-25-yr means are 2075–2099 (segment 2: years 51–75).
+
+- **6c TVC w8 is identical to the 6b W6_P6B2 run.** Both use the same fixed code; the base difference is below output
+  precision.
+- **The pre-fix 6b w8h and HPC w8 numbers are replaced.**
+  - TVC w8h releases 3.98 mg/m² over segment 2 (pre-fix 4.46) and loses 4.53 mg/m² below 1 m (pre-fix 5.00).
+  - Over w8 + w8h (150 yr), TVC releases 4.47 mg/m² (4.09 evaded, 0.38 exported). The release comes in pulses when the ALD
+    reaches a new depth (fig. 22).
+  - Hg below 1 m falls by 5.7 mg/m², about 11 % of the 2024 stock at 1–3 m (53 mg/m²). In 6a it fell by 0.8 mg/m².
+- **HPC (ALD ≤ 1.43 m): the fixed code releases nothing.** No layer below zpf is both thawed and decomposing. Fluxes are
+  identical to 6a. The only change is the deep Hg distribution: the routed-layer Hg:C of 3.2 becomes about 2.0.
+- **Deep Hg:C at the end stays in the observed range.** 6a w8h reaches 6.8 in the routed layer, far above the observed p90. 6c
+  w8h reaches at most 3.6, below p90 (3.80), as thawed C loss concentrates the remaining Hg.
+
+### Cost (core-h, LEDGER.txt section "PHASE 6c")
+
+| Item | Core-h |
+|---|---|
+| P6C (TVC/HPC/Toolik proxy, explicit switches, binT2p6b) | 0.029 |
+| P6P (preset alone, binT2p6c) | 0.030 |
+| Warming from P6P: TVC ctl/w8, HPC w8/proj, TVC ctl2/w8h (6 runs) | 0.041 |
+| P6Q Toolik proxy (explicit off vs 5d) | 0.010 |
+| **Phase 6c total** | **0.110 of 0.12** |
+
+The ledger total is 8.8633.
+
+Rules followed: ≤ 4 processes; 75-yr segments; nohup; restarts copied only; no deletions, GCS writes or parameters/ edits; no
+push.
+
+### Open items
+
+1. Rerun the Hg-off and all-on regression identities with binT2p6c (about 0.2 core-h). They hold by construction, because the
+   preset applies only with hg_t2 = 1.
+2. The thaw-evasion fraction 0.16 is not depth-attenuated. For release at 1.3–2.7 m it is an upper bound; an ALD-bounded
+   attenuation (6a note) would lower the 17 µg/m²/yr net Hg(0) source.
+3. Toolik ch4 (fen %MeHg) was not rerun with the preset; the spreading-only Toolik proxy %MeHg changed by -0.4 %.
+4. zpf depends on the run history: restarts without hg_thaw give no thaw release until the next year up to the reference year.
+5. HPC Ro/Rm about 1 % out of band, as in 5d (no refit).
+
+![fig22](figures_hg_t2/hg_t2_fig22_6c_warming.png)

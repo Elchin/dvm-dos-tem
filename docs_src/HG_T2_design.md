@@ -342,3 +342,19 @@ binT2p6b.
 543/543 with Hg 61/61.
 
 6b cost 0.396 of 0.4; ledger 8.753. Details: WORK_NOTES_hg_t2.md section 11.
+
+## 23. Phase 6c status (2026-11-24)
+The work is on local feat/hg-t2 (not pushed): c38be089 (preset), plus docs. Binary binT2p6c.
+
+**Preset.** The hg_t2 preset now includes hg_t2_deepspread 1 and hg_t2_thawrel 1 (fixed version), with f_thaw_evade 0.16,
+f_thaw_export 0.015 and reference year 2024. This supersedes the section 22 "not in the preset".
+
+**Results.**
+- Present-climate targets match P5F3 within 0.006 % (%MeHg ±0.6 %), and thaw release is 0.
+- Preset alone equals explicit (0 diffs on 3 sites), and explicit off reproduces 5d bit-identically (Toolik).
+
+**Warming.**
+- TVC releases 0.49 mg/m² (w8) and 3.98 mg/m² (w8h) of deep Hg, so Hg below 1 m falls by 5.7 mg/m² over 150 yr (6a: 0.8).
+- HPC w8 and proj release nothing (ALD 1.43 m).
+
+6c cost 0.110 of 0.12; ledger 8.863. Details: WORK_NOTES_hg_t2.md section 12.
