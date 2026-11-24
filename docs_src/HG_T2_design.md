@@ -233,3 +233,10 @@ The remaining T1 cap leaves 0.34 core-h, enough for phase 1 only. Phases 2-5 nee
 Implemented and run (see WORK_NOTES_hg_t2.md section 1). Organic Hg:C went from 2.63 to 0.78 at TVC and from 1.06 to 0.35 at HPC.
 Export went from 4.26 to 1.40 at TVC and from 5.80 to 1.91 at HPC. Toolik vegetation uptake fell from 3.56 to 0.53, which is far below
 Obrist 2017 (D3). Phase-1 runs cost 0.179 core-h, leaving a ledger total of 2.237 of 2.4.
+
+## 14. Phase 2 status (2026-11-24)
+Done on local feat/hg-t2: c32cd335, ecc13285, ae1a200b (+ docs). hg_t2_diss (default 0) adds the dissolved pool, the
+daily sorption / overland / lateral / vertical export, and the monthly cryo/bioturbation. Beyond section 3 it adds a moss
+sorbent mass (hg_t2_rho_moss) and lets the removal fractions act together. hg_t2_log_kd_org was refit to 3.5 and stays
+provisional until phase 5; D7 is the default. All identity, conservation and unit checks pass
+(WORK_NOTES_hg_t2.md section 2). Next is phase 3 (D3, GPP/stomatal foliar uptake).
