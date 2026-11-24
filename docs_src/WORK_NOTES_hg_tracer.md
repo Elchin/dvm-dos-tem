@@ -348,3 +348,118 @@ T1b runs (ledger `LEDGER2.txt`): **0.852 core-h** (sensitivity V1–V5 0.229, id
 5. Model vegetation uptake at Toolik (3.5) is low vs Obrist (~4.1 growing-season uptake; 29 µg m⁻² aboveground
    stock).
 6. Leaching is applied only in same-geometry sub-steps.
+
+## 9. T1c (round 3): downward dissolved-Hg transport, MeHg recalibration, spin-up default on, GEOS-Chem deposition
+
+Elchin's answers (2026-11-23): 1 add downward transport; 2 recalibrate k_meth with spin-up + deposition;
+3 spin-up default on with the tracer; 4 GEOS-Chem deposition for TVC/HPC.
+
+Commit `dc738c44` (code, on `cd616a67`). Binary `bins/binT1c_dev5`, md5 7eb34ff2, built from that tree.
+
+### 9.1 New and changed parameters
+
+| key | default | source / note |
+|---|---|---|
+| `hg_transport` | **1** (only with `hg_tracer` = 1) | monthly advective transport of dissolved (DOM-bound) Hg with the soil water. Dissolved concentration c = Hg / (liq + Kd·M) (M: organic layers C/0.5; mineral (1−por)·dz·2650 kg m⁻³). Lateral drainage of each layer (the model's own Richards `layer_drain`) leaves with its dissolved Hg as export (`HG_DRAIN`). The vertical flux is the infiltration not drained laterally, decreasing linearly to 0 at the frost table (no flow into ice-dominated layers). Explicit upwind, outflow ≤ 0.9 of a layer per month; MeHg moves with its layer's Hg. Linear in Hg, so the affine spin-up map stays exact. Basis: DOM-bound Hg transport dominates Hg mobility in organic soils (Ravichandran 2004; Skyllberg 2008); Arctic river export (Zolkos 2020; Sonke 2018); thaw-water THg (St Pierre et al. 2018). |
+| `hg_log_kd_org` | 4.0 (log10 L kg⁻¹) | organic layers. Tested 3.3 / 3.8 / 4.3 (9.3). Within the Allison & Allison 2005 (EPA) soil Hg(II) range 2.2–5.8 (median 3.8); organic matter binds Hg(II) more strongly (thiol sites, Skyllberg 2008), hence ≥ mineral. 4.0 itself was not run with dev5 (bracketed by 3.8 and 4.3). |
+| `hg_log_kd_min` | 3.8 | mineral layers; Allison & Allison 2005 soil Hg(II) median 3.8. |
+| `hg_spinup` | **1** (was 0) | ignored when `hg_tracer` = 0 (no parse error any more); Hg-off path unchanged. |
+| `hg_spinup_cycle` | **10** (was 1) | sliding window: the last 10 Jan–Jan years whose first January had today's layer count; averages the interannual variability of infiltration/thaw. |
+
+New outputs: `HG_DRAIN` (dissolved Hg exported with drainage, part of `HG_EXPORT`), `HG_DOWN`
+(organic → mineral dissolved transfer).
+
+### 9.2 GEOS-Chem deposition (open data)
+
+Source: Sereni & Angot 2026, GEOS-Chem v13.4.1 Hg simulation (MERRA-2, EDGAR), annual wet and dry deposition
+fields 1970–2020 plus a pre-industrial run, Zenodo doi:10.5281/zenodo.22810103, CC-BY-4.0, no login. Grid
+2° × 2.5°; bilinear interpolation to the site. Script `/workspace/hg/geoschem_zenodo22810103/mk_site_dep.py`.
+Files `config/hg_deposition_{tvc,hpc,tlk}_geoschem.csv`: hg2_wet = wet Hg(II)+HgP, hg2_dry = dry Hg(II)+HgP,
+hg0_soil = 0.37 × dry Hg(0) (Obrist 2017 snow-season soil share; the rest is the model's vegetation uptake),
+veg_scale = dry Hg(0)/dry Hg(0)(2015). 1880–1960 interpolated between the 1850 PI run and 1970 along the
+Toolik-file history shape (Fitzgerald 2005); held at 2020 after 2020. Missing Zenodo years
+1987, 1990, 1991, 2000, 2016, 2017 are interpolated by the model.
+
+| site | 2015 wet | dry Hg(II)+HgP | dry Hg(0) gross | soil total 2015 |
+|---|---|---|---|---|
+| TVC | 1.48 | 2.25 | 4.18 | 5.28 |
+| HPC | 1.47 | 1.38 | 5.42 | 4.86 |
+
+TVC and HPC are ~10 km apart and fall in the same 2° × 2.5° cell neighbourhood, so their series are close; the
+grid cannot resolve the sites. Toolik keeps the Obrist 2017 file (site measurements) by default; the GEOS-Chem
+Toolik file is provided for comparison.
+
+### 9.3 Results (binT1c_dev5; spin-up on; GEOS-Chem dep at TVC/HPC, Obrist file at Toolik; last 20 yr; µg m⁻² yr⁻¹)
+
+| run | setting | site | R org / R min | export (drain) | net Hg(0) | %MeHg JJAS |
+|---|---|---|---|---|---|---|
+| H1 | Kd_org 3.3 | Toolik | 0.42 / 1.56 | 0.70 (0.00) | +5.0 sink | 0.11 |
+| | | TVC | 1.76 / 1.38 | 7.32 (2.86) | +18.5 sink | 0.84 |
+| | | HPC | 1.40 / 2.41 | 7.05 (5.21) | +12.7 sink | 0.06 |
+| H2 | Kd_org 3.8 | Toolik | 0.86 / 1.50 | 0.82 | +4.9 | 0.14 |
+| | | TVC | 1.72 / 1.40 | 6.72 (1.20) | +17.1 | 0.76 |
+| | | HPC | 1.66 / 1.71 | 5.81 (2.47) | +10.7 | 0.11 |
+| H3 | Kd_org 4.3 | Toolik | 1.04 / 1.48 | 0.92 | +4.7 | 0.17 |
+| | | TVC | 1.65 / 1.42 | 6.76 (0.44) | +16.0 | 0.70 |
+| | | HPC | 1.21 / 1.52 | 5.83 (0.87) | +8.6 | 0.20 |
+| H0 | transport off (cycle 10) | Toolik | 0.95 / 1.48 | 1.04 | +4.6 | 0.19 |
+| | | TVC | 1.60 / 1.43 | 6.89 | +15.3 | 0.66 |
+| | | HPC | 0.53 / 1.47 | 6.65 | +6.3 | 0.40 |
+| H4 | Kd_org 3.3, cycle 1 | Toolik | **0.37** / 1.57 | 0.70 | +5.0 | 0.10 |
+| | | TVC | **0.44** / 1.28 | 4.26 (2.56) | +22.2 | 0.76 |
+| | | HPC | 2.68 / 1.55 | 10.7 (8.55) | +12.3 | 0.07 |
+
+All sites stay net Hg(0) sinks (Toolik obs 6.5 ± 0.7, Obrist 2017). Hg balance residual ≤ 2e-10 µg m⁻²
+everywhere, spin-up jump included.
+
+**Findings.**
+1. At Toolik transport does what was asked: Kd_org 3.3 brings organic R to 0.37–0.42 (obs 0.29–0.41) with
+   export 0.70, just below the Zolkos 2020 range (0.8–4.0).
+2. At TVC/HPC the outcome is controlled by the **spin-up equilibrium**, not by Kd. With transport off, the
+   10-yr cycle (H0) gives TVC R org 1.60 vs 0.65 with the 1-yr cycle in T1b; the TVC spin-up jump is
+   +13 mg m⁻² (10-yr) vs −12.5 (1-yr, H4). The jump always happens inside the spin stage (checked from
+   `HG_SPINADJ`), so this is not transient contamination. The 10-yr record spans layer remaps (same layer
+   count only at its ends), and the 5000-yr extrapolation of a multi-year record with internal geometry
+   changes is the likely cause. Not resolved in this round.
+3. HPC: with cycle 1 (H4) Hg piles at the organic/mineral boundary (R org 2.7, drainage 8.6) because the
+   recorded year has more drainage than average; with cycle 10 it is less extreme but still above obs.
+4. Export at TVC/HPC (5.8–7.3) stays above Zolkos 2020 in every variant; most is the decomposition
+   `hg_f_export` term, not drainage. Lowering `hg_f_export` for TVC/HPC or treating Zolkos as a basin
+   (not plot) constraint is an open decision.
+
+### 9.4 MeHg recalibration
+
+%MeHg is linear in k_meth. In the near-default configuration (H2, Kd_org 3.8, cycle 10, GEOS-Chem dep),
+HPC proxy %MeHg is 0.113 % → k_meth_proxy 77 × 0.1/0.113 ≈ **68** for the plateau 0.1 % target (H3: 0.20 → 39;
+H0: 0.40 → 19). The CH4-driver Toolik point was not re-run with dev5 (budget); dev4 G1 (spin-up + Obrist dep +
+transport) gave 1.93 % → k_meth_ch4 ≈ 3300 (vs 3200). **Defaults were not changed**, because the value
+depends on the unresolved spin-up/transport configuration (spread 19–77 at HPC). Recommendation unchanged
+from T1b: CH4 driver where the CH4 module is on; proxy as a placeholder.
+
+### 9.5 Checks
+
+- Unit tests (dev5): 499/499 test cases; 8 assertion failures, the same known ones (test_climate:47,52,
+  test_richards_water_energy:198,215, test_seb:177,178, test_stefan_water:142,271). New: transport (dissolved
+  flux, drainage export, org → min, frozen layer stop, off switch, no water), transport inside the spin-up jump.
+- L1 (2-case subset TVC/HPC Warming_nfeed, all Hg off, binM vs dev5): **PASS, bit-identical**.
+- L2 (same cases, tracer + MeHg on, so spin-up + transport by default): `cmp_on.py` C/N/water/energy
+  identical: **True** (268 main / 249 spin vars, 0 diffs); balance ≤ 1e-10 µg m⁻².
+- The full 8-case K1–K4 set was not repeated (≈ 0.58 core-h, over budget); the subsets cover the changed code paths.
+
+### 9.6 Core-hours
+
+T1c (ledger `LEDGER2.txt`): 1.4022 − 0.8517 (T1b end) = **0.551 core-h** (calibration C/E/F/G/H 0.45,
+diagnostics D1/dbg 0.03, identity L1+L2 0.068). Builds not counted.
+
+### 9.7 Open decisions
+
+1. Spin-up cycle: 10-yr sliding window (default now) vs 1-yr; they give very different TVC/HPC equilibria.
+   Options: average the per-year affine maps instead of composing a multi-year record; require constant
+   geometry over the whole window; or run a longer explicit spin stage.
+2. Kd_org: 3.3 fits Toolik R; 4.0 default untested exactly. Decide after (1).
+3. Export at TVC/HPC above Zolkos plot-equivalent yields: lower `hg_f_export`, or accept as plot vs basin.
+4. k_meth_proxy 19–77 depending on (1); k_meth_ch4 ≈ 3200–3300 (unchanged).
+5. Toolik: Obrist site file (default) vs GEOS-Chem Toolik file.
+
+Figures: `hg_t1c_fig7_profiles.png` (T1b vs T1c H2 profiles), `_fig8_budget.png` (budgets, drainage vs
+Zolkos), `_fig9_kd_dep.png` (Kd calibration, GEOS-Chem series), `_fig10_mehg.png` (%MeHg vs Thompson 2025).
