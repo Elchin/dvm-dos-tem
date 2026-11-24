@@ -1143,3 +1143,91 @@ TEST_CASE("hg_t2 phase 5b all on (with phases 3-4), random steps: balance to rou
   CHECK(s.cum.export_ > 0.0); CHECK(s.cum.down > 0.0);
   std::remove(T2DEP);
 }
+
+// ---- T2 phase 5c: flow-path retention routed below the mixing zone (hg_t2_deeproute, hg_f_deep, hg_z_deep)
+TEST_CASE("hg_t2_deeproute parse: default off, needs hg_t2_xpath, follows an explicit xpath off under the preset, ranges") {
+  hgtr::Params p = t2params();   // writes T2DEP
+  CHECK(p.t2_deeproute == 0); CHECK(p.f_deep == 1.0); CHECK(p.z_deep == 1.0);
+  Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_t2"] = 1; m["hg_dep_file"] = T2DEP;
+  hgtr::Params r; hgtr::Params pp; hgtr::t2_preset_(pp);
+  REQUIRE(hgtr::parse(m, r) == ""); CHECK(r.t2_deeproute == pp.t2_deeproute); CHECK(r.z_deep == pp.z_deep); CHECK(r.f_deep == pp.f_deep);
+  Json::Value a = m; a["hg_t2_preset"] = 0; a["hg_t2_diss"] = 1; a["hg_t2_deeproute"] = 1; CHECK(hgtr::parse(a, r) != "");   // needs xpath
+  a["hg_t2_xpath"] = 1; a["hg_z_deep"] = 1.5; a["hg_f_deep"] = 0.5; REQUIRE(hgtr::parse(a, r) == "");
+  CHECK(r.t2_deeproute == 1); CHECK(r.z_deep == 1.5); CHECK(r.f_deep == 0.5);
+  Json::Value b = m; b["hg_t2_xpath"] = 0; REQUIRE(hgtr::parse(b, r) == ""); CHECK(r.t2_deeproute == 0);   // follows xpath off
+  Json::Value c = m; c["hg_f_deep"] = 1.5; CHECK(hgtr::parse(c, r) != "");
+  Json::Value d = m; d["hg_z_deep"] = -0.1; CHECK(hgtr::parse(d, r) != "");
+  Json::Value w = ms0(); w["hg_tracer"] = 1; w["hg_t2_deeproute"] = 1; CHECK(hgtr::parse(w, r) != "");    // needs hg_t2
+  Json::Value t1 = ms0(); t1["hg_tracer"] = 1; t1["hg_mehg"] = 1; hgtr::Params q; REQUIRE(hgtr::parse(t1, q) == ""); CHECK(q.t2_deeproute == 0);
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_deeproute: retained Hg goes to the layer at hg_z_deep (f_deep share); off / f_deep 0 / z_deep above the mineral == phase 5b") {
+  hgtr::Params p = t2dparams(); p.d_cryo = 0; p.d_bio = 0; p.tau_sorb = 1e5; p.t2_xpath = 1; p.f_conn = 0.4;
+  hgtr::Snap a = column(6); hgtr::Flux t = dflux(6, 10, 2.0, 6.0, 1.0, 20.0);   // layer tops 0, .05, .10 organic; .15, .25, .35 mineral
+  auto run = [&](const hgtr::Params& q) { hgtr::State s; hgtr::initialize(q, s, a); for (int l = 0; l < 6; l++) { s.diss[l] = 0.5 * s.soil[l]; s.soil[l] *= 0.5; }
+    s.h_init = s.total(); hgtr::step(q, s, a, a, t); return s; };
+  hgtr::State s0 = run(p);
+  for (double fd : {0.0, 1.0}) for (double zd : {0.0, 0.3}) {
+    if (fd > 0.0 && zd > 0.0) continue;
+    hgtr::Params q = p; q.t2_deeproute = 1; q.f_deep = fd; q.z_deep = zd; hgtr::State s1 = run(q);   // f_deep 0 or receiving layer = first mineral
+    for (int l = 0; l < 6; l++) { CHECK(s1.diss[l] == s0.diss[l]); CHECK(s1.soil[l] == s0.soil[l]); }
+    CHECK(s1.m.export_ == s0.m.export_); CHECK(s1.m.down == s0.m.down);
+  }
+  hgtr::Params q = p; q.t2_deeproute = 1; q.f_deep = 1.0; q.z_deep = 0.3; hgtr::State s2 = run(q);   // layer 4 (top 0.25)
+  for (int l = 0; l < 3; l++) { CHECK(s2.diss[l] == s0.diss[l]); }   // organic layers unchanged
+  CHECK(s2.m.export_ == s0.m.export_); CHECK(s2.m.down == s0.m.down);
+  CHECK(s2.diss[3] < s0.diss[3]); CHECK(s2.diss[4] > s0.diss[4]);
+  CHECK(std::fabs(s2.balance_error()) < 1e-13 * s2.total());
+  q.z_deep = 50.0; hgtr::State s3 = run(q); CHECK(s3.diss[5] > s0.diss[5]); CHECK(std::fabs(s3.balance_error()) < 1e-13 * s3.total());   // deepest layer
+  q.z_deep = 0.3; q.f_deep = 0.5; hgtr::State s4 = run(q); CHECK(s4.diss[4] > s0.diss[4]); CHECK(s4.diss[4] < s2.diss[4]);
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_deeproute below the thawed zone: routed Hg stays in the frozen layer, not mixed back into the organic layers") {
+  hgtr::Params p = t2dparams(); p.tau_sorb = 1e5; p.t2_xpath = 1; p.f_conn = 0.4; p.d_cryo = 1e-2; p.d_bio = 1e-3;   // strong mixing
+  hgtr::Snap a = column(6); hgtr::Flux t = dflux(6, 10, 2.0, 6.0, 1.0, 20.0, 5);   // layer 5 (top 0.35) frozen
+  auto run = [&](const hgtr::Params& q) { hgtr::State s; hgtr::initialize(q, s, a); for (int l = 0; l < 6; l++) { s.diss[l] = 0.5 * s.soil[l]; s.soil[l] *= 0.5; }
+    for (int l = 3; l < 6; l++) { s.soil[l] *= 0.01; s.diss[l] *= 0.01; }   // Hg-poor mineral soil: mixing goes downward
+    s.h_init = s.total(); hgtr::step(q, s, a, a, t); return s; };
+  hgtr::Params off = p; off.t2_xpath = 0; hgtr::State s0 = run(off);
+  hgtr::State s1 = run(p);                                                   // phase 5b: to the first mineral layer
+  hgtr::Params q = p; q.t2_deeproute = 1; q.z_deep = 0.4; hgtr::State s2 = run(q);   // to the frozen layer 5
+  auto org = [](const hgtr::State& s) { double x = 0; for (int l = 0; l < 3; l++) x += s.soil[l] + s.diss[l]; return x; };
+  auto lay = [](const hgtr::State& s, int l) { return s.soil[l] + s.diss[l]; };
+  CHECK(org(s2) < org(s1));                                   // the phase-5b retention partly mixes back up
+  CHECK(org(s2) == doctest::Approx(org(s0)).epsilon(1e-12));  // deep route: organic layers as with no retention
+  CHECK(lay(s2, 5) - lay(s0, 5) == doctest::Approx(s2.m.down - s0.m.down).epsilon(1e-10));   // all retention in layer 5
+  CHECK(s2.m.export_ < s0.m.export_);
+  CHECK(std::fabs(s2.balance_error()) < 1e-13 * s2.total());
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2 phase 5c all on (deep route), random steps with geometry changes: balance to roundoff, pools >= 0") {
+  std::mt19937 rng(61); std::uniform_real_distribution<double> U(0.0, 1.0);
+  hgtr::Params p = t2dparams(); p.t2_evasion = 1; p.t2_foliar = 2; p.t2_meltroute = 1; p.fire_ash = 0.2; p.t2_rts = 1; p.wash = 0.5;
+  p.t2_kdsplit = 1; p.t2_dlog_kd_hum = 0.4; p.t2_xpath = 1; p.f_conn = 0.3; p.t2_snowsink = 1; p.v_snow = 4e-4;
+  p.t2_deeproute = 1; p.f_deep = 0.8; p.z_deep = 0.5;
+  hgtr::State s; hgtr::Snap a = column(8, 3000.0); hgtr::initialize(p, s, a);
+  for (int it = 0; it < 1500; it++) {
+    const int mth = it % 12;
+    hgtr::Snap b = a; hgtr::Flux f = t2flux(3 * U(rng), U(rng), (mth < 5 || mth > 9) ? 200 * U(rng) : 0.0, 30 * U(rng), 5 * U(rng), 0.4 * U(rng));
+    for (int i = 0; i < NUM_PFT; i++) { f.gpp[i] = 50 * U(rng); }
+    f.ta = 30 * U(rng) - 15; f.co2 = 300 + 200 * U(rng); f.rain = 60 * U(rng);
+    for (int l = 0; l < a.nsl; l++) { f.ts[l] = 20 * U(rng) - 10; f.decomp[l] = 5 * U(rng); b.soil[l] = std::fmax(0.0, a.soil[l] - f.decomp[l] + 4 * U(rng)); }
+    if (U(rng) < 0.3) {
+      int n = 3 + int(U(rng) * 12); b.nsl = n; double c0 = 0; for (int l = 0; l < a.nsl; l++) c0 += a.soil[l];
+      for (int l = 0; l < MAX_SOI_LAY; l++) { b.soil[l] = (l < n) ? c0 / n : 0; b.dz[l] = (l < n) ? 0.05 + 0.1 * U(rng) : 0; b.type[l] = (l == 0) ? 0 : ((l < 2) ? 1 : ((l < 3) ? 2 : 3)); }
+    }
+    hgtr::step(p, s, a, b, f);
+    hgtr::Flux t = dflux(b.nsl, 30, 20 * U(rng), 10 * U(rng), 3 * U(rng), 5 + 40 * U(rng), (mth < 5 || mth > 9) ? int(U(rng) * 3) : 3 + int(U(rng) * 6));
+    for (int d = 0; d < 30; d++) t.d_melt[d] = (U(rng) < 0.3) ? 5 * U(rng) : 0.0;
+    hgtr::step(p, s, b, b, t);
+    a = b;
+    if (it % 12 == 11) { s.m.clear(); }
+  }
+  CHECK(std::fabs(s.balance_error()) < 1e-8 * std::fmax(1.0, s.total()));
+  for (int l = 0; l < MAX_SOI_LAY; l++) { CHECK(s.soil[l] >= 0.0); CHECK(s.diss[l] >= 0.0); }
+  CHECK(s.cum.export_ > 0.0); CHECK(s.cum.down > 0.0);
+  std::remove(T2DEP);
+}

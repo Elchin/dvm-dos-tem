@@ -156,6 +156,14 @@
 //     (hg_t2 = 0) never read these. T2-only copies hg_t2_r_stem, hg_t2_r_root, hg_t2_k_meth_proxy replace hg_r_stem,
 //     hg_r_root, hg_k_meth_proxy when hg_t2 = 1 (giving the T1 names with hg_t2 = 1 is an error).
 //   All new coefficients come from water, snow, geometry and type only: the step stays affine and exactly conservative.
+// T2 phase 5c (docs_src/HG_T2_design.md section 20, WORK_NOTES_hg_t2 section 8), needs hg_t2_xpath = 1:
+//   hg_t2_deeproute = 1: the share hg_f_deep of the Hg retained on the flow path (1 - hg_f_conn of the organic-layer
+//     overland / lateral / melt-overland export) goes to the dissolved pool of the layer containing depth hg_z_deep (m)
+//     instead of the first mineral layer (never above the first mineral layer; the deepest layer if the column is
+//     shallower). With hg_z_deep below the active layer the retained Hg sorbs in frozen mineral soil, outside the monthly
+//     cryo/bioturbation of the thawed zone, so it is not mixed back into the organic layers (phase 5b, P5H): a 1-D stand-in
+//     for retention at the base of the active layer / transient layer and its incorporation into permafrost (Schuster et
+//     al. 2018; Olson et al. 2018). Booked in HG_DOWN like the phase-5b retention. Geometry only: affine, conservative.
 #include <cmath>
 #include <string>
 #include <algorithm>
@@ -279,6 +287,10 @@ struct Params {
   double f_conn      = 1.0;   // hg_f_conn: share of the organic-layer dissolved export that reaches the stream
   int    t2_snowsink = 0;     // hg_t2_snowsink: separate ground Hg(0) sink velocity under snow (needs hg_t2_evasion = 1)
   double v_snow      = 8.5e-5; // hg_v_snow (m/s): Hg(0) deposition velocity to the ground through the snowpack
+  // T2 phase 5c (see top)
+  int    t2_deeproute = 0;    // hg_t2_deeproute: route the flow-path retention below the mixing zone (needs hg_t2_xpath = 1)
+  double f_deep      = 1.0;   // hg_f_deep: share of the retained Hg routed to hg_z_deep (the rest: first mineral layer)
+  double z_deep      = 1.0;   // hg_z_deep (m): depth of the receiving layer
   double t2_r_stem   = 0.02;  // hg_t2_r_stem: T2 copy of hg_r_stem (used when hg_t2 = 1)
   double t2_r_root   = 0.07;  // hg_t2_r_root: T2 copy of hg_r_root (used when hg_t2 = 1)
   double t2_k_meth_proxy = 87.0; // hg_t2_k_meth_proxy: T2 copy of hg_k_meth_proxy (used when hg_t2 = 1)
@@ -405,6 +417,7 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_gs_m", &p.gs_m, 1, 100}, {"hg_gs_eff", &p.gs_eff, 0, 100},
             {"hg_fire_ash", &p.fire_ash, 0, 1}, {"hg_wash", &p.wash, 0, 1}, {"hg_wash_pref", &p.wash_pref, 1e-3, 1e4},
             {"hg_t2_dlog_kd_hum", &p.t2_dlog_kd_hum, -3, 3}, {"hg_f_conn", &p.f_conn, 0, 1}, {"hg_v_snow", &p.v_snow, 0, 1},
+            {"hg_f_deep", &p.f_deep, 0, 1}, {"hg_z_deep", &p.z_deep, 0, 100},
             {"hg_t2_r_stem", &p.t2_r_stem, 0, 1e3}, {"hg_t2_r_root", &p.t2_r_root, 0, 1e3}, {"hg_t2_k_meth_proxy", &p.t2_k_meth_proxy, 0, 1e9}};
   struct I { const char* k; int* v; int lo, hi; };
   I is[] = {{"hg_tracer", &p.tracer, 0, 1}, {"hg_mehg", &p.mehg, 0, 1}, {"hg_mehg_driver", &p.mehg_driver, 0, 1},
@@ -415,7 +428,7 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_t2_diss", &p.t2_diss, 0, 1}, {"hg_snow_sublim_loss", &p.snow_sublim_loss, 0, 1},
             {"hg_t2_evasion", &p.t2_evasion, 0, 1}, {"hg_t2_meltroute", &p.t2_meltroute, 0, 1}, {"hg_gs_ingpp", &p.gs_ingpp, 0, 1},
             {"hg_t2_rts", &p.t2_rts, 0, 1}, {"hg_t2_preset", &p.t2_preset, 0, 1}, {"hg_t2_kdsplit", &p.t2_kdsplit, 0, 1},
-            {"hg_t2_xpath", &p.t2_xpath, 0, 1}, {"hg_t2_snowsink", &p.t2_snowsink, 0, 1}};
+            {"hg_t2_xpath", &p.t2_xpath, 0, 1}, {"hg_t2_snowsink", &p.t2_snowsink, 0, 1}, {"hg_t2_deeproute", &p.t2_deeproute, 0, 1}};
   for (const std::string& key : ms.getMemberNames()) {
     if (key.rfind("hg_", 0) != 0) { continue; }
     bool known = false;
@@ -449,6 +462,7 @@ inline std::string parse(const Json::Value& ms, Params& p) {
     if (p.t2_diss != 1 && !set("hg_t2_meltroute")) { p.t2_meltroute = 0; }
     if (p.t2_diss != 1 && !set("hg_t2_kdsplit")) { p.t2_kdsplit = 0; }
     if (p.t2_diss != 1 && !set("hg_t2_xpath")) { p.t2_xpath = 0; }
+    if (p.t2_xpath != 1 && !set("hg_t2_deeproute")) { p.t2_deeproute = 0; }
     if (p.t2_evasion != 1 && !set("hg_t2_snowsink")) { p.t2_snowsink = 0; }
     if (p.t2_foliar < 1 && !set("hg_wash")) { p.wash = 0.0; }
   }
@@ -472,6 +486,7 @@ inline std::string parse(const Json::Value& ms, Params& p) {
   if (p.wash > 0.0 && !(p.t2 == 1 && p.t2_foliar >= 1)) { return "model_settings.hg_wash > 0 needs hg_t2 = 1 and hg_t2_foliar >= 1"; }
   if (p.t2_kdsplit == 1 && !(p.t2 == 1 && p.t2_diss == 1)) { return "model_settings.hg_t2_kdsplit = 1 needs hg_t2 = 1 and hg_t2_diss = 1"; }
   if (p.t2_xpath == 1 && !(p.t2 == 1 && p.t2_diss == 1)) { return "model_settings.hg_t2_xpath = 1 needs hg_t2 = 1 and hg_t2_diss = 1"; }
+  if (p.t2_deeproute == 1 && !(p.t2 == 1 && p.t2_xpath == 1)) { return "model_settings.hg_t2_deeproute = 1 needs hg_t2 = 1 and hg_t2_xpath = 1"; }
   if (p.t2_snowsink == 1 && !(p.t2 == 1 && p.t2_evasion == 1)) { return "model_settings.hg_t2_snowsink = 1 needs hg_t2 = 1 and hg_t2_evasion = 1"; }
   if (p.t2 == 1 && !p.dep_comp) { return "model_settings.hg_t2 = 1 needs an hg_dep_file with hg2_wet / hg2_dry / hg0_soil columns"; }
   return "";
@@ -668,6 +683,16 @@ inline void diss_transport_(const Params& p, State& s, const Snap& b, const Flux
                 : (is_moss(b.type[l]) ? std::fmax(0.0, b.dz[l]) * p.rho_moss : std::fmax(0.0, b.soil[l]) * 2.0e-3);
       ztop[l] = z; z += std::fmax(0.0, b.dz[l]);
     } }
+  // phase 5c (hg_t2_deeproute): receiving layer ld of the share fdp of the flow-path retention (layer containing hg_z_deep,
+  // at least lm, at most the deepest layer); the rest of the retention stays with lm as in phase 5b
+  int ld = lm; double fdp = 0.0;
+  if (p.t2_deeproute == 1 && fcx < 1.0 && lm > 0) {
+    fdp = p.f_deep;
+    for (int l = lm; l < nb; l++) { if (ztop[l] <= p.z_deep) { ld = l; } }
+  }
+  const auto retain = [&](double x) {   // x >= 0: retained dissolved Hg -> lm / ld (booked organic -> mineral)
+    const double xd = x * fdp; s.diss[lm] += x - xd; s.diss[ld] += xd; acc.down += x;
+  };
   const int nd = std::min(31, std::max(0, f.nd));
   // T2 phase 3 (hg_t2_meltroute): the month's snowmelt Hg arrives with the day's melt; the overland share of the
   // day's surface water (qover / (qover + qinfl)) is exported, the rest enters the top layer's dissolved pool
@@ -682,7 +707,7 @@ inline void diss_transport_(const Params& p, State& s, const Snap& b, const Flux
       const double xo = (qo + qi > 0.0) ? x * qo / (qo + qi) : 0.0;
       const double xr = xo * (1.0 - fcx), xe = xo - xr;   // phase 5b: flow-path retention of the melt overland share
       s.diss[0] += x - xo; acc.export_ += xe; acc.runoff += xe; acc.meltrun += xe;
-      if (xr > 0.0) { s.diss[lm] += xr; acc.down += xr; }
+      if (xr > 0.0) { retain(xr); }
     }
     // sorption in every layer toward the Kd equilibrium of the day's liquid water
     for (int l = 0; l < nb; l++) {
@@ -726,7 +751,7 @@ inline void diss_transport_(const Params& p, State& s, const Snap& b, const Flux
       s.diss[l] -= ov[l] + out[l] + lat[l];
       if (fcx < 1.0 && l < lm) {   // phase 5b: organic-layer export, the share 1 - f_conn retained on the flow path
         const double ro = ov[l] * (1.0 - fcx), rl = lat[l] * (1.0 - fcx);
-        ov[l] -= ro; lat[l] -= rl; s.diss[lm] += ro + rl; acc.down += ro + rl;
+        ov[l] -= ro; lat[l] -= rl; retain(ro + rl);
       }
       acc.export_ += ov[l] + lat[l]; acc.runoff += ov[l]; acc.drain += lat[l];
       if (l < tb) { s.diss[l + 1] += out[l]; if (!is_mineral(b.type[l]) && is_mineral(b.type[l + 1])) { acc.down += out[l]; } }
