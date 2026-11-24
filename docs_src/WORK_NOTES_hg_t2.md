@@ -731,3 +731,88 @@ Ledger total 7.867 (5c start 7.184).
 5. f_conn 0.54 means 46 % of the organic-layer export is retained, a single value for all sites. There is no site or hydrology
    dependence (riparian / hillslope connectivity), and Toolik export (2.6) now sits below the Kuparuk-type yields used earlier.
 6. Unchanged: D5 (hg_t2 stays default 0), k_meth_ch4 shared with T1, D6 DOC export not implemented.
+
+## 9. Phase 5d: cleanup (ev_z 0.3, humic offset 0, T2 copy of k_meth_ch4, refit) (2026-11-24)
+
+Elchin agreed ("I agree") to the 5c recommendations. Commits on local feat/hg-t2 (not pushed), base 81a6fc5d:
+91b456de (hg_t2_k_meth_ch4 copy + test), f60c7170 (preset + config/hg_t2_calibrated.json), plus this docs commit. Binary
+binT2p5f (md5 5fb01b66, f60c7170). Scripts: src/gn8.py (gn7 + forced expansion point, band weights, f_deep column),
+runP5d.sh (5d cap, Toolik-only vtlk), runT2tlk.sh, ledger5d.py, runP5d_final.sh, plots_p8.py. Backups: p5d_src/*.p5c.
+
+### Changes
+1. Preset ev_z 0.5 -> 0.3 (the physically shallower value; the targets do not constrain it).
+2. Preset hg_t2_dlog_kd_hum 0.242 -> 0. The switch hg_t2_kdsplit and its code stay; with offset 0 it is bit-identical to off.
+3. T2-only copy hg_t2_k_meth_ch4 (default 3250, the shared value, so all results are unchanged). With hg_t2 = 1 it replaces
+   hg_k_meth_ch4; giving hg_k_meth_ch4 together with hg_t2 = 1 is a parse error, like the other copies. hg_t2 = 0 never reads it.
+   config/hg_t2_calibrated.json now uses the T2 name. New unit test; standalone Hg tests 56/56 (2592 assertions).
+4. Refit without new exploration runs (5d budget). gn8 reuses the 5c Jacobian (P5J + 7 one-at-a-time runs). It takes P5H
+   (retention to the first mineral layer) as the f_deep = 0 column, Broyden-updates with V7a/b and V8a/b, and expands at V8b
+   (ev_z 0.3). ev_z is fixed at 0.3, dlog at 0, z_deep at 1.5.
+   - f_deep: lowering it sends retained Hg into the mixed zone. Per unit f_deep that raises Ro by 0.25 / 0.09 / 0.38
+     (log, TVC / HPC / Toolik) but lowers Rm only by 0.12 / 0.07 / 0.04. Rm is not reduced selectively, so the fit keeps f_deep 1.
+   - With ev_z 0.3 the linear model has no point that meets all 12 bands. The best cost is 0.0105, and one of TVC Ro, TVC
+     export, HPC Ro or HPC Rm stays out by about 1 % (weighting tests). The preset keeps 11 in band with HPC Rm about 1.70.
+   - Fitted set: t2_log_kd_org 3.356, dlog_kd_hum 0, f_conn 0.53419, f_deep 1.0, z_deep 1.5, fd 0.071857, ev_z 0.30,
+     v_ground 4.1389e-5, v_snow 1.3046e-4; unchanged: snow_kred 0.090, t2_r_stem / r_root 0.0044 / 0.0067,
+     t2_k_meth_proxy 71, t2_k_meth_ch4 3250.
+
+### Results (P5F3 = hg_t2 = 1 preset only, binT2p5f; last 20 yr; ug/m2/yr)
+
+| Quantity | Target | TVC 5c -> 5d | HPC 5c -> 5d | Toolik 5c -> 5d |
+|---|---|---|---|---|
+| Ro (organic Hg:C) | 0.29-0.41 | 0.407 -> 0.410 | 0.291 -> 0.288 (low) | 0.391 -> 0.377 |
+| Rm (mineral Hg:C) | 0.97-1.69 | 1.545 -> 1.562 | 1.689 -> 1.706 (high) | 1.477 -> 1.477 |
+| Export | 0.8-4.0 | 3.83 -> 3.995 | 1.85 -> 2.08 | 2.64 -> 2.65 |
+| Vegetation uptake | Toolik 4.1 | 5.42 | 4.14 | 4.06 |
+| Net Hg(0) | Toolik 6.5 +- 0.7 | 2.52 -> 2.83 | 0.97 -> 1.06 | 6.50 -> 6.50 |
+| Winter share | Toolik 0.37 | - | - | 0.370 -> 0.370 |
+| %MeHg (JJAS active) | 0.7 / 0.1 / fen 2 | 0.709 -> 0.708 | 0.100 -> 0.0997 | fen 2.03 -> 2.02 |
+| Evasion | - | 6.24 -> 5.90 | 6.39 -> 6.25 | 1.71 -> 1.68 |
+| Hg below 1 m: accumulation | - | 3.32 -> 3.48 | 1.60 -> 1.81 | - |
+| Hg below 1 m: stock (mg/m2; 5b 37.4 / 14.8) | - | 51.5 -> 52.2 | 19.3 -> 19.7 | - |
+
+10 of 12 bands are met. HPC Ro is 0.8 % below its band (0.2878) and HPC Rm 1.0 % above (1.706). The gn8 prediction was
+HPC Ro 0.290 and HPC Rm 1.705 (error about 1 %). 12-band cost 0.018 (5c 0.008, 5b 6.86). With ev_z 0.3 the HPC
+organic / mineral pair cannot both be met in this structure (section 8, open item 2). Keeping ev_z 0.5 (5c, V8a) is the only
+tested way to meet all 12.
+
+Deep storage: Hg below 1 m (all layers permanently frozen: max ALD 0.78 m at TVC, 0.99 m at HPC) grows by 3.5 ug/m2/yr at TVC
+and 1.8 at HPC over the last 20 yr (5b: 0). The 5000-yr spin-up leaves +14.8 (TVC) and +4.9 (HPC) mg/m2 below 1 m compared
+with 5b.
+
+### Checks (binT2p5f)
+
+| Check | Result |
+|---|---|
+| hg_t2 = 1 preset only (P5F3) vs explicit values with hg_t2_preset 0 (X5d, Toolik column) | 0 differing variables (Toolik sp + tr) |
+| Routing off + 5b values (R5d, Toolik) vs P5G (5b, binT2p5c) | 0 differences |
+| hg_t2 = 0 (T5d, Toolik) vs T1 final VF4 | only the restart hg_state length (117 vs 94) |
+| T5d vs P5T1 (5a) | 0 differences |
+| P5I10 Hg off 2-case (sub_off) | RESULT: PASS |
+| P5I11 all on via the preset (new case set cs/sub_t2j) | RESULT: PASS; C/N/water/energy identical with the tracer on: True |
+| P5I12 Hg off 8-case prod | RESULT: PASS |
+| Balance error | <= 2e-9 ug/m2 |
+| Unit tests | 538/538 (8 known may-fail); Hg standalone 56/56 (2592 assertions) |
+| Rules | <= 4 processes; -j2 build; segments <= 75 yr; nohup; no parameters/ edits; no deletions; no GCS; restarts copied only |
+
+The 0.3 core-h budget did not cover 3-site runs for the preset-vs-explicit, routing-off and hg_t2 = 0 checks. They ran on
+the Toolik column only, which has every T2 switch active, and the unit tests cover the parse. The 3-site preset run, the
+identity suite and all-on C/N/water/energy are full.
+
+### Cost (core-h, LEDGER.txt section "PHASE 5d")
+
+| Item | Core-h |
+|---|---|
+| P5F3 (3 sites + fen) | 0.044 |
+| X5d, R5d, T5d (Toolik only) | 0.031 |
+| P5I10 + P5I11 + P5I12 | 0.204 |
+| **Phase 5d total** | **0.278 of 0.3** |
+
+Ledger total 8.145.
+
+### Open items after 5d
+1. HPC Ro (0.288) and Rm (1.706) are just outside their bands with ev_z 0.3. Options: accept (about 1 %), return to
+   ev_z 0.5 (5c preset met all 12), or make a structural change that separates HPC organic from mineral Hg:C.
+2. The deep (permafrost) Hg store grows by 1.8-3.5 ug/m2/yr. It needs checking against deep profiles, and it would be
+   released on thaw.
+3. Unchanged: D5 (hg_t2 default 0), D6, a single f_conn for all sites.

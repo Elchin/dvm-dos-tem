@@ -303,3 +303,16 @@ Done on local feat/hg-t2 (not pushed): c19c2b9c (code + tests), 2972fc49 (preset
 - New caveat: the routed Hg accumulates as a permafrost sink of 1-2.3 ug/m2/yr (column storage up 2-3 ug/m2/yr at TVC / HPC).
 - All identity, conservation and unit checks pass. 5c cost 0.683 of 1.2 core-h; ledger 7.867.
 - Details: WORK_NOTES_hg_t2.md section 8.
+
+## 21. Phase 5d status (2026-11-24)
+Done on local feat/hg-t2 (not pushed): 91b456de (hg_t2_k_meth_ch4 copy + test), f60c7170 (preset), + docs. Binary binT2p5f.
+- Preset: ev_z 0.3, hg_t2_dlog_kd_hum 0 (switch kept). New T2-only hg_t2_k_meth_ch4 (3250; the T1 name with hg_t2 = 1 is an
+  error).
+- Refit from the 5c Jacobian (no exploration runs): kd_org 3.356, f_conn 0.534, f_deep 1 (lower f_deep raises Ro), fd 0.0719,
+  v_ground 4.14e-5, v_snow 1.305e-4, z_deep 1.5.
+- 10 of 12 bands met. HPC Ro 0.288 (< 0.29) and HPC Rm 1.706 (> 1.69) are about 1 % out; with ev_z 0.3 the local model has
+  no point meeting all 12. Export 4.0 / 2.1 / 2.6, Toolik net Hg(0) 6.50 and winter share 0.370, %MeHg 0.708 / 0.100 / fen 2.02.
+- Deep store below 1 m: +3.5 (TVC) and +1.8 (HPC) ug/m2/yr.
+- All checks pass. The preset-vs-explicit, routing-off and hg_t2 = 0 checks ran on the Toolik column only, because of the
+  budget. 5d cost 0.278 of 0.3; ledger 8.145.
+- Details: WORK_NOTES_hg_t2.md section 9.
