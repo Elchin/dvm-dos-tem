@@ -693,6 +693,7 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
             f.ta = std::isfinite(edall->m_atms.ta) ? edall->m_atms.ta : 0.0; f.co2 = std::isfinite(edall->m_atms.co2) ? edall->m_atms.co2 : 0.0;
             for (int il = 0; il < std::min(cd.m_soil.numsl, MAX_SOI_LAY); il++) { f.ts[il] = std::isfinite(edall->m_sois.ts[il]) ? edall->m_sois.ts[il] : 0.0; }
           }
+          if (md->hg.wash > 0.0) { f.rain = (std::isfinite(edall->m_a2l.rnfl) && edall->m_a2l.rnfl > 0.0) ? edall->m_a2l.rnfl : 0.0; }   // T2 phase 4: rainfall (wash-off)
         }
       }
       hg_track(hg_a, f, "bgc");

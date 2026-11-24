@@ -2816,6 +2816,9 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
       scalar("HG_SINK0", h.m.sink0, h.y.sink0);
       scalar("HG_STOMATAL", h.m.stomatal, h.y.stomatal);
       scalar("HG_MELTRUN", h.m.meltrun, h.y.meltrun);
+      scalar("HG_ASH", h.m.ash, h.y.ash);   // T2 phase 4
+      scalar("HG_PARTIC", h.m.partic, h.y.partic);
+      scalar("HG_WASH", h.m.wash, h.y.wash);
       scalar("HG_MIXDOWN", h.m.mixdown, h.y.mixdown);
       scalar("MEHGPROD", h.mehg_prod_m, h.mehg_prod_y);
       scalar("HG_BALERR", h.balance_error(), h.balance_error());

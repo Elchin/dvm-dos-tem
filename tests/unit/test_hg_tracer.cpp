@@ -911,3 +911,125 @@ TEST_CASE("hg_t2 phase 3 all on, random steps with daily transport: balance to r
   CHECK(s.cum.export_ > 0.0); CHECK(s.cum.evasion > 0.0);
   std::remove(T2DEP);
 }
+
+// ---- T2 phase 4: fire ash retention, RTS particulate export, canopy wash-off
+namespace {
+// whole top layer + PFT-0 leaves and stems removed (fire or slump); geometry change
+void remove_top(const hgtr::Snap& a, hgtr::Snap& b) {
+  b = a; b.nsl = a.nsl - 1;
+  for (int l = 0; l < b.nsl; l++) { b.soil[l] = a.soil[l + 1]; b.dz[l] = a.dz[l + 1]; b.type[l] = a.type[l + 1]; }
+  b.soil[b.nsl] = 0; b.dz[b.nsl] = 0; b.veg[0][0] = 0; b.veg[0][1] = 0;
+}
+hgtr::State scaled(const hgtr::State& s, double k) {
+  hgtr::State t = s;
+  for (int i = 0; i < NUM_PFT; i++) { t.dead[i] *= k; for (int j = 0; j < NUM_PFT_PART; j++) t.veg[i][j] *= k; }
+  t.wd *= k; t.snow *= k; t.mpend *= k;
+  for (int l = 0; l < MAX_SOI_LAY; l++) { t.soil[l] *= k; t.diss[l] *= k; t.mehg[l] *= k; }
+  t.h_init = t.total(); t.cum.clear(); t.m.clear(); t.y.clear();
+  return t;
+}
+}
+
+TEST_CASE("hg_t2 phase 4 parse: defaults off, ranges, dependencies") {
+  hgtr::Params p = t2params();
+  CHECK(p.fire_ash == 0.0); CHECK(p.t2_rts == 0); CHECK(p.wash == 0.0); CHECK(p.wash_pref == 10.0);
+  Json::Value a = ms0(); a["hg_tracer"] = 1; a["hg_fire_ash"] = 0.1; CHECK(hgtr::parse(a, p) != "");      // needs hg_t2
+  Json::Value b = ms0(); b["hg_tracer"] = 1; b["hg_t2_rts"] = 1; CHECK(hgtr::parse(b, p) != "");
+  Json::Value c = ms0(); c["hg_tracer"] = 1; c["hg_t2"] = 1; c["hg_dep_file"] = T2DEP; c["hg_fire_ash"] = 0.1; c["hg_t2_rts"] = 1; c["hg_wash"] = 0.5; c["hg_wash_pref"] = 20.0;
+  CHECK(hgtr::parse(c, p) == ""); CHECK(p.fire_ash == 0.1); CHECK(p.t2_rts == 1); CHECK(p.wash == 0.5); CHECK(p.wash_pref == 20.0);
+  c["hg_t2_foliar"] = 0; CHECK(hgtr::parse(c, p) != "");                                                   // wash-off needs a canopy scheme
+  c["hg_t2_foliar"] = 1; c["hg_fire_ash"] = 1.5; CHECK(hgtr::parse(c, p) != "");
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_fire_ash: the burned soil share of the fire Hg stays in the ash on the new top layer; veg Hg all emitted") {
+  hgtr::Params p0 = t2params(); hgtr::Params p = p0; p.fire_ash = 0.1;
+  hgtr::Snap a = column(6), b; remove_top(a, b); b.dead[0] = a.dead[0] + 200.0;
+  hgtr::Flux f; f.burn = a.soil[0] + 50.0;   // fire step: f.t2 = 0
+  hgtr::State s0; hgtr::initialize(p0, s0, a); hgtr::State s; hgtr::initialize(p, s, a);
+  const double htop = s.soil[0], pot = htop + 50 * p.r_leaf + 200 * p.r_stem;
+  hgtr::step(p0, s0, a, b, f); hgtr::step(p, s, a, b, f);
+  const double F = s0.m.fire;
+  CHECK(F == doctest::Approx(pot * f.burn / (a.soil[0] + 250.0)));
+  CHECK(s.m.ash == doctest::Approx(0.1 * F * htop / pot).epsilon(1e-12));
+  CHECK(s.m.fire == doctest::Approx(F - s.m.ash).epsilon(1e-12));
+  CHECK(s.soil[0] - s0.soil[0] == doctest::Approx(s.m.ash).epsilon(1e-9));   // to the new top C layer
+  CHECK(std::fabs(s.balance_error()) < 1e-13 * s.total());
+  // vegetation-only fire: nothing retained
+  hgtr::Snap bv = a; bv.veg[0][0] = 0; hgtr::Flux fv; fv.burn = 50.0;
+  hgtr::State v; hgtr::initialize(p, v, a); hgtr::step(p, v, a, bv, fv); CHECK(v.m.ash == 0.0); CHECK(v.m.fire > 0.0);
+  // linear in Hg (affine spin-up): doubling the state doubles the fluxes
+  hgtr::State d; hgtr::initialize(p, d, a); d = scaled(d, 2.0); hgtr::step(p, d, a, b, f);
+  CHECK(d.m.ash == doctest::Approx(2.0 * s.m.ash).epsilon(1e-12)); CHECK(d.m.fire == doctest::Approx(2.0 * s.m.fire).epsilon(1e-12));
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_rts: the slumped material's Hg leaves as particulate export, respired-C Hg not returned to the column") {
+  hgtr::Params p0 = t2params(); hgtr::Params p = p0; p.t2_rts = 1;
+  hgtr::Snap a = column(6), b; remove_top(a, b);
+  const double X = a.soil[0] + 250.0; hgtr::Flux f; f.lateral = 0.9 * X; f.pot_decomp = 0.1 * X;
+  hgtr::State s0; hgtr::initialize(p0, s0, a); hgtr::State s; hgtr::initialize(p, s, a);
+  const double h0 = s.total(), pot = s.soil[0] + 50 * p.r_leaf + 200 * p.r_stem;
+  hgtr::step(p0, s0, a, b, f); hgtr::step(p, s, a, b, f);
+  CHECK(s0.m.partic == 0.0);
+  CHECK(s0.m.export_ == doctest::Approx(pot * (0.9 + 0.1 * p.f_export)).epsilon(1e-12));   // T1: respired-C Hg mostly back to the column
+  CHECK(s.m.evasion == doctest::Approx(pot * 0.1 * p.f_evade).epsilon(1e-12));
+  CHECK(s.m.partic == doctest::Approx(pot * (0.9 + 0.1 * (1.0 - p.f_evade))).epsilon(1e-12));
+  CHECK(s.m.export_ == doctest::Approx(s.m.partic).epsilon(1e-14));
+  CHECK(s.total() == doctest::Approx(h0 - pot).epsilon(1e-12));
+  CHECK(std::fabs(s.balance_error()) < 1e-13 * s.total());
+  hgtr::State d; hgtr::initialize(p, d, a); d = scaled(d, 3.0); hgtr::step(p, d, a, b, f);
+  CHECK(d.m.partic == doctest::Approx(3.0 * s.m.partic).epsilon(1e-12));
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_wash: share wash x P / (P + P_ref) of the intercepted dry Hg(II) goes to the ground (both canopy schemes)") {
+  for (int sch = 1; sch <= 2; sch++) {
+    hgtr::Params p0 = t2params(); p0.t2_foliar = sch; hgtr::Params p = p0; p.wash = 0.5;
+    hgtr::Snap a = column(4);
+    hgtr::Flux f = t2flux(2.0, 2.0, 0, 0, 0, 0.3); f.gpp[0] = 60.0; f.ta = 10.0; f.co2 = 400.0; f.rain = 30.0;
+    hgtr::State s0; hgtr::initialize(p0, s0, a); hgtr::State s; hgtr::initialize(p, s, a);
+    hgtr::step(p0, s0, a, a, f); hgtr::step(p, s, a, a, f);
+    const double w = 0.25 * (0.6 + 0.3) * 0.2 * 0.5 * 30.0 / 40.0;   // intercepted dry Hg(II) x fw
+    CHECK(s0.m.wash == 0.0);
+    CHECK(s.m.wash == doctest::Approx(w).epsilon(1e-12));
+    CHECK(s0.m.foliar - s.m.foliar == doctest::Approx(w).epsilon(1e-12));
+    CHECK(s.m.dep - s0.m.dep == doctest::Approx(w).epsilon(1e-12));
+    CHECK(s.m.uptake + s.m.dep == doctest::Approx(s0.m.uptake + s0.m.dep).epsilon(1e-13));
+    CHECK(std::fabs(s.balance_error()) < 1e-13 * s.total());
+    hgtr::State t; hgtr::initialize(p, t, a); hgtr::Flux g = f; g.rain = 0.0; hgtr::step(p, t, a, a, g); CHECK(t.m.wash == 0.0);
+  }
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2 phase 4 all on (with phase 3), random steps with fire / RTS and daily transport: balance to roundoff, pools >= 0") {
+  std::mt19937 rng(47); std::uniform_real_distribution<double> U(0.0, 1.0);
+  hgtr::Params p = t2dparams(); p.t2_evasion = 1; p.t2_foliar = 2; p.t2_meltroute = 1; p.fire_ash = 0.2; p.t2_rts = 1; p.wash = 0.5;
+  hgtr::State s; hgtr::Snap a = column(8, 3000.0); hgtr::initialize(p, s, a);
+  for (int it = 0; it < 1500; it++) {
+    const int mth = it % 12;
+    hgtr::Snap b = a; hgtr::Flux f = t2flux(3 * U(rng), U(rng), (mth < 5 || mth > 9) ? 200 * U(rng) : 0.0, 30 * U(rng), 5 * U(rng), 0.4 * U(rng));
+    for (int i = 0; i < NUM_PFT; i++) { f.gpp[i] = 50 * U(rng); }
+    f.ta = 30 * U(rng) - 15; f.co2 = 300 + 200 * U(rng); f.rain = 60 * U(rng);
+    for (int l = 0; l < a.nsl; l++) { f.ts[l] = 20 * U(rng) - 10; f.decomp[l] = 5 * U(rng); b.soil[l] = std::fmax(0.0, a.soil[l] - f.decomp[l] + 4 * U(rng)); }
+    hgtr::step(p, s, a, b, f);
+    a = b;
+    if (U(rng) < 0.15) {   // disturbance sub-step: fire or RTS with a geometry change
+      hgtr::Snap c = a; hgtr::Flux g;
+      int n = 3 + int(U(rng) * 12); c.nsl = n; double c0 = 0; for (int l = 0; l < a.nsl; l++) c0 += a.soil[l];
+      const double c1 = c0 * (0.85 + 0.1 * U(rng));
+      for (int l = 0; l < MAX_SOI_LAY; l++) { c.soil[l] = (l < n) ? c1 / n : 0; c.dz[l] = (l < n) ? 0.05 + 0.1 * U(rng) : 0; c.type[l] = (l == 0) ? 0 : ((l < 3) ? 1 : 3); }
+      if (U(rng) < 0.5) { g.burn = (c0 - c1) * U(rng); } else { g.lateral = 0.9 * (c0 - c1) * U(rng); g.pot_decomp = 0.1 * (c0 - c1) * U(rng); }
+      hgtr::step(p, s, a, c, g);
+      a = c;
+    }
+    hgtr::Flux t = dflux(a.nsl, 30, 20 * U(rng), 10 * U(rng), 3 * U(rng), 5 + 40 * U(rng), (mth < 5 || mth > 9) ? int(U(rng) * 3) : 99);
+    for (int d = 0; d < 30; d++) t.d_melt[d] = (U(rng) < 0.3) ? 5 * U(rng) : 0.0;
+    hgtr::step(p, s, a, a, t);
+    if (it % 12 == 11) { s.m.clear(); }
+  }
+  CHECK(std::fabs(s.balance_error()) < 1e-8 * std::fmax(1.0, s.total()));
+  for (int l = 0; l < MAX_SOI_LAY; l++) { CHECK(s.soil[l] >= 0.0); CHECK(s.diss[l] >= 0.0); }
+  CHECK(s.cum.fire > 0.0); CHECK(s.cum.export_ > 0.0);
+  std::remove(T2DEP);
+}

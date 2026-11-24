@@ -130,6 +130,14 @@
 //     the transport sub-step day by day with the day's melt; the share qover / (qover + qinfl) of the day leaves as
 //     overland flow (export), the rest enters the top layer's dissolved pool.
 //   Coefficients come from C, GPP, water, snow and temperature only: the step stays affine and exactly conservative.
+// T2 phase 4 (docs_src/HG_T2_design.md section 3, WORK_NOTES_hg_t2 section 4), all with hg_t2 = 1, default off:
+//   hg_fire_ash > 0: of the fire-emitted Hg that came from burned soil (the soil donors' share of the step's pot), the
+//     fraction hg_fire_ash stays in the ash / char on the new top C layer (HG_ASH, internal); burned vegetation, standing
+//     dead and woody debris Hg is all emitted (Friedli et al. 2001).
+//   hg_t2_rts = 1: RTS particulate export: the slumped material's Hg leaves as particulate export (HG_PARTIC, part of
+//     HG_EXPORT), including the Hg of the RTS-respired C share that is not re-emitted (T1 returned it to the column).
+//   hg_wash > 0: canopy wash-off: the share hg_wash x P_rain / (P_rain + hg_wash_pref) of the month's canopy-intercepted dry
+//     Hg(II) goes to the ground with the throughfall instead of the leaves (HG_WASH, part of HG_DEP).
 // D7 (T2): hg_snow_sublim_loss = 0 (default): Hg of sublimated snow stays in the pack (concentrates) and leaves with
 // the melt (release fraction melt / (melt + SWE)); 1 = ORCHIDEE (sublimation share lost to the air).
 #include <cmath>
@@ -237,6 +245,16 @@ struct Params {
                               // phase-3 fit to the Toolik vegetation Hg(0) uptake ~4.1 ug/m2/yr (Obrist 2017; 1.0 gave 5.3)
   int    gs_ingpp    = 1;     // hg_gs_ingpp: 1 the stomatal uptake follows the PFT's N-unlimited GPP (INGPP; dvmdostem's canopy
                               // conductance is not N-limited, its N limitation scales GPP afterwards), 0 the N-limited GPP
+  // T2 phase 4 (see top)
+  double fire_ash    = 0.0;   // hg_fire_ash: fraction of the burned soil Hg retained in ash / char (0 = T1: all emitted).
+                              // Ku et al. 2018 ES&T 52:13366 (white ash: >= 90 % lost; black ash 34-83 % lost); Biswas et al. 2007
+                              // GBC 21 GB1005 (>95 % released above 300 C); Harden et al. 2004 GBC 18 GB3014 (FROSTFIRE, ~70 % of
+                              // the burned forest-floor Hg lost); phase-4 test value 0.1, range 0.03-0.3
+  int    t2_rts      = 0;     // hg_t2_rts: RTS particulate export (St Pierre et al. 2018 ES&T 52:14099) (needs hg_t2 = 1)
+  double wash        = 0.0;   // hg_wash: maximum wash-off fraction of the month's canopy-intercepted dry Hg(II) (0 = off;
+                              // Rea et al. 2000 ES&T 34:2418, Wright et al. 2016 Environ Rev 24:205: throughfall carries the
+                              // washed dry Hg(II)); phase-4 test value 0.5
+  double wash_pref   = 10.0;  // hg_wash_pref (mm/month): half-saturation rainfall of the wash-off
   bool   dep_comp    = false; // the deposition file has components (hg2_wet / hg2_dry / hg0_soil columns)
   std::vector<double> dep_w, dep_d2, dep_d0, dep_s0;   // components per row (ug/m2/yr)
 };
@@ -341,7 +359,8 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_t2_log_kd_org", &p.t2_log_kd_org, 0, 9}, {"hg_tau_sorb", &p.tau_sorb, 1e-3, 1e5}, {"hg_t2_rho_moss", &p.rho_moss, 0, 1000}, {"hg_v_adv", &p.v_adv, 0, 1},
             {"hg_z_runoff", &p.z_runoff, 0, 1}, {"hg_d_cryo", &p.d_cryo, 0, 1}, {"hg_z_cryo", &p.z_cryo, 1e-3, 100}, {"hg_d_bio", &p.d_bio, 0, 1},
             {"hg_fd", &p.fd, 0, 1}, {"hg_ev_z", &p.ev_z, 1e-4, 100}, {"hg_v_ground", &p.v_ground, 0, 1}, {"hg_gem", &p.gem, 0, 100},
-            {"hg_gs_m", &p.gs_m, 1, 100}, {"hg_gs_eff", &p.gs_eff, 0, 100}};
+            {"hg_gs_m", &p.gs_m, 1, 100}, {"hg_gs_eff", &p.gs_eff, 0, 100},
+            {"hg_fire_ash", &p.fire_ash, 0, 1}, {"hg_wash", &p.wash, 0, 1}, {"hg_wash_pref", &p.wash_pref, 1e-3, 1e4}};
   struct I { const char* k; int* v; int lo, hi; };
   I is[] = {{"hg_tracer", &p.tracer, 0, 1}, {"hg_mehg", &p.mehg, 0, 1}, {"hg_mehg_driver", &p.mehg_driver, 0, 1},
             {"hg_spinup", &p.spinup, 0, 1}, {"hg_transport", &p.transport, 0, 1}, {"hg_spinup_cycle", &p.spinup_cycle, 1, 50}, {"hg_spinup_closure", &p.spinup_closure, 0, 2}, {"hg_tr_year0", &p.tr_year0, -100000, 100000},
@@ -349,7 +368,8 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_t2", &p.t2, 0, 1}, {"hg_t2_foliar", &p.t2_foliar, 0, 2}, {"hg_t2_snow", &p.t2_snow, 0, 1},
             {"hg_t2_wetprec", &p.t2_wetprec, 0, 1}, {"hg_t2_photored", &p.t2_photored, 0, 1},
             {"hg_t2_diss", &p.t2_diss, 0, 1}, {"hg_snow_sublim_loss", &p.snow_sublim_loss, 0, 1},
-            {"hg_t2_evasion", &p.t2_evasion, 0, 1}, {"hg_t2_meltroute", &p.t2_meltroute, 0, 1}, {"hg_gs_ingpp", &p.gs_ingpp, 0, 1}};
+            {"hg_t2_evasion", &p.t2_evasion, 0, 1}, {"hg_t2_meltroute", &p.t2_meltroute, 0, 1}, {"hg_gs_ingpp", &p.gs_ingpp, 0, 1},
+            {"hg_t2_rts", &p.t2_rts, 0, 1}};
   for (const std::string& key : ms.getMemberNames()) {
     if (key.rfind("hg_", 0) != 0) { continue; }
     bool known = false;
@@ -387,6 +407,9 @@ inline std::string parse(const Json::Value& ms, Params& p) {
   if (p.t2_evasion == 1 && p.t2 != 1) { return "model_settings.hg_t2_evasion = 1 needs hg_t2 = 1"; }
   if (p.t2_foliar == 2 && p.t2 != 1) { return "model_settings.hg_t2_foliar = 2 needs hg_t2 = 1"; }
   if (p.t2_meltroute == 1 && !(p.t2_diss == 1 && p.transport == 1)) { return "model_settings.hg_t2_meltroute = 1 needs hg_t2_diss = 1 and hg_transport = 1"; }
+  if (p.fire_ash > 0.0 && p.t2 != 1) { return "model_settings.hg_fire_ash > 0 needs hg_t2 = 1"; }
+  if (p.t2_rts == 1 && p.t2 != 1) { return "model_settings.hg_t2_rts = 1 needs hg_t2 = 1"; }
+  if (p.wash > 0.0 && !(p.t2 == 1 && p.t2_foliar >= 1)) { return "model_settings.hg_wash > 0 needs hg_t2 = 1 and hg_t2_foliar >= 1"; }
   if (p.t2 == 1 && !p.dep_comp) { return "model_settings.hg_t2 = 1 needs an hg_dep_file with hg2_wet / hg2_dry / hg0_soil columns"; }
   return "";
 }
@@ -433,6 +456,7 @@ struct Flux {
   // T2 phase 3: BGC step: GPP by PFT (g C/m2/month; INGPP with hg_gs_ingpp = 1), air T (C), CO2 (ppm), layer T (C); transport step: daily melt (mm/day)
   double gpp[NUM_PFT] = {}; double ta = 0.0, co2 = 0.0; double ts[MAX_SOI_LAY] = {};
   double d_melt[31] = {};
+  double rain = 0.0;                        // T2 phase 4 (hg_wash, BGC step): the month's rainfall (mm)
 };
 
 struct Acc {
@@ -440,6 +464,8 @@ struct Acc {
   double drain = 0, down = 0;   // T1c diagnostics: drainage export (part of export_), organic -> mineral transfer
   double foliar = 0, snowdep = 0, snowred = 0, snowmelt = 0, photored = 0;   // T2 diagnostics (parts of uptake / dep / evasion; melt internal)
   double runoff = 0, mixdown = 0;   // T2 phase 2: overland-flow export (part of export_), net organic -> mineral mixing
+  double ash = 0, partic = 0, wash = 0;   // T2 phase 4: fire Hg kept in ash (internal), RTS particulate export (part of export_),
+                                         // canopy wash-off (part of dep)
   double soilev = 0, sink0 = 0, stomatal = 0, meltrun = 0;   // T2 phase 3: soil re-emission (part of evasion), ground Hg(0) sink (part of dep),
                                                              // stomatal uptake (part of foliar), melt Hg exported with the melt overland flow (part of runoff)
   void clear() { *this = Acc(); }
@@ -449,6 +475,7 @@ struct Acc {
     foliar += o.foliar; snowdep += o.snowdep; snowred += o.snowred; snowmelt += o.snowmelt; photored += o.photored;
     runoff += o.runoff; mixdown += o.mixdown;
     soilev += o.soilev; sink0 += o.sink0; stomatal += o.stomatal; meltrun += o.meltrun;
+    ash += o.ash; partic += o.partic; wash += o.wash;
   }
   double net() const { return uptake + dep - evasion - export_ - fire + spin; }   // spin: spin-up jump
 };
@@ -695,13 +722,19 @@ inline double surface_t2_(const Params& p, State& s, const Flux& f, Acc& acc, do
   const double wet = std::fmax(0.0, f.dep_wet), d2 = std::fmax(0.0, f.dep_dry2), d0 = std::fmax(0.0, f.dep_dry0);
   // foliar uptake
   double fc = 0.0;   // canopy fraction that fixes dry deposition
+  // T2 phase 4 (hg_wash): wash-off share of the intercepted dry Hg(II) (to the ground with the throughfall)
+  const double fw = (p.wash > 0.0 && f.rain > 0.0) ? p.wash * f.rain / (f.rain + p.wash_pref) : 0.0;
+  double washed = 0.0;
   if (p.t2_foliar == 1) {
     double w[NUM_PFT] = {}; double tw = 0.0;
     for (int i = 0; i < NUM_PFT; i++) {
       if (f.vegcov[i] > 0.0) { w[i] = p.fol_scale * f_fix(p, f.lai[i]) * f.vegcov[i] * (1.0 - fs); tw += w[i]; }
     }
     const double sc = (tw > 1.0) ? 1.0 / tw : 1.0;
-    for (int i = 0; i < NUM_PFT; i++) { fol[i] = w[i] * sc * (d0 + d2); fc += w[i] * sc; acc.foliar += fol[i]; }   // booked as uptake in the leaf loop
+    for (int i = 0; i < NUM_PFT; i++) {
+      const double wo = w[i] * sc * d2 * fw; washed += wo;
+      fol[i] = w[i] * sc * (d0 + d2) - wo; fc += w[i] * sc; acc.foliar += fol[i];   // booked as uptake in the leaf loop
+    }
   } else if (p.t2_foliar == 2) {   // T2 phase 3 (D3): stomatal Hg(0) uptake from GPP + LAI interception of dry Hg(II)
     double w[NUM_PFT] = {}; double tw = 0.0;
     for (int i = 0; i < NUM_PFT; i++) {
@@ -711,11 +744,13 @@ inline double surface_t2_(const Params& p, State& s, const Flux& f, Acc& acc, do
     const double k = stomatal_k(p, f);   // ug Hg per g C of GPP
     for (int i = 0; i < NUM_PFT; i++) {
       const double st = k * std::fmax(0.0, f.gpp[i]);
-      fol[i] = w[i] * sc * d2 + st; fc += w[i] * sc; acc.foliar += fol[i]; acc.stomatal += st;
+      const double wo = w[i] * sc * d2 * fw; washed += wo;
+      fol[i] = w[i] * sc * d2 - wo + st; fc += w[i] * sc; acc.foliar += fol[i]; acc.stomatal += st;
     }
   }
   // Hg(II) to the ground / snow (dry Hg(II) intercepted by the canopy removed); soil Hg(0) sink to the soil
-  const double g = wet + d2 * (1.0 - fc);
+  const double g = wet + d2 * (1.0 - fc) + washed;
+  acc.wash += have_soil ? washed : washed * fs;   // booked in dep with the rest of g
   const double gsnow = g * fs, gground = g - gsnow;
   const double fpr = (p.t2_photored == 1) ? std::fmin(1.0, std::fmax(0.0, p.pr_a * std::exp(-p.pr_b * std::fmax(0.0, f.sw)))) : 0.0;
   const double pr = gground * fpr;
@@ -856,6 +891,9 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
   acc.unexpl_closs = D - cflow;
 
   double P = 0.0; double give[NPOOL] = {}; double give_soil[MAX_SOI_LAY] = {}; double give_col = 0.0;
+  // T2 phase 4 switches of this step (fire step: f.burn > 0; RTS step: f.lateral / f.pot_decomp > 0)
+  const bool ash4 = (p.t2 == 1 && p.fire_ash > 0.0 && f.burn > 0.0 && nb > 0);
+  const bool rts4 = (p.t2 == 1 && p.t2_rts == 1 && (f.lateral > 0.0 || f.pot_decomp > 0.0));
   for (int i = 0; i < NPOOL; i++) {
     if (dint[i] < 0) { give[i] = std::fmin(*hp[i], -dint[i] * r[i] * g); *hp[i] -= give[i]; P += give[i]; }
   }
@@ -914,10 +952,25 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
     const double hb = P * std::fmax(0.0, f.burn) * sc / cflow;
     const double hl = P * std::fmax(0.0, lateral) * sc / cflow;
     const double hd = P * std::fmax(0.0, pot_decomp) * sc / cflow;
-    acc.fire += hb; acc.export_ += hl + hd * f_exp; acc.evasion += hd * fev_pot;
+    double ash = 0.0;   // phase 4: burned soil Hg kept in the ash (soil donors' share of the pot)
+    if (ash4) {
+      double gs = give_col, ga = give_col;
+      for (int l = 0; l < MAX_SOI_LAY; l++) { gs += give_soil[l]; ga += give_soil[l]; }
+      for (int i = 0; i < NPOOL; i++) { ga += give[i]; }
+      if (ga > 0.0) { ash = hb * p.fire_ash * gs / ga; }
+    }
+    acc.fire += hb - ash; acc.ash += ash; acc.evasion += hd * fev_pot;
     if (ev3) { acc.soilev += hd * fev_pot; }
-    P -= hb + hl + hd * (fev_pot + f_exp);
+    if (rts4) {   // phase 4: the slumped material leaves as particulate export, with the Hg of its respired C not re-emitted
+      const double xp = hl + hd * (1.0 - fev_pot);
+      acc.export_ += xp; acc.partic += xp;
+      P -= hb + hl + hd;
+    } else {
+      acc.export_ += hl + hd * f_exp;
+      P -= hb + hl + hd * (fev_pot + f_exp);
+    }
     if (P < 0.0) { P = 0.0; }
+    if (ash > 0.0) { s.soil[topc] += ash; }
   }
   // ---- receivers
   if (P > 0.0) {
