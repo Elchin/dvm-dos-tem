@@ -240,3 +240,12 @@ daily sorption / overland / lateral / vertical export, and the monthly cryo/biot
 sorbent mass (hg_t2_rho_moss) and lets the removal fractions act together. hg_t2_log_kd_org was refit to 3.5 and stays
 provisional until phase 5; D7 is the default. All identity, conservation and unit checks pass
 (WORK_NOTES_hg_t2.md section 2). Next is phase 3 (D3, GPP/stomatal foliar uptake).
+
+## 15. Phase 3 status (2026-11-24)
+Done on local feat/hg-t2: e3f1c3c2, 4c0d6914, 98aa09ee (+ docs). Three switches, all default off:
+- hg_t2_evasion: per-layer re-emission fd x (1 - f_snow) x [T > 0] x exp(-z / ev_z), plus a process ground Hg(0) sink.
+- hg_t2_foliar 2 (D3): stomatal uptake from (N-unlimited) GPP, CLM5-Hg / Medlyn, calibrated with hg_gs_eff 0.75. The LAI scheme remains hg_t2_foliar 1.
+- hg_t2_meltroute: snowmelt Hg delivered daily with the melt.
+The D8 sensitivity is done; the stem/root ratios stay as they were. Toolik uptake (3.99 stomatal) and net Hg(0) (6.0) match
+Obrist 2017. Organic Hg:C and export are now above target at all sites, which is the main phase-5 item.
+Checks: WORK_NOTES_hg_t2.md section 3.
