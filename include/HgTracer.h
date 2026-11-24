@@ -107,11 +107,13 @@
 // layer (hg_f_export is not used: the export is explicit). Once a month (transport sub-step, C-neutral) the month's
 // days are stepped with the model's daily water (Soil_Env qinfl, qover, Richards layer_drain) and daily layer liq / ice:
 //   sorption  diss += (phi (soil + diss) - diss) (1 - exp(-1 day / hg_tau_sorb)), phi = liq / (liq + Kd M)
-//             (Kd: hg_t2_log_kd_org / hg_log_kd_min, M as T1c);
+//             (Kd: hg_t2_log_kd_org / hg_log_kd_min, M as T1c; moss layers, which carry no soil C: M = dz x
+//             hg_t2_rho_moss, the moss dry bulk density, phase-2 refit WORK_NOTES_hg_t2 section 2);
 //   overland  diss of the layers starting above hg_z_runoff (ORCHIDEE 4.5 cm) x qover / (qover + their liq) -> export;
 //   lateral   diss_l x layer_drain_l / liq_l -> export (drainage);
 //   vertical  diss_l x hg_v_adv x q_l / liq_l to the layer below, q_l as T1c (infiltration not drained laterally,
-//             removed linearly with depth; zero at the frost table); outflow fractions capped at 0.9;
+//             removed linearly with depth; zero at the frost table); overland, lateral and vertical fractions act
+//             together on the day's diss (no ordering bias), their sum capped at 0.9;
 // then cryo/bioturbation of the sorbed Hg in the thawed zone (ORCHIDEE cryoturbate_Hg): D = hg_d_cryo (1 - z / hg_z_cryo)
 //   + hg_d_bio (m2/yr), explicit, flux = D dt (c_l - c_l+1) / dz_mid with c = Hg / dz, coefficient capped at 0.25 dz.
 // A geometry change (re-division, burn, slump) re-sorbs diss into soil first (diss re-equilibrates within days).
@@ -196,7 +198,10 @@ struct Params {
   // T2 phase 2 (see top)
   int    t2_diss     = 0;     // hg_t2_diss: explicit dissolved pool + daily export + cryo/bioturbation (needs hg_t2 = 1)
   double t2_log_kd_org = 3.3; // hg_t2_log_kd_org (log10 L/kg): organic Kd with hg_t2_diss (refit, WORK_NOTES_hg_t2 section 2)
-  double tau_sorb    = 5.0;   // hg_tau_sorb (days): sorption relaxation time
+  double tau_sorb    = 0.25;  // hg_tau_sorb (days): sorption relaxation time (Hg(II)-soil sorption near equilibrium within
+                              // hours, Yin et al. 1996 J Environ Qual 25:837; phase-2 scan: tau <= 0.5 d all alike)
+  double rho_moss    = 30.0;  // hg_t2_rho_moss (kg/m3): moss-layer dry bulk density as its sorbent mass (live + dead
+                              // feather moss / Sphagnum 10-50 kg/m3, O'Donnell et al. 2009 Soil Sci 174:646)
   double v_adv       = 0.2;   // hg_v_adv: dissolved Hg advection as a fraction of the water flux (ORCHIDEE)
   double z_runoff    = 0.045; // hg_z_runoff (m): depth of the overland-flow mixing zone (ORCHIDEE runoff, top 4.5 cm)
   double d_cryo      = 1.0e-3; // hg_d_cryo (m2/yr): cryoturbation diffusivity at the surface (ORCHIDEE cryoturbate_Hg)
@@ -303,7 +308,7 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_fol_fmax", &p.fol_fmax, 0, 1}, {"hg_fol_lai", &p.fol_lai, 1e-3, 100}, {"hg_fol_scale", &p.fol_scale, 0, 100},
             {"hg_snow_kred", &p.snow_kred, 0, 100}, {"hg_snow_photic", &p.snow_photic, 0, 100}, {"hg_snow_rho", &p.snow_rho, 10, 1000},
             {"hg_swe_full", &p.swe_full, 1e-3, 1e4}, {"hg_pr_a", &p.pr_a, 0, 1}, {"hg_pr_b", &p.pr_b, 0, 10},
-            {"hg_t2_log_kd_org", &p.t2_log_kd_org, 0, 9}, {"hg_tau_sorb", &p.tau_sorb, 1e-3, 1e5}, {"hg_v_adv", &p.v_adv, 0, 1},
+            {"hg_t2_log_kd_org", &p.t2_log_kd_org, 0, 9}, {"hg_tau_sorb", &p.tau_sorb, 1e-3, 1e5}, {"hg_t2_rho_moss", &p.rho_moss, 0, 1000}, {"hg_v_adv", &p.v_adv, 0, 1},
             {"hg_z_runoff", &p.z_runoff, 0, 1}, {"hg_d_cryo", &p.d_cryo, 0, 1}, {"hg_z_cryo", &p.z_cryo, 1e-3, 100}, {"hg_d_bio", &p.d_bio, 0, 1}};
   struct I { const char* k; int* v; int lo, hi; };
   I is[] = {{"hg_tracer", &p.tracer, 0, 1}, {"hg_mehg", &p.mehg, 0, 1}, {"hg_mehg_driver", &p.mehg_driver, 0, 1},
@@ -433,6 +438,7 @@ struct State {
 };
 
 inline bool is_mineral(int type) { return type >= 3; }   // CohortData m_soil.type: 0 moss, 1 shallow, 2 deep, 3 mineral
+inline bool is_moss(int type) { return type == 0; }
 
 // Initialize Hg from C x RHgC (soil by layer type; vegetation, standing dead and woody debris at the
 // tissue ratios: leaf ratio for standing dead and woody debris).
@@ -521,7 +527,8 @@ inline void diss_transport_(const Params& p, State& s, const Snap& b, const Flux
   { double z = 0.0;
     for (int l = 0; l < nb; l++) {
       const bool mn = is_mineral(b.type[l]);
-      M[l] = mn ? (1.0 - std::fmin(1.0, std::fmax(0.0, f.por[l]))) * std::fmax(0.0, b.dz[l]) * 2650.0 : std::fmax(0.0, b.soil[l]) * 2.0e-3;
+      M[l] = mn ? (1.0 - std::fmin(1.0, std::fmax(0.0, f.por[l]))) * std::fmax(0.0, b.dz[l]) * 2650.0
+                : (is_moss(b.type[l]) ? std::fmax(0.0, b.dz[l]) * p.rho_moss : std::fmax(0.0, b.soil[l]) * 2.0e-3);
       ztop[l] = z; z += std::fmax(0.0, b.dz[l]);
     } }
   const int nd = std::min(31, std::max(0, f.nd));
@@ -545,28 +552,28 @@ inline void diss_transport_(const Params& p, State& s, const Snap& b, const Flux
     if (tb < 0 || !(Z > 0.0)) { continue; }
     // overland flow: mixing zone = thawed layers starting above z_runoff (at least the top layer)
     const double qo = std::fmax(0.0, f.dq_over[d]);
+    double fo = 0.0; int nz = 0;
     if (qo > 0.0) {
-      double lz = 0.0; int nz = 0;
+      double lz = 0.0;
       for (int l = 0; l <= tb; l++) { if (l == 0 || ztop[l] < p.z_runoff) { lz += std::fmax(0.0, f.d_liq[d][l]); nz = l + 1; } }
-      const double fo = qo / (qo + lz);
-      for (int l = 0; l < nz; l++) { const double x = s.diss[l] * fo; s.diss[l] -= x; acc.export_ += x; acc.runoff += x; }
+      fo = qo / (qo + lz);
     }
-    // lateral drainage and vertical advection (T1c water profile)
+    // lateral drainage and vertical advection (T1c water profile); all fractions act on the same diss
     const double qi = std::fmax(0.0, f.dq_in[d]);
-    if (!(qi > 0.0 || D > 0.0)) { continue; }
-    double out[MAX_SOI_LAY] = {}, lat[MAX_SOI_LAY] = {}, z = 0.0, Dc = 0.0;
+    double ov[MAX_SOI_LAY] = {}, out[MAX_SOI_LAY] = {}, lat[MAX_SOI_LAY] = {}, z = 0.0, Dc = 0.0;
     for (int l = 0; l <= tb; l++) {
       z += std::fmax(0.0, b.dz[l]); const double dl = std::fmax(0.0, f.d_drain[d][l]); Dc += dl;
       const double qv = (l < tb) ? std::fmax(0.0, (qi - D) * (1.0 - z / Z) + (D - Dc)) : 0.0;
       const double liq = std::fmax(0.0, f.d_liq[d][l]);
-      double fv, fl;
-      if (liq > 1.0e-9) { fv = p.v_adv * qv / liq; fl = dl / liq; } else { fv = 0.0; fl = 0.0; }
-      const double ft = fv + fl;
-      if (ft > 0.9) { fv *= 0.9 / ft; fl *= 0.9 / ft; }
-      out[l] = fv * s.diss[l]; lat[l] = fl * s.diss[l];
+      double fv = 0.0, fl = 0.0, fr = (l < nz) ? fo : 0.0;
+      if (liq > 1.0e-9) { fv = p.v_adv * qv / liq; fl = dl / liq; }
+      const double ft = fv + fl + fr;
+      if (ft > 0.9) { fv *= 0.9 / ft; fl *= 0.9 / ft; fr *= 0.9 / ft; }
+      ov[l] = fr * s.diss[l]; out[l] = fv * s.diss[l]; lat[l] = fl * s.diss[l];
     }
     for (int l = 0; l <= tb; l++) {
-      s.diss[l] -= out[l] + lat[l]; acc.export_ += lat[l]; acc.drain += lat[l];
+      s.diss[l] -= ov[l] + out[l] + lat[l];
+      acc.export_ += ov[l] + lat[l]; acc.runoff += ov[l]; acc.drain += lat[l];
       if (l < tb) { s.diss[l + 1] += out[l]; if (!is_mineral(b.type[l]) && is_mineral(b.type[l + 1])) { acc.down += out[l]; } }
     }
   }

@@ -648,7 +648,7 @@ hgtr::Flux dflux(int nl, int nd, double qin, double qover, double drain_l2, doub
 
 TEST_CASE("hg_t2_diss parse: defaults, needs hg_t2; D7 default keeps sublimated snow Hg in the pack") {
   hgtr::Params p; REQUIRE(hgtr::parse(ms0(), p) == "");
-  CHECK(p.t2_diss == 0); CHECK(p.tau_sorb == 5.0); CHECK(p.v_adv == 0.2); CHECK(p.z_runoff == 0.045); CHECK(p.d_cryo == 1e-3); CHECK(p.d_bio == 1e-4);
+  CHECK(p.t2_diss == 0); CHECK(p.tau_sorb == 0.25); CHECK(p.rho_moss == 30.0); CHECK(p.v_adv == 0.2); CHECK(p.z_runoff == 0.045); CHECK(p.d_cryo == 1e-3); CHECK(p.d_bio == 1e-4);
   CHECK(p.snow_sublim_loss == 0);
   Json::Value a = ms0(); a["hg_tracer"] = 1; a["hg_t2_diss"] = 1; CHECK(hgtr::parse(a, p) != "");
   hgtr::Params q = t2params(); hgtr::State s; hgtr::Snap c = column(5); hgtr::initialize(q, s, c);
@@ -703,6 +703,25 @@ TEST_CASE("hg_t2_diss transport: overland from the top zone, lateral drainage, v
   CHECK(std::fabs(s.total() - (h0 - s.m.export_)) < 1e-13 * h0);
   // all frozen: nothing moves
   hgtr::State t = s; t.m.clear(); hgtr::Flux z = dflux(6, 3, 10.0, 5.0, 2.0, 20.0, 0); hgtr::step(p, t, a, a, z); CHECK(t.m.export_ == 0.0);
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_diss moss sorbent (dz x rho_moss) and joint removal fractions capped at 0.9") {
+  hgtr::Params p = t2dparams(); p.d_cryo = 0; p.d_bio = 0; hgtr::State s; hgtr::Snap a = column(5);
+  a.type[0] = 0; a.soil[0] = 0.0; a.dz[0] = 0.02; hgtr::initialize(p, s, a);
+  s.soil[0] = 5.0; s.h_init = s.total(); s.cum.clear();
+  const double h0 = s.total();
+  for (int m = 0; m < 3; m++) { hgtr::Flux f = dflux(5, 30, 0.0, 0.0, 0.0, 30.0); hgtr::step(p, s, a, a, f); }
+  const double phi = 30.0 / (30.0 + std::pow(10.0, p.t2_log_kd_org) * 0.02 * p.rho_moss);
+  CHECK(s.diss[0] / (s.diss[0] + s.soil[0]) == doctest::Approx(phi).epsilon(1e-6));
+  CHECK(std::fabs(s.total() - h0) < 1e-13 * h0);
+  // huge overland + drainage + infiltration, no sorption: one day removes at most 90 % of each layer's diss
+  hgtr::State t; hgtr::Snap c = column(5); hgtr::initialize(p, t, c); p.tau_sorb = 1e5;
+  for (int l = 0; l < 5; l++) { t.diss[l] = 1.0; }
+  const double t0 = t.total();
+  hgtr::Flux g = dflux(5, 1, 1.0e4, 1.0e4, 1.0e3, 1.0, 99); hgtr::step(p, t, c, c, g);
+  for (int l = 0; l < 5; l++) { CHECK(t.diss[l] >= 0.1 - 1e-4); }   // (tau 1e5 d: ~1e-5 sorption)
+  CHECK(std::fabs(t.total() - (t0 - t.m.export_)) < 1e-13 * t0);
   std::remove(T2DEP);
 }
 
