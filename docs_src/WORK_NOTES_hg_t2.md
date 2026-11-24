@@ -505,7 +505,7 @@ fit6c.py, runP5b_final.sh, plots_p6.py (runP5.sh gained the ENSGEN option; old c
    mineral layer's dissolved pool (booked in the downward flux, so the column balance is unchanged). f_conn = 1 is
    identical to off (unit test).
 3. **Ground Hg(0) sink under snow** (hg_t2_snowsink 0/1, hg_v_snow m/s): with snow fraction fs = min(1, SWE / swe_full),
-   sink = ((1 - fs) v_ground + fs v_snow) x GEM x veg_scale x dt; off keeps (1 - fs) v_ground (phase 3). Needs hg_t2_evasion.
+   sink = ((1 - fs) v_ground + fs v_snow) x GEM x veg_scale x dt; off: v_ground in all months (phase 3; see the correction in section 8). Needs hg_t2_evasion.
 4. **hg_t2 = 1 takes the calibrated preset** (hg_t2_preset, default 1; T2-only). t2_preset_() sets the fitted switches and
    values before the explicit keys are read, so any explicit hg_* key wins; hg_t2_preset 0 gives the old component defaults
    (used by the older unit tests). Dependent switches follow an explicit parent switch-off (e.g. hg_t2_diss 0 also turns
@@ -621,3 +621,113 @@ pathways), HPC 5.80 -> 2.71, Toolik 0.24 -> 4.77; Toolik uptake 4.06 and net Hg(
 Obrist 2017; %MeHg classes match Thompson 2025. Main remaining gap: export at TVC / Toolik vs Zolkos-type yields and the
 Ro edges (open item 1 above). Cost: T2 5.125 core-h (ledger 7.184 / 7.537). Use: hg_tracer 1, hg_mehg 1, hg_t2 1 (preset),
 case set cs/sites_d4 (D4 TVC restart). Figures: docs_src/figures_hg_t2/hg_t2_fig1-13.
+
+## 8. Phase 5c: flow-path retention routed below the mixing zone (option A), refit (2026-11-24)
+
+Elchin's decision (verbatim): "Go with option A, below-mixing-zone routing, up to 1.2 core-h". Commits on local
+feat/hg-t2 (not pushed): c19c2b9c (code + tests, default off), 2972fc49 (preset values + config/hg_t2_calibrated.json), plus
+this docs commit. Binaries: binT2p5d (md5 7da12750, c19c2b9c), binT2p5e (md5 54a45cff, 2972fc49, final). Scripts in
+~/tem-dev/hg_t2/src: runP5c.sh (phase-5c cap), ledger5c.py, runP5c_probe.sh, runP5c_fd.sh, gn7.py, runP5c_v1.sh,
+runP5c_v2.sh, runP5c_final.sh, plots_p7.py. Backups of the 5b sources: p5c_src/*.p5b.
+Correction to section 6: with hg_t2_snowsink = 0 the phase-3 ground sink uses v_ground in every month regardless of snow
+(equivalent to v_snow = v_ground), not (1 - f_snow) v_ground.
+
+### Why the 5b retention raised Hg:C, and the change
+In 5b (P5H) the retained share 1 - f_conn of the organic-layer overland / lateral export went to the first mineral layer,
+just below the organic horizon and inside the thawed zone. Cryo/bioturbation (diffusive in Hg per unit depth) then carried it
+back up, so organic Hg:C rose (TVC Ro 0.41 -> 0.52, Toolik 0.45 -> 0.66) while export fell. A probe with the receiving depth
+at 0.5 m (P5K, still in the active layer, ALD 0.6-1.0 m) behaved the same (Ro 0.52 / 0.29 / 0.65).
+
+New switch (include/HgTracer.h, inside hg_t2, needs hg_t2_xpath = 1; component default 0):
+- hg_t2_deeproute 0/1, hg_f_deep in [0, 1] (default 1), hg_z_deep (m, default 1.0): the share f_deep of the retained Hg goes
+  to the dissolved pool of the layer containing depth z_deep (never above the first mineral layer; the deepest layer if the
+  column is shallower); the rest stays with the first mineral layer as in 5b. Booked in HG_DOWN like the 5b retention.
+- With z_deep below the active layer the Hg sorbs in frozen mineral soil, outside the monthly cryo/bioturbation of the thawed
+  zone and below the daily drainage, so it does not return to the organic layers. It is a 1-D stand-in for retention at the
+  base of the active layer / transient layer and its incorporation into permafrost.
+- Geometry-only coefficients: the step stays affine and exactly conservative. Off, f_deep = 0 or z_deep above the first
+  mineral layer are bit-identical to 5b (unit tests).
+- Parse: needs hg_t2 = 1 and hg_t2_xpath = 1; under the preset an explicit hg_t2_xpath 0 also turns it off.
+- Unit tests (tests/unit/test_hg_tracer.cpp, 4 new cases): parse / dependencies / ranges; routing to the layer at z_deep, the
+  f_deep split and the identities above; below a frozen layer with strong mixing the organic layers end exactly as with no
+  retention and all retained Hg is in the frozen layer; a random all-on balance test with geometry changes.
+  Standalone Hg tests 55/55 (2579 assertions); full suite 537/537 (8 known may-fail assertions).
+
+### Refit (local Gauss-Newton / Broyden on site runs)
+The 5b emulator overpredicted near the optimum, so 5c fits directly on site runs:
+- Probe P5J = 5b preset + xpath f_conn 0.6 + deep route z_deep 1.5 m: Ro unchanged at all sites (0.409 / 0.268 / 0.448, as P5G),
+  export 3.69 / 1.62 / 2.86 (from 6.15 / 2.71 / 4.77), Rm 1.47 / 1.58 / 1.46 (from 1.25 / 1.43 / 1.35). The mechanism works as
+  intended. z_deep only needs to be below the active layer, so it is fixed at 1.5 m (TVC / HPC / Toolik ALD <= 0.78 / 0.99 / 0.76 m).
+- Jacobian: 7 one-at-a-time runs around P5J (kd_org -0.15, dlog_kd_hum +0.3, f_conn 0.45, fd x1.25, v_ground x1.3, v_snow x1.2,
+  ev_z 0.3). In log units per step: kd_org moves Toolik Ro most (+0.30 per +0.15) and HPC Ro least (+0.07); f_conn moves only
+  export (+0.29 per +0.15) and Rm; fd lowers Ro and Rm at TVC / HPC; v_ground / v_snow set Toolik net Hg(0) and winter share;
+  dlog_kd_hum has no effect on any target (|effect| <= 0.05), so it is not fitted (kept at 0.242).
+- Proposal: minimise the 12-band cost (fit5 bands) of the linear model inside a trust radius of 1.5 steps, bands shrunk by
+  3-5 % of their width to aim inside; two verification rounds with Broyden updates (V7a/b, V8a/b), each with ev_z free (<= 0.5)
+  and ev_z fixed at 0.3 (side comparison). Run costs (12 bands): P5G 6.86, P5J 1.46, V7a 0.013, V7b 0.039, V8a 0.008, V8b 0.014.
+- Fitted set (V8a = preset): t2_log_kd_org 3.377, t2_dlog_kd_hum 0.242 (kdsplit on, not identified), hg_t2_xpath 1,
+  hg_f_conn 0.53582, hg_t2_deeproute 1, hg_f_deep 1, hg_z_deep 1.5, hg_fd 0.068765, hg_ev_z 0.50, hg_v_ground 4.3731e-5,
+  hg_v_snow 1.3038e-4; unchanged: snow_kred 0.090, t2_r_stem / r_root 0.0044 / 0.0067, t2_k_meth_proxy 71, k_meth_ch4 3250.
+- ev_z: with the deep route ev_z is no longer constrained. V8b (ev_z 0.3, kd 3.355, f_conn 0.513, fd 0.0724, v_ground 4.19e-5,
+  v_snow 1.303e-4) fits as well (cost 0.014; HPC Rm 1.71, 1 % above the band). It is the physically shallower option.
+- The binding pair is HPC organic Ro (>= 0.29) vs HPC mineral Rm (<= 1.69): fd moves both the same way and the deep route adds
+  to Rm. Both sit on their band edges in V8a.
+
+### Results (last 20 yr; ug/m2/yr)
+
+| Quantity | Target | TVC 5b -> 5c | HPC 5b -> 5c | Toolik 5b -> 5c |
+|---|---|---|---|---|
+| Ro (organic Hg:C) | 0.29-0.41 | 0.409 -> 0.407 | 0.268 -> 0.291 | 0.448 -> 0.391 |
+| Rm (mineral Hg:C) | 0.97-1.69 | 1.254 -> 1.545 | 1.430 -> 1.689 | 1.351 -> 1.477 |
+| Export | 0.8-4.0 | 6.15 -> 3.83 | 2.71 -> 1.85 | 4.77 -> 2.64 |
+| Vegetation uptake | Toolik 4.1 | 5.42 -> 5.42 | 4.14 -> 4.14 | 4.06 -> 4.06 |
+| Net Hg(0) | Toolik 6.5 +- 0.7 | 1.65 -> 2.52 | 0.46 -> 0.97 | 6.40 -> 6.50 |
+| Winter share of net Hg(0) | Toolik 0.37 | - | - | 0.367 -> 0.370 |
+| %MeHg (JJAS active layer) | 0.7 / 0.1 / fen 2 | 0.709 -> 0.709 | 0.100 -> 0.100 | fen 2.05 -> 2.03 |
+| Evasion | - | 7.13 -> 6.24 | 6.94 -> 6.39 | 1.82 -> 1.71 |
+| Column storage change | - | 0.13 -> 3.32 | 1.30 -> 2.66 | 4.36 -> 6.59 |
+
+All 12 calibration bands are met (V8a cost 0.008, against 6.86 for the 5b preset). The rise in column storage is the routed
+Hg accumulating in frozen mineral soil around 1.2-1.7 m (figure 16): a permafrost sink of about 2.3 (TVC), 0.9 (HPC) and
+2.1 (Toolik) ug/m2/yr that the 5000-yr spin-up jump does not bring to equilibrium.
+
+### Checks (binT2p5e unless noted)
+
+| Check | Result |
+|---|---|
+| hg_t2 = 1 preset only (P5F2) vs explicit V8a (binT2p5d) | 0 differing variables (all 6 site/stage dirs) |
+| P5R2 (binT2p5d, 5b preset) vs P5G | 0 differences (deep route off == 5b) |
+| hg_t2 = 0 (P5T1c) vs T1 final (VF4) | only the restart hg_state length (117 vs 94) |
+| P5T1c vs P5T1 (5a) | 0 differences |
+| P5I7 Hg off 2-case (sub_off) | RESULT: PASS |
+| P5I8 all on via the preset (new case set cs/sub_t2i) | RESULT: PASS; C/N/water/energy identical with the tracer on: True |
+| P5I9 Hg off 8-case prod | RESULT: PASS |
+| Balance error | <= 2e-9 ug/m2 in every run |
+| Unit tests | 537/537 (8 known may-fail) in both builds; Hg standalone 55/55 (2579 assertions); run only inside the builds or with nothing else running |
+| Rules | <= 4 processes; -j2 builds; segments <= 75 yr; nohup; no parameters/ edits; no deletions; restarts copied, never reused |
+
+### Cost (core-h, ledger section "PHASE 5c" in LEDGER.txt)
+
+| Item | Core-h |
+|---|---|
+| Probes P5R2, P5J, P5K | 0.088 |
+| One-at-a-time runs F7k/h/c/f/g/s/e | 0.205 |
+| Verification V7a/b, V8a/b | 0.117 |
+| Final chain (P5F2 with CH4, P5T1c, P5I7-9) | 0.273 |
+| **Phase 5c total** | **0.683 of 1.2** |
+
+Ledger total 7.867 (5c start 7.184).
+
+### Open items after 5c
+1. The routed Hg is a permafrost sink that keeps growing: column storage rises by 2-3 ug/m2/yr at TVC / HPC. It needs a check
+   against deep permafrost Hg profiles (Schuster 2018, Olson 2018) and a decision on whether the share of retention reaching
+   the permafrost (f_deep < 1) should be lower. Under thaw (transient warming) this Hg becomes mobile, which is a real
+   feedback, but it is untested here.
+2. HPC organic Ro and mineral Rm are both on their band edges: the 1-D column cannot raise HPC organic Hg:C without raising
+   mineral Hg:C.
+3. ev_z is unconstrained (0.3 and 0.5 fit equally); the preset keeps 0.5 (best cost), V8b (0.3) is the physically shallower
+   alternative.
+4. t2_dlog_kd_hum has no effect: kdsplit could be dropped (structure simplification).
+5. f_conn 0.54 means 46 % of the organic-layer export is retained, a single value for all sites. There is no site or hydrology
+   dependence (riparian / hillslope connectivity), and Toolik export (2.6) now sits below the Kuparuk-type yields used earlier.
+6. Unchanged: D5 (hg_t2 stays default 0), k_meth_ch4 shared with T1, D6 DOC export not implemented.

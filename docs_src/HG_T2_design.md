@@ -287,3 +287,19 @@ Done on local feat/hg-t2 (not pushed): d787f0fd (code + tests), 4339a0fc (preset
 ## 19. T2 final status
 T2 phases 1-5b are complete on local feat/hg-t2. Decisions left for Elchin: D5 (default-on of hg_t2 with the tracer), D6
 (DOC pool / deeper retention path for the export misfit), ev_z 0.5 vs 0.3, keeping or dropping kdsplit, and a T2 copy of k_meth_ch4.
+
+## 20. Phase 5c status (2026-11-24)
+Done on local feat/hg-t2 (not pushed): c19c2b9c (code + tests), 2972fc49 (preset values), + docs. Binary binT2p5e.
+- Option A (approved): hg_t2_deeproute (needs hg_t2_xpath) with hg_f_deep / hg_z_deep sends the flow-path retention (1 - f_conn)
+  to the layer at z_deep below the cryo/bioturbation zone instead of the first mineral layer. It is bit-identical to 5b when
+  off, and conservative.
+- The mechanism behaves as intended: with retention at 1.5 m, Ro is unchanged and export falls by 40 %. Retention inside the
+  active layer (0.5 m, or the first mineral layer) mixes back and raises Ro.
+- Refit by local Gauss-Newton / Broyden on site runs (12 runs): kd_org 3.377, f_conn 0.536, z_deep 1.5, fd 0.0688, ev_z 0.5,
+  v_ground 4.37e-5, v_snow 1.304e-4; dlog_kd_hum 0.242 kept (no effect). All 12 bands met (cost 0.008, was 6.86).
+- Export 3.83 / 1.85 / 2.64 at TVC / HPC / Toolik. Ro 0.407 / 0.291 / 0.391. Rm 1.545 / 1.689 / 1.477. Toolik net Hg(0) 6.50,
+  winter share 0.370. %MeHg 0.709 / 0.100 / fen 2.03.
+- ev_z 0.3 fits equally (V8b).
+- New caveat: the routed Hg accumulates as a permafrost sink of 1-2.3 ug/m2/yr (column storage up 2-3 ug/m2/yr at TVC / HPC).
+- All identity, conservation and unit checks pass. 5c cost 0.683 of 1.2 core-h; ledger 7.867.
+- Details: WORK_NOTES_hg_t2.md section 8.
