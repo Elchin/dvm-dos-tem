@@ -223,3 +223,13 @@ The remaining T1 cap leaves 0.34 core-h, enough for phase 1 only. Phases 2-5 nee
 * D4: C spin-up protocol for TVC (longer eq stage) before the Hg validation.
 * D5: whether T2 defaults (hg_t2 = 1) become default with the tracer once phase 5 passes.
 * D6: DOC pool (faithful option) is the only element that would feed back on C; out of T2 unless approved.
+* D7 (from phase 1): snow sublimation. ORCHIDEE loses the Hg of sublimated snow to the air, and that term gives most of
+  the 80-86 % snow re-emission. Alternative: Hg stays in the pack (concentrates) and leaves with the melt.
+* D8 (from phase 1): the stem/root NPP x r pathway still carries 4.1 of TVC's 5.3 uptake. Options: keep it, lower
+  hg_r_stem/root to Zhou & Obrist 2021 wood/root values, or translocate it from leaf Hg.
+
+## 13. Phase 1 status (2026-11-24)
+
+Implemented and run (see WORK_NOTES_hg_t2.md section 1). Organic Hg:C went from 2.63 to 0.78 at TVC and from 1.06 to 0.35 at HPC.
+Export went from 4.26 to 1.40 at TVC and from 5.80 to 1.91 at HPC. Toolik vegetation uptake fell from 3.56 to 0.53, which is far below
+Obrist 2017 (D3). Phase-1 runs cost 0.179 core-h, leaving a ledger total of 2.237 of 2.4.
