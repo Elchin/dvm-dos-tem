@@ -316,3 +316,174 @@ Wash-off moves ~1/3 of the intercepted dry Hg(II) from the leaves to the ground;
 ### Cost
 Phase 4: 0.311 core-h (ledger 3.4692 -> 3.7805 of 7.537), of which 0.139 is the 8-case run on the wrong case set and 0.010 a
 disturbance run cut short when I stopped the first chain (booked).
+
+## 5. Phase 5a: TVC carbon spin-up (D4), joint refit, identifiability, k_meth (2026-11-24)
+
+Phase 5 was split at a clean boundary. **5a** (this section) covers the D4 spin-up, the 64-member ensemble with the fit and
+identifiability analysis, the verification runs, the k_meth scaling and all final checks. **5b** (optional, not run) would add a
+refinement round with a wider hg_ev_z range and any structural option Elchin picks (see Open decisions). There are no code
+changes, so the binary is still binT2p4 (md5 df11db94, a94f93bb). Scripts are in ~/tem-dev/hg_t2/src: d4_spin.py, mk_d4cs.py,
+ens5.py, runP5.sh, col5.py, fit5.py, fit5b.py and plots_p5.py.
+
+### D4: TVC carbon spin-up protocol (no carbon physics change)
+- Method (d4_spin.py): chained 20-yr sc segments on the case's 1950-69 spin forcing, with Hg off (hg_tracer 0, hg_mehg 0).
+- Each segment runs from a copy of the previous restart-sc.nc in a new directory, out/D4/TVC_Warming_nfeed_b/segNNN. Nothing is overwritten or reused.
+- Stop rule: total soil C drift below 0.5 % per 100 yr.
+- The first attempt, out/D4/TVC_Warming_nfeed (hg_mehg 1 without the tracer), failed. It is kept.
+- Result: 34 segments (680 yr).
+
+| | Start (restart0) | End (seg034) |
+|---|---|---|
+| Total soil C (kgC/m2) | ~67.8 | 59.2 |
+| Organic-layer C (kgC/m2) | 16.8 | 10.4 |
+| Mineral C (kgC/m2) | – | 48.8 |
+| Organic thickness (m) | – | 0.28 |
+| Drift (%/100 yr) | – | -0.46 |
+
+- The vegc column in drift.json sums fill values and is not meaningful.
+- cs/sites_d4 (mk_d4cs.py) copies hg_t1/cs/sites_hg with the paths rewritten. The TVC restart0.nc is a copy of the seg034 restart; its provenance is in case.json under restart0_src and d4. HPC is unchanged.
+- D4 effect, P5B (phase-4 switches and defaults) against P4F:
+  - TVC organic Hg:C fell from 1.10 to 0.81 and export from 13.7 to 10.4.
+  - HPC and Toolik are bit-for-bit unchanged.
+- Figure: figures_hg_t2/hg_t2_fig8_d4_spin.png.
+
+### Joint refit and identifiability ensemble
+- Switch set SW: mehg, t2, diss, evasion, foliar 2, meltroute, fire_ash 0.1, rts 1, wash 0.5.
+- 64-member Latin hypercube (ens5.py, seed 11) over six parameters:
+
+| Parameter | Range | Scale |
+|---|---|---|
+| hg_t2_log_kd_org | 3.0-4.6 | linear |
+| hg_v_ground | 3e-5 to 3e-4 | log |
+| hg_fd | 0.02-0.4 | log |
+| hg_ev_z | 0.02-0.2 | log |
+| D8 weight w | 0-1 | linear; r_stem = 0.0044 (0.02/0.0044)^w, r_root = 0.0067 (0.07/0.0067)^w |
+| hg_snow_kred | 0.005-0.2 | log |
+
+- Emulator (fit5.py): quadratic, one per observable, 18 observables (log for Hg:C, export, %MeHg and evasion).
+  - Leave-one-out RMSE is at most 0.08 in log units against ensemble SDs of 0.03-1.0.
+  - For Toolik net Hg(0) the LOO RMSE is 0.26 ug/m2/yr, against an SD of 3.2.
+- Cost: the sum of squared normalised distances outside each target band (scale in brackets):
+  - organic Hg:C 0.29-0.41 (0.10 in ln)
+  - export 0.8-4.0 (Zolkos; 0.2 in ln)
+  - Toolik uptake 4.1 (0.4)
+  - Toolik net Hg(0) 6.5 (0.7)
+  - Toolik winter share 0.37 (0.07)
+  - mineral Hg:C 0.97-1.69 (0.15 in ln)
+- Minimisation: random search over 2e5 points, then Nelder-Mead.
+- Uncertainty (fit5b.py) comes from the near-optimal emulator set, cost <= best + 7.04 (the 68 % delta-chi2 for 6 parameters, n = 148 of 2e5). No point meets every band to within one scale, so there is no strict plausible set.
+
+**Fitted set** (preset config/hg_t2_calibrated.json; the defaults are not changed):
+
+| Parameter | Previous default | Fitted | 5-95 % (near-optimal) | Constrained by / source |
+|---|---|---|---|---|
+| hg_t2_log_kd_org | 3.5 | **3.46** | 3.36-3.55 | Organic Hg:C 0.29-0.41 (Obrist 2017 Toolik horizons) against Zolkos export |
+| hg_v_ground (m/s) | 8.5e-5 | **1.1e-4** | 8.2e-5 to 1.25e-4 | Toolik net Hg(0) 6.5±0.7 (Obrist 2017) |
+| hg_fd | 0.053 | **0.10** | 0.087-0.146 | Hg:C and evasion (trades off with ev_z) |
+| hg_ev_z (m) | 0.05 | **0.20** | 0.10-0.20 (at the range bound) | Same |
+| hg_r_stem / hg_r_root | 0.02 / 0.07 (T1) | **0.0044 / 0.0067** (D8a) | 0.0045-0.015 / 0.0069-0.045 | Toolik uptake 4.1 (weak); D8a = Zhou & Obrist 2021 wood/root |
+| hg_snow_kred (1/h) | 0.090 | **0.090** (kept) | 0.007-0.12 | Not identifiable (cost profile flat, 7.3-10.8) |
+| hg_k_meth_proxy | 87 (T1) | **71** | ±~5 % (linear scaling) | Thompson 2025: HPC 0.1 % (0.122 -> 0.100) and TVC 0.7 % (0.86 -> 0.70); both ask for ×0.81-0.82 |
+| hg_k_meth_ch4 | 3250 (T1) | 3250 (kept) | – | Toolik CH4 fen case 2.06 % against the 2 % class |
+
+- Verification: P5V (fitted set, k_meth_proxy 87, with the Toolik CH4 case) and P5V2 (k_meth_proxy 71).
+- Emulator against model:
+
+| Site | Quantity | Emulator | Model |
+|---|---|---|---|
+| TVC | Hg:C | 0.40 | 0.45 |
+| TVC | Export | 5.9 | 6.5 |
+| Toolik | Net Hg(0) | 6.44 | 6.70 |
+
+- The emulator optimum used snow_kred 0.036 and the verification used 0.090.
+- P5V2 differs from P5V only in %MeHg, which confirms that %MeHg is linear in k_meth and has no feedback on total Hg.
+
+### Sites against targets (P5V2, last 20 model years; ug/m2/yr; Hg:C ug/g)
+
+| | TVC (D4) | HPC | Toolik proxy | Toolik CH4 | Target | Met? |
+|---|---|---|---|---|---|---|
+| Organic Hg:C | 0.447 (P4F 1.10) | 0.276 (0.51) | 0.467 (0.50) | 0.467 | 0.29-0.41 | TVC/Toolik slightly high, HPC slightly low |
+| Mineral Hg:C | 1.27 | 1.45 | 1.35 | 1.35 | 0.97-1.69 | yes |
+| Export | 6.54 (13.7) | 2.98 (4.98) | 4.88 (4.79) | 4.88 | 0.8-4.0 (Zolkos) | HPC yes; TVC and Toolik high |
+| Vegetation uptake | 5.42 | 4.14 | 4.06 | 4.08 | Toolik 4.1 | yes |
+| Net Hg(0) | 2.17 | 0.69 | 6.70 | – | Toolik 6.5±0.7 | yes |
+| Winter share of net Hg(0) | – | – | 0.28 | – | 0.37 | no (structural) |
+| %MeHg (Jun-Sep active layer) | 0.70 | 0.100 | 0.165 | 2.06 | bog 0.7 / plateau 0.1 / fen 2 | yes |
+| Evasion | 7.03 | 7.42 | 1.81 | 1.81 | – | – |
+| Max Hg balance error (ug) | ≤ 3e-9 | | | | roundoff | yes |
+
+TVC and HPC winter shares are not meaningful because net Hg(0) there is small. Figure: hg_t2_fig10_targets.png (ensemble spread,
+target bands, and the P4F / P5B / P5V2 runs).
+
+### Identifiability (hg_t2_fig9_identifiability.png: SRRC and near-optimal correlations)
+1. **Kd_org** is well constrained (3.36-3.55). It raises Hg:C and lowers export at every site (SRRC +0.8-1.0 and -0.74 to -0.79), so Hg:C and export trade off along it.
+   - The best compromise leaves Hg:C at TVC and Toolik about 10-15 % above the band, Hg:C at HPC 5 % below it, and export at TVC (6.5) and Toolik (4.9) above 4.0.
+   - The site-to-site spread (HPC/Toolik Hg:C ratio about 0.6) is not controlled by any of the six parameters. That is a structural misfit, not a parameter one.
+2. **v_ground** controls both Toolik net Hg(0) (SRRC 0.96) and the winter share (0.97). Reaching the 37 % winter share needs about 1.6e-4, which gives net Hg(0) of about 9 (above 7.2).
+   - Along v_ground with the other parameters at their best values: 7.5e-5 gives 5.1 / 21 %, 1.2e-4 gives 7.1 / 31 %, 1.5e-4 gives 8.4 / 36 %.
+   - snow_kred barely moves the winter share (SRRC -0.12), so it cannot carry it. The 37 % share needs a structural winter term, for example the sink under snow or D7.
+3. **fd and ev_z** trade off (near-set correlation -0.48). Both set evasion and the Hg:C reduction at TVC and HPC. ev_z sits at the 0.2 m upper bound, so its upper uncertainty is open (5b).
+4. **D8 stem/root ratios** act only on Toolik uptake (SRRC 1.0), and only weakly (4.06-4.34 over the whole range). The fit prefers the low D8a end, but anything up to w ≈ 0.8 stays near-optimal.
+5. Other correlations: v_ground-fd +0.35, Kd-v_ground -0.26, ev_z-w +0.38 (from shared Hg:C and uptake). The Laplace (Hessian) correlations agree in sign. Its weakest direction is snow_kred (sd 0.38 in unit-cube units).
+
+### Recommended switch defaults (proposals only; nothing changed in code)
+- **Keep as is:** the hg_t2 master switch stays at 0 (D5, Elchin's decision). The T1 and Hg-off paths are untouched.
+- **When hg_t2 = 1, proposed defaults** for the T2-only switches and parameters (none affect T1 or Hg off):
+
+| Setting | Proposed default |
+|---|---|
+| hg_t2_diss | 1 |
+| hg_t2_evasion | 1 |
+| hg_t2_foliar | 2 |
+| hg_t2_meltroute | 1 |
+| hg_t2_rts | 1 |
+| hg_fire_ash | 0.1 |
+| hg_wash | 0.5 (hg_wash_pref 10) |
+| hg_t2_log_kd_org | 3.46 |
+| hg_v_ground | 1.1e-4 |
+| hg_fd | 0.10 |
+| hg_ev_z | 0.20 |
+| hg_snow_kred | 0.090 (kept) |
+
+- **Shared with T1, preset only:** r_stem 0.0044, r_root 0.0067 and k_meth_proxy 71. Either add T2-specific copies used only when hg_t2 = 1, or change the T1 values (a T1 recalibration). This is Elchin's decision.
+
+### Checks (all on binT2p4, which is unchanged in phase 5)
+
+| Check | Run / output | Result |
+|---|---|---|
+| Hg off, 8 cases (binT2p4 vs binM, regress/cs/prod) | P5I0 | PASS. Not repeated at the end of 5a because the binary and cases are unchanged (md5 re-checked). |
+| Hg off, 2-case set | P5I1 sub_off | PASS |
+| hg_t2 = 0 vs T1 (P5T1 vs VF4) | an2/cmp_P5T1_VF4.json | All common variables bit-identical. The only difference is the restart hg_state length (117 vs 94, the T2 slots). |
+| hg_t2 = 0 vs P3FT1 | – | 0 differences |
+| C/N/water/energy, all T2 on with the fitted set | P5I2 cs/sub_t2g + cmp_on | Identical (True), PASS |
+| Conservation | 64 members + P5B/P5V/P5V2 | Max Hg balance error 2.5e-9 ug |
+| Unit tests | dvmdostem_unittest | 528/528 cases (8 known may-fail assertions); Hg subset 46/46 (2303 assertions) |
+| Core use | – | ≤4 processes, except for an overlap of about 7 s when the unit-test binary ran next to a 4-process identity run |
+
+### Cost (core-h)
+
+| Item | Core-h |
+|---|---|
+| P5I0 | 0.136 |
+| D4 | 0.057 |
+| P5B | 0.029 |
+| E5 (64 members) | 1.878 |
+| P5V (with CH4) | 0.045 |
+| P5T1 | 0.029 |
+| P5V2 | 0.029 |
+| P5I1 + P5I2 | 0.068 |
+| **Phase 5a total** | **2.270** |
+
+The ledger stands at 6.048 of 7.537. That leaves 1.49, or 1.19 above the 0.3 reserve.
+
+### Open decisions
+1. Residual misfits:
+   - TVC export 6.5 and Toolik export 4.9 (target ≤4.0).
+   - Organic Hg:C at TVC 0.45 and Toolik 0.47 (≤0.41) and at HPC 0.28 (≥0.29).
+   - Toolik winter share 28 % (37 %).
+
+   Options are to accept them, or to make a structural change: a site- or moss-dependent Kd, or an export-path control (overland fraction / tau_sorb); and a winter ground Hg(0) sink under snow, or D7.
+2. D5: whether hg_t2 becomes default-on with the tracer.
+3. Shared T1 parameters (r_stem, r_root, k_meth_proxy): T2-specific copies, or a T1 recalibration.
+4. 5b: a refinement round with hg_ev_z extended to 0.5 m, about 16 members ≈ 0.47 core-h, within the remaining budget.
+5. D4: whether the 680-yr chained TVC restart (organic C 16.8 -> 10.4 kgC/m2) should become the TVC case restart for other work. So far it is used only in cs/sites_d4.

@@ -257,3 +257,14 @@ Done on local feat/hg-t2: a94f93bb (+ docs). Three items, all default off, hg_t2
 - hg_wash / hg_wash_pref: wash-off of the month's intercepted dry Hg(II).
 Tested in a Toolik case with an explicit 1926 fire and a 1956 RTS. Ash retention adds a fire-year export pulse; the RTS change
 is +9 % in the slump year. Wash-off is 0.02-0.16 ug/m2/yr at the sites. Checks: WORK_NOTES_hg_t2.md section 4.
+
+## 17. Phase 5a status (2026-11-24)
+Phase 5a is done on local feat/hg-t2, docs and preset only. There are no code changes, so the binary is still binT2p4.
+- D4: chained TVC carbon spin-up of 680 yr in new restarts, ending at -0.46 %/100 yr drift.
+- Refit: a 64-member identifiability ensemble with an emulator fit.
+- Fitted set (config/hg_t2_calibrated.json): t2_log_kd_org 3.46, v_ground 1.1e-4, fd 0.10, ev_z 0.20, r_stem/r_root 0.0044/0.0067 (D8a), snow_kred 0.090 (not identifiable) and k_meth_proxy 71.
+- Targets met: Toolik uptake 4.06, net Hg(0) 6.70, the %MeHg classes (0.70 / 0.100 / 2.06) and mineral Hg:C.
+- Targets missed (structural): export at TVC (6.5) and Toolik (4.9); organic Hg:C at TVC and Toolik (+10-15 %) and HPC (-5 %); and the winter share (28 % vs 37 %, tied to v_ground).
+- Defaults are proposed, not flipped.
+- All identity, conservation and unit checks pass.
+- Details are in WORK_NOTES_hg_t2.md section 5. The optional 5b round is a wider ev_z range or structural options.
