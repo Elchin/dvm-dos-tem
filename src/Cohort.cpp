@@ -686,6 +686,13 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
           for (int ip = 0; ip < NUM_PFT; ip++) { f.lai[ip] = cd.m_veg.lai[ip]; f.vegcov[ip] = cd.m_veg.vegcov[ip]; }
           f.swe = edall->m_snws.swesum; f.melt = edall->m_snw2soi.melt; f.sublim = edall->m_snw2a.sublim;
           f.sw = edall->m_a2l.nirr; f.cosz = hgtr::cosz24(this->lat, hgtr::mid_doy(currmind)); f.ndays = hgtr::days_in(currmind);
+          if (md->hg.t2_foliar == 2 || md->hg.t2_evasion == 1) {   // T2 phase 3: GPP by PFT, air T, CO2, layer T
+            for (int ip = 0; ip < NUM_PFT; ip++) {
+              if (cd.m_veg.vegcov[ip] > 0.) { double g = 0.0; for (int j = 0; j < NUM_PFT_PART; j++) { const double x = bd[ip].m_a2v.gpp[j]; if (std::isfinite(x) && x > 0.0) g += x; } f.gpp[ip] = g; }
+            }
+            f.ta = std::isfinite(edall->m_atms.ta) ? edall->m_atms.ta : 0.0; f.co2 = std::isfinite(edall->m_atms.co2) ? edall->m_atms.co2 : 0.0;
+            for (int il = 0; il < std::min(cd.m_soil.numsl, MAX_SOI_LAY); il++) { f.ts[il] = std::isfinite(edall->m_sois.ts[il]) ? edall->m_sois.ts[il] : 0.0; }
+          }
         }
       }
       hg_track(hg_a, f, "bgc");
@@ -756,7 +763,7 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
     if (md->hg.t2 == 1 && md->hg.t2_diss == 1) {   // T2 phase 2: the month's days for the dissolved-Hg sub-steps
       ft.nd = std::min(dinmcurr, 31);
       for (int id = 0; id < ft.nd; id++) {
-        ft.dq_in[id] = pos(edall->daily_qinfl[id]); ft.dq_over[id] = pos(edall->daily_qover[id]);
+        ft.dq_in[id] = pos(edall->daily_qinfl[id]); ft.dq_over[id] = pos(edall->daily_qover[id]); ft.d_melt[id] = pos(hg_dmelt[id]);
         for (int il = 0; il < std::min(cd.m_soil.numsl, MAX_SOI_LAY); il++) {
           ft.d_liq[id][il] = pos(hg_dliq[id][il]); ft.d_ice[id][il] = pos(hg_dice[id][il]);
           if (il + 1 < MAX_SOI_LAY) { ft.d_drain[id][il] = pos(edall->daily_layer_drain[id][il + 1]); }
@@ -1389,6 +1396,7 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
     if (md->hg.tracer == 1 && md->hg.t2 == 1 && md->hg.t2_diss == 1 && id >= 0 && id < 31) {   // T2 phase 2: Hg-only copy
       for (int il = 0; il < std::min(cd.m_soil.numsl, MAX_SOI_LAY); il++) { hg_dliq[id][il] = edall->d_sois.liq[il]; hg_dice[id][il] = edall->d_sois.ice[il]; }
       for (int il = std::min(cd.m_soil.numsl, MAX_SOI_LAY); il < MAX_SOI_LAY; il++) { hg_dliq[id][il] = 0.0; hg_dice[id][il] = 0.0; }
+      hg_dmelt[id] = edall->d_snw2soi.melt;   // T2 phase 3 (hg_t2_meltroute): the day's snowmelt (mm)
     }
 
     // accumulate yearly vars at the last day of a month for all pfts

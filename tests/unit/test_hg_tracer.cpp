@@ -795,3 +795,119 @@ TEST_CASE("hg_t2_diss spin-up jump == explicit repetition (dissolved pool in the
   v[0] = 3.0; hgtr::State u; REQUIRE(hgtr::unpack(u, v, 5)); CHECK(u.disstot() == 0.0); CHECK(u.snow == e.snow);
   std::remove(T2DEP);
 }
+
+// ---- T2 phase 3: process soil re-emission, ground Hg(0) sink, stomatal (GPP) foliar uptake, daily melt routing
+TEST_CASE("hg_t2 phase 3 parse: defaults off, ranges, dependencies") {
+  hgtr::Params p = t2params();
+  CHECK(p.t2_evasion == 0); CHECK(p.t2_meltroute == 0); CHECK(p.t2_foliar == 1);
+  CHECK(p.fd == 0.053); CHECK(p.ev_z == 0.05); CHECK(p.v_ground == 8.5e-5); CHECK(p.gem == 1.3); CHECK(p.gs_m == 4.0); CHECK(p.gs_eff == 1.0);
+  Json::Value a = ms0(); a["hg_tracer"] = 1; a["hg_t2_evasion"] = 1; CHECK(hgtr::parse(a, p) != "");          // needs hg_t2
+  Json::Value b = ms0(); b["hg_tracer"] = 1; b["hg_t2"] = 1; b["hg_dep_file"] = T2DEP; b["hg_t2_meltroute"] = 1;
+  CHECK(hgtr::parse(b, p) != "");                                                                          // needs hg_t2_diss
+  b["hg_t2_diss"] = 1; CHECK(hgtr::parse(b, p) == ""); CHECK(p.t2_meltroute == 1);
+  Json::Value c = ms0(); c["hg_tracer"] = 1; c["hg_t2"] = 1; c["hg_dep_file"] = T2DEP; c["hg_t2_foliar"] = 2; c["hg_gs_eff"] = 0.5;
+  CHECK(hgtr::parse(c, p) == ""); CHECK(p.t2_foliar == 2); CHECK(p.gs_eff == 0.5);
+  c["hg_t2_foliar"] = 3; CHECK(hgtr::parse(c, p) != "");
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_evasion: re-emission fd x (1 - f_snow) x [T > 0] x exp(-z / ev_z) of decay-released Hg; ground sink v x GEM x s") {
+  hgtr::Params p = t2params(); p.t2_evasion = 1; p.t2_foliar = 0;
+  hgtr::State s; hgtr::Snap a = column(4); hgtr::initialize(p, s, a);
+  hgtr::Snap b = a; hgtr::Flux f = t2flux(0, 0, 0, 0, 0, 0.3);
+  f.decomp[0] = 10.0; f.decomp[3] = 10.0; b.soil[0] -= 10.0; b.soil[3] -= 10.0;
+  f.ts[0] = 5.0; f.ts[3] = 5.0; f.ta = 5.0;
+  const double h0 = s.soil[0], h3 = s.soil[3];
+  hgtr::step(p, s, a, b, f);
+  const double r0 = 10.0 * h0 / a.soil[0], r3 = 10.0 * h3 / a.soil[3];
+  const double z3 = 0.05 * 3 + 0.05;   // layer 3 (dz 0.1) centred at 0.20 m
+  const double e = r0 * p.fd * std::exp(-0.025 / p.ev_z) + r3 * p.fd * std::exp(-z3 / p.ev_z);
+  CHECK(s.m.soilev == doctest::Approx(e).epsilon(1e-12));
+  CHECK(s.m.sink0 == doctest::Approx(p.v_ground * p.gem * 30.0 * 86.4).epsilon(1e-12));
+  CHECK(std::fabs(s.balance_error()) < 1e-13 * s.total());
+  // frozen layers or full snow cover: no re-emission
+  hgtr::State t; hgtr::initialize(p, t, a); hgtr::Flux g = f; g.ts[0] = -1.0; g.ts[3] = -0.1; hgtr::step(p, t, a, b, g); CHECK(t.m.soilev == 0.0);
+  hgtr::State u; hgtr::initialize(p, u, a); hgtr::Flux k = f; k.swe = 100.0; hgtr::step(p, u, a, b, k); CHECK(u.m.soilev == 0.0);
+  // off: the T1 fraction hg_f_evade
+  hgtr::Params q = t2params(); hgtr::State v; hgtr::initialize(q, v, a); hgtr::step(q, v, a, b, f);
+  CHECK(v.m.soilev == 0.0); CHECK(v.m.evasion == doctest::Approx((r0 + r3) * q.f_evade + v.m.snowred + v.m.photored).epsilon(1e-12));
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_evasion with a geometry change: decomposition-weighted re-emission of the pot; exact balance") {
+  hgtr::Params p = t2params(); p.t2_evasion = 1;
+  hgtr::State s; hgtr::Snap a = column(4); hgtr::initialize(p, s, a);
+  hgtr::Snap b = a; b.nsl = 5; for (int l = 0; l < 5; l++) { b.soil[l] = (a.soil[0] + a.soil[1] + a.soil[2] + a.soil[3] - 40.0) / 5.0; b.dz[l] = 0.06; b.type[l] = (l < 2) ? 1 : 3; }
+  hgtr::Flux f = t2flux(1, 1, 0, 0, 0, 0.3); f.decomp[0] = 20.0; f.ts[0] = 4.0;
+  hgtr::step(p, s, a, b, f);
+  CHECK(s.m.soilev > 0.0); CHECK(std::fabs(s.balance_error()) < 1e-13 * s.total());
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_foliar 2: stomatal Hg(0) uptake = k x GPP to the leaves (+ LAI interception of dry Hg(II)); linear in GPP") {
+  hgtr::Params p = t2params(); p.t2_foliar = 2;
+  hgtr::State s; hgtr::Snap a = column(4); hgtr::initialize(p, s, a);
+  hgtr::Flux f = t2flux(0.0, 0.0, 0, 0, 0, 0.3); f.gpp[0] = 60.0; f.gpp[3] = 20.0; f.ta = 10.0; f.co2 = 400.0;
+  const double k = hgtr::stomatal_k(p, f);
+  const double kexp = 1.3 * 1.6 * 4.0 / (12.0 * 400e-6 * 3.3365 * (101325.0 / (8.314 * 283.15))) * 1e-3;
+  CHECK(k == doctest::Approx(kexp).epsilon(1e-12));
+  const double l0 = s.veg[0][0], l3 = s.veg[3][0];
+  hgtr::step(p, s, a, a, f);
+  CHECK(s.m.stomatal == doctest::Approx(80.0 * k).epsilon(1e-12));
+  CHECK(s.veg[0][0] - l0 == doctest::Approx(60.0 * k).epsilon(1e-9)); CHECK(s.veg[3][0] - l3 == doctest::Approx(20.0 * k).epsilon(1e-9));
+  CHECK(s.m.foliar == doctest::Approx(s.m.stomatal));   // LAI 0: no Hg(II) interception
+  CHECK(std::fabs(s.balance_error()) < 1e-13 * s.total());
+  // with LAI: + dry Hg(II) share; dry Hg(0) of the LAI scheme is not used
+  hgtr::State t; hgtr::initialize(p, t, a); hgtr::Flux g = t2flux(2.0, 2.0, 0, 0, 0, 0.3); g.gpp[0] = 60.0; g.gpp[3] = 20.0; g.ta = 10.0; g.co2 = 400.0;
+  hgtr::step(p, t, a, a, g);
+  CHECK(t.m.foliar - t.m.stomatal == doctest::Approx(0.25 * (0.6 + 0.3) * 0.2).epsilon(1e-12));
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_meltroute: melt Hg delivered with the day's melt, overland share exported; pending pool empty after the month") {
+  hgtr::Params p = t2dparams(); p.t2_meltroute = 1; p.d_cryo = 0; p.d_bio = 0;
+  hgtr::State s; hgtr::Snap a = column(5); hgtr::initialize(p, s, a);
+  s.snow = 2.0; s.h_init = s.total(); s.cum.clear();
+  hgtr::Flux f = t2flux(0, 0, 20.0, 30.0, 0.0, 0.0);   // melt 30 of SWE 20 -> release 0.6 of the pack
+  hgtr::step(p, s, a, a, f);
+  CHECK(s.mpend > 0.0); CHECK(s.m.snowmelt == doctest::Approx(s.mpend)); CHECK(std::fabs(s.balance_error()) < 1e-13 * s.total());
+  const double mp = s.mpend;
+  hgtr::Flux t = dflux(5, 10, 2.0, 6.0, 0.0, 20.0); for (int d = 0; d < 10; d++) t.d_melt[d] = (d < 5) ? 3.0 : 0.0;
+  p.tau_sorb = 1e5; hgtr::State u = s; u.m.clear(); hgtr::step(p, u, a, a, t);
+  CHECK(u.mpend == 0.0);
+  CHECK(u.m.meltrun == doctest::Approx(mp * 6.0 / 8.0).epsilon(1e-12));
+  CHECK(u.m.runoff >= u.m.meltrun);
+  CHECK(std::fabs(u.balance_error()) < 1e-13 * u.total());
+  // pack / unpack at a month end keeps the total (mpend folded into the top dissolved pool)
+  double v[hgtr::NSTATE]; hgtr::State w = s; hgtr::pack(w, v); hgtr::State x; REQUIRE(hgtr::unpack(x, v, 5));
+  CHECK(x.total() == doctest::Approx(w.total()).epsilon(1e-14));
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2 phase 3 all on, random steps with daily transport: balance to roundoff, pools >= 0") {
+  std::mt19937 rng(31); std::uniform_real_distribution<double> U(0.0, 1.0);
+  hgtr::Params p = t2dparams(); p.t2_evasion = 1; p.t2_foliar = 2; p.t2_meltroute = 1;
+  hgtr::State s; hgtr::Snap a = column(8, 3000.0); hgtr::initialize(p, s, a);
+  for (int it = 0; it < 1500; it++) {
+    const int mth = it % 12;
+    hgtr::Snap b = a; hgtr::Flux f = t2flux(3 * U(rng), U(rng), (mth < 5 || mth > 9) ? 200 * U(rng) : 0.0, 30 * U(rng), 5 * U(rng), 0.4 * U(rng));
+    for (int i = 0; i < NUM_PFT; i++) { f.gpp[i] = 50 * U(rng); }
+    f.ta = 30 * U(rng) - 15; f.co2 = 300 + 200 * U(rng);
+    for (int l = 0; l < a.nsl; l++) { f.ts[l] = 20 * U(rng) - 10; f.decomp[l] = 5 * U(rng); b.soil[l] = std::fmax(0.0, a.soil[l] - f.decomp[l] + 4 * U(rng)); }
+    if (U(rng) < 0.3) {   // geometry change
+      int n = 3 + int(U(rng) * 12); b.nsl = n; double c0 = 0; for (int l = 0; l < a.nsl; l++) c0 += a.soil[l];
+      for (int l = 0; l < MAX_SOI_LAY; l++) { b.soil[l] = (l < n) ? c0 / n : 0; b.dz[l] = (l < n) ? 0.05 + 0.1 * U(rng) : 0; b.type[l] = (l == 0) ? 0 : ((l < 3) ? 1 : 3); }
+    }
+    hgtr::step(p, s, a, b, f);
+    hgtr::Flux t = dflux(b.nsl, 30, 20 * U(rng), 10 * U(rng), 3 * U(rng), 5 + 40 * U(rng), (mth < 5 || mth > 9) ? int(U(rng) * 3) : 99);
+    for (int d = 0; d < 30; d++) t.d_melt[d] = (U(rng) < 0.3) ? 5 * U(rng) : 0.0;
+    hgtr::step(p, s, b, b, t);
+    CHECK(s.mpend == 0.0);
+    a = b;
+    if (it % 12 == 11) { s.m.clear(); }
+  }
+  CHECK(std::fabs(s.balance_error()) < 1e-8 * std::fmax(1.0, s.total()));
+  for (int l = 0; l < MAX_SOI_LAY; l++) { CHECK(s.soil[l] >= 0.0); CHECK(s.diss[l] >= 0.0); }
+  CHECK(s.cum.export_ > 0.0); CHECK(s.cum.evasion > 0.0);
+  std::remove(T2DEP);
+}

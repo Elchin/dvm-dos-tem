@@ -2812,6 +2812,10 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
       scalar("HG_SNOWMELT", h.m.snowmelt, h.y.snowmelt);
       scalar("HG_PHOTORED", h.m.photored, h.y.photored);
       scalar("HG_RUNOFF", h.m.runoff, h.y.runoff);
+      scalar("HG_SOILEV", h.m.soilev, h.y.soilev);   // T2 phase 3
+      scalar("HG_SINK0", h.m.sink0, h.y.sink0);
+      scalar("HG_STOMATAL", h.m.stomatal, h.y.stomatal);
+      scalar("HG_MELTRUN", h.m.meltrun, h.y.meltrun);
       scalar("HG_MIXDOWN", h.m.mixdown, h.y.mixdown);
       scalar("MEHGPROD", h.mehg_prod_m, h.mehg_prod_y);
       scalar("HG_BALERR", h.balance_error(), h.balance_error());
