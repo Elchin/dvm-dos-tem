@@ -316,3 +316,29 @@ Done on local feat/hg-t2 (not pushed): 91b456de (hg_t2_k_meth_ch4 copy + test), 
 - All checks pass. The preset-vs-explicit, routing-off and hg_t2 = 0 checks ran on the Toolik column only, because of the
   budget. 5d cost 0.278 of 0.3; ledger 8.145.
 - Details: WORK_NOTES_hg_t2.md section 9.
+
+## 22. Phase 6b status (2026-11-24)
+The work is on local feat/hg-t2 (not pushed): 0a7980fd (code and tests), 8d2732d4 (thaw-release fix), plus docs. Binary
+binT2p6b.
+
+**Two new switches, both default off and not in the preset.**
+- `hg_t2_deepspread`: the routed flow-path Hg goes to the frozen layers below the maximum thaw depth so far, in proportion to
+  their soil C, instead of the single z_deep layer.
+- `hg_t2_thawrel`: decay-released Hg in layers below the permafrost reference depth zpf (maximum thaw up to
+  hg_t2_thaw_ref_year, 2024) that are thawed this month evades (hg_f_thaw_evade 0.16) or is exported (hg_f_thaw_export 0.015,
+  Schaefer 2020). The release is mass-conserving. Diagnostics: HG_THAWEV and HG_THAWEX.
+- The thaw state (zmax, zpf) goes in the optional restart variable hg_thaw (Y, X, 2), which is written only when a switch is
+  on.
+
+**Results.**
+- Deepspread leaves the 12 targets unchanged (under 0.1 %) and removes the deep Hg:C hotspot: 3.5 → 1.9–2.0 (TVC/HPC), 1.7
+  (Toolik).
+- Under w8 warming, TVC releases 0.49 mg/m² over 75 yr (pulse 2079–2085). Hg below 1 m falls by 1.16 mg/m², against 0.39 in
+  6a.
+- The first thawrel version also released Hg from frozen-soil decay (Toolik +4.3 µg/m²/yr evasion). This was fixed by the
+  thawed-layer test.
+
+**Checks.** All pass: switches-off identity, Hg-off 2/8-case, all-on cmp_on with the hg_thaw allowance, balance, and unit
+543/543 with Hg 61/61.
+
+6b cost 0.396 of 0.4; ledger 8.753. Details: WORK_NOTES_hg_t2.md section 11.
