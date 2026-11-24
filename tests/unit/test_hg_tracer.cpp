@@ -1250,11 +1250,15 @@ TEST_CASE("hg_t2_k_meth_ch4: T2 copy (default 3250 = T1 value), T1 name with hg_
 }
 
 // ---- T2 phase 6b: deep spread of the routed retention (hg_t2_deepspread) and thaw release (hg_t2_thawrel)
-TEST_CASE("hg_t2 phase 6b parse: defaults off, Schaefer fractions, dependencies, ranges, preset unchanged") {
+TEST_CASE("hg_t2 phase 6b/6c parse: component defaults off, preset on (6c), Schaefer fractions, dependencies, ranges") {
   hgtr::Params p = t2params();   // writes T2DEP
   CHECK(p.t2_deepspread == 0); CHECK(p.t2_thawrel == 0); CHECK(p.f_thaw_evade == 0.16); CHECK(p.f_thaw_export == 0.015); CHECK(p.thaw_ref_year == 2024);
   Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_t2"] = 1; m["hg_dep_file"] = T2DEP;
-  hgtr::Params r; REQUIRE(hgtr::parse(m, r) == ""); CHECK(r.t2_deepspread == 0); CHECK(r.t2_thawrel == 0);   // preset: off
+  hgtr::Params r; REQUIRE(hgtr::parse(m, r) == ""); CHECK(r.t2_deepspread == 1); CHECK(r.t2_thawrel == 1);   // preset (6c): on
+  { hgtr::Params pp; hgtr::t2_preset_(pp); CHECK(pp.t2_deepspread == 1); CHECK(pp.t2_thawrel == 1); }
+  Json::Value z = m; z["hg_t2_preset"] = 0; REQUIRE(hgtr::parse(z, r) == ""); CHECK(r.t2_deepspread == 0); CHECK(r.t2_thawrel == 0);   // preset 0: off
+  Json::Value z2 = m; z2["hg_t2_deepspread"] = 0; z2["hg_t2_thawrel"] = 0; REQUIRE(hgtr::parse(z2, r) == ""); CHECK(r.t2_deepspread == 0); CHECK(r.t2_thawrel == 0);   // explicit wins
+  Json::Value z3 = m; z3["hg_t2_diss"] = 0; REQUIRE(hgtr::parse(z3, r) == ""); CHECK(r.t2_thawrel == 0);   // preset: follows diss off
   Json::Value a = m; a["hg_t2_deepspread"] = 1; a["hg_t2_thawrel"] = 1; a["hg_f_thaw_evade"] = 0.2; a["hg_f_thaw_export"] = 0.05; a["hg_t2_thaw_ref_year"] = 2010;
   REQUIRE(hgtr::parse(a, r) == ""); CHECK(r.t2_deepspread == 1); CHECK(r.t2_thawrel == 1); CHECK(r.f_thaw_evade == 0.2); CHECK(r.f_thaw_export == 0.05); CHECK(r.thaw_ref_year == 2010);
   Json::Value b = m; b["hg_t2_deeproute"] = 0; b["hg_t2_deepspread"] = 1; CHECK(hgtr::parse(b, r) != "");   // needs deeproute

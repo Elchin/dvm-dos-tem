@@ -1,5 +1,5 @@
 {
- "_comment": "Hg T2 calibrated set (phase 5d, 2026-11-24). Since binT2p5f these are the built-in values of hg_t2 = 1 (hg_t2_preset 1, include/HgTracer.h t2_preset_); this file lists them as an explicit model_settings overlay. T1 / Hg-off paths (hg_t2 = 0) unchanged. See docs_src/WORK_NOTES_hg_t2.md section 9.",
+ "_comment": "Hg T2 calibrated set (phase 5d, 2026-11-24). Since binT2p5f these are the built-in values of hg_t2 = 1 (hg_t2_preset 1, include/HgTracer.h t2_preset_); this file lists them as an explicit model_settings overlay. T1 / Hg-off paths (hg_t2 = 0) unchanged. See docs_src/WORK_NOTES_hg_t2.md section 9. Phase 6c (section 12): hg_t2_deepspread 1 and hg_t2_thawrel 1 added (hg_f_thaw_evade 0.16, hg_f_thaw_export 0.015, hg_t2_thaw_ref_year 2024 defaults).",
  "_uncertainty": "phase 5d: ev_z fixed at 0.3 (physically shallower; not constrained by the targets), humic Kd offset 0; with ev_z 0.3 the local model has no point with all 12 bands met: one of TVC Ro, TVC export, HPC Ro, HPC Rm exceeds by about 1 %; this set keeps 11 in band and HPC Rm about 1.70 (band <= 1.69). f_deep < 1 raises organic Hg:C (retained Hg mixes back) and does not help",
  "model_settings": {
   "hg_tracer": 1, "hg_mehg": 1, "hg_t2": 1,
@@ -7,6 +7,7 @@
   "hg_t2_log_kd_org": 3.356, "hg_t2_kdsplit": 1, "hg_t2_dlog_kd_hum": 0.0, "hg_t2_xpath": 1, "hg_f_conn": 0.53419,
   "hg_t2_deeproute": 1, "hg_f_deep": 1.0, "hg_z_deep": 1.5,
   "hg_t2_snowsink": 1, "hg_v_ground": 4.1389e-5, "hg_v_snow": 1.3046e-4, "hg_fd": 0.071857, "hg_ev_z": 0.30, "hg_snow_kred": 0.090,
-  "hg_t2_r_stem": 0.0044, "hg_t2_r_root": 0.0067, "hg_t2_k_meth_proxy": 71.0, "hg_t2_k_meth_ch4": 3250.0
+  "hg_t2_r_stem": 0.0044, "hg_t2_r_root": 0.0067, "hg_t2_k_meth_proxy": 71.0, "hg_t2_k_meth_ch4": 3250.0,
+  "hg_t2_deepspread": 1, "hg_t2_thawrel": 1
  }
 }

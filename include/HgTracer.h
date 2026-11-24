@@ -330,6 +330,9 @@ inline void t2_preset_(Params& p) {
   p.t2_deeproute = 1; p.f_deep = 1.0; p.z_deep = 1.5;
   p.t2_snowsink = 1; p.v_ground = 4.1389e-5; p.v_snow = 1.3046e-4; p.fd = 0.071857; p.ev_z = 0.30; p.snow_kred = 0.090;
   p.t2_r_stem = 0.0044; p.t2_r_root = 0.0067; p.t2_k_meth_proxy = 71.0;
+  // phase 6c (WORK_NOTES_hg_t2 section 12): SOC-weighted deep spread of the routed Hg and the thaw release (Schaefer 2020
+  // fractions) on; present-climate targets unchanged (< 0.1 %), deep Hg:C hotspot removed, warming release of deep Hg
+  p.t2_deepspread = 1; p.t2_thawrel = 1;
 }
 
 // Deposition CSV: '#' comments; header with columns year, [month], and either dep or any of hg2_wet,
