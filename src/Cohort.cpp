@@ -677,6 +677,16 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
       {   // deposition: hg_dep_file series (calendar year from the stage) or the constant hg_dep_soil
         const hgtr::DepVal dv = hgtr::dep_at(md->hg, hg_cal_year(yrcnt, stage), currmind + 1);
         f.dep_soil = dv.rate / 12.0; f.veg_scale = dv.veg_scale;
+        if (md->hg.t2 == 1) {   // T2 phase 1 (hg_t2): deposition components, canopy, snow and radiation of the month
+          f.t2 = 1; f.dep_soil = 0.0;
+          double py = 0.0;
+          for (size_t i = 0; i < climate.rain_d.size() && i < climate.snow_d.size(); i++) { py += climate.rain_d[i] + climate.snow_d[i]; }
+          f.dep_wet = (md->hg.t2_wetprec == 1 && py > 0.0) ? dv.wet * std::fmax(0.0, edall->m_a2l.prec) / py : dv.wet / 12.0;
+          f.dep_dry2 = dv.dry2 / 12.0; f.dep_dry0 = dv.dry0 / 12.0; f.dep_soil0 = dv.soil0 / 12.0;
+          for (int ip = 0; ip < NUM_PFT; ip++) { f.lai[ip] = cd.m_veg.lai[ip]; f.vegcov[ip] = cd.m_veg.vegcov[ip]; }
+          f.swe = edall->m_snws.swesum; f.melt = edall->m_snw2soi.melt; f.sublim = edall->m_snw2a.sublim;
+          f.sw = edall->m_a2l.nirr; f.cosz = hgtr::cosz24(this->lat, hgtr::mid_doy(currmind)); f.ndays = hgtr::days_in(currmind);
+        }
       }
       hg_track(hg_a, f, "bgc");
       if (md->hg.mehg == 1) { hg_mehg_month(f); }

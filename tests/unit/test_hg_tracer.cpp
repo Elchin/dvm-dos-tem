@@ -291,10 +291,10 @@ TEST_CASE("hg_spinup closure: non-periodic record (C drift, layer re-division) =
   CHECK(std::isfinite(k.total()));
 }
 
-TEST_CASE("hg restart layout v2 round trip (spin, spun) and v1 still read") {
+TEST_CASE("hg restart layout v3 round trip (spin, spun) and v1 still read") {
   hgtr::Params p; hgtr::State s; hgtr::Snap a = column(6); hgtr::initialize(p, s, a);
   s.cum.spin = 12.5; s.spun = 1; s.mehg[1] = 0.25;
-  double v[hgtr::NSTATE]; hgtr::pack(s, v); CHECK(v[0] == 2.0);
+  double v[hgtr::NSTATE]; hgtr::pack(s, v); CHECK(v[0] == 3.0);   // T2: layout v3 (+ snow)
   hgtr::State t; REQUIRE(hgtr::unpack(t, v, 6));
   CHECK(t.spun == 1); CHECK(t.cum.spin == 12.5); CHECK(t.balance_error() == doctest::Approx(s.balance_error()));
   v[0] = 1.0; hgtr::State u; REQUIRE(hgtr::unpack(u, v, 6)); CHECK(u.spun == 0); CHECK(u.cum.spin == 0.0);
@@ -432,4 +432,200 @@ TEST_CASE("hg_spinup closure 0 (default): depth-overlap Hg mass map; identity fo
   CHECK(std::fabs(j.balance_error()) < 1e-8 * j.total());
   // closure 2 (raw) refuses a record whose layer count differs at the two ends
   p.spinup_closure = 2; hgtr::State q = s1; CHECK_FALSE(hgtr::spinup_jump(p, q, yr, 0));
+}
+
+// ---------------- T2 phase 1 (hg_t2): surface interface ----------------
+namespace {
+const char* T2DEP = "/tmp/hg_t2_dep_unittest.csv";
+hgtr::Params t2params(bool dry0col = true) {
+  { std::ofstream f(T2DEP);
+    if (dry0col) f << "year,hg2_wet,hg2_dry,hg0_soil,hg0_dry,veg_scale\n1850,1.2,2.4,1.11,3.0,1\n2000,1.2,2.4,1.11,3.0,1\n";
+    else f << "year,hg2_wet,hg2_dry,hg0_soil,veg_scale\n1850,1.2,2.4,1.11,1\n"; }
+  hgtr::Params p; Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_t2"] = 1; m["hg_dep_file"] = T2DEP;
+  REQUIRE(hgtr::parse(m, p) == "");
+  return p;
+}
+// a month's T2 forcing (deposition per month, LAI, snow)
+hgtr::Flux t2flux(double lai0, double lai3, double swe, double melt, double sublim, double cosz) {
+  hgtr::Flux f; f.t2 = 1; f.dep_wet = 0.1; f.dep_dry2 = 0.2; f.dep_dry0 = 0.25; f.dep_soil0 = 0.0925;
+  f.lai[0] = lai0; f.lai[3] = lai3; f.vegcov[0] = 0.6; f.vegcov[3] = 0.3;
+  f.swe = swe; f.melt = melt; f.sublim = sublim; f.sw = 150.0; f.cosz = cosz; f.ndays = 30.0;
+  return f;
+}
+}
+
+TEST_CASE("hg_t2 parse: defaults, needs the tracer and deposition components; hg0_dry column or hg0_soil / 0.37") {
+  hgtr::Params p; REQUIRE(hgtr::parse(ms0(), p) == "");
+  CHECK(p.t2 == 0); CHECK(p.t2_foliar == 1); CHECK(p.t2_snow == 1); CHECK(p.t2_wetprec == 1); CHECK(p.t2_photored == 0);
+  CHECK(p.fol_fmax == 0.25); CHECK(p.fol_lai == 1.25); CHECK(p.fol_scale == 1.0); CHECK(p.snow_kred == 0.090);
+  Json::Value a = ms0(); a["hg_t2"] = 1; CHECK(hgtr::parse(a, p) != "");                       // needs the tracer
+  Json::Value b = ms0(); b["hg_tracer"] = 1; b["hg_t2"] = 1; CHECK(hgtr::parse(b, p) != "");   // needs components
+  { std::ofstream f(T2DEP); f << "year,dep\n1850,3\n"; }
+  Json::Value c = ms0(); c["hg_tracer"] = 1; c["hg_t2"] = 1; c["hg_dep_file"] = T2DEP; CHECK(hgtr::parse(c, p) != "");
+  Json::Value d = ms0(); d["hg_tracer"] = 1; d["hg_fol_fmax"] = 1.5; CHECK(hgtr::parse(d, p) != "");
+  hgtr::Params q = t2params(true);
+  hgtr::DepVal dv = hgtr::dep_at(q, 1900, 3);
+  CHECK(dv.rate == doctest::Approx(1.2 + 2.4 + 1.11));   // T1 rate unchanged: hg0_dry not added
+  CHECK(dv.wet == doctest::Approx(1.2)); CHECK(dv.dry2 == doctest::Approx(2.4)); CHECK(dv.dry0 == doctest::Approx(3.0)); CHECK(dv.soil0 == doctest::Approx(1.11));
+  hgtr::Params r = t2params(false);
+  CHECK(hgtr::dep_at(r, 1900, 3).dry0 == doctest::Approx(1.11 / 0.37));
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2 f_fix(LAI) and 24-h mean cos zenith") {
+  hgtr::Params p;
+  CHECK(hgtr::f_fix(p, 0.0) == 0.0); CHECK(hgtr::f_fix(p, 0.625) == doctest::Approx(0.125));
+  CHECK(hgtr::f_fix(p, 1.25) == doctest::Approx(0.25)); CHECK(hgtr::f_fix(p, 4.0) == doctest::Approx(0.25));
+  // numerical 24-h integration of max(0, cos Z)
+  auto num = [](double lat, double doy) {
+    const double pi = 3.14159265358979323846, phi = lat * pi / 180, dl = 23.45 * pi / 180 * std::sin(2 * pi * (284 + doy) / 365);
+    double sum = 0; const int n = 200000;
+    for (int i = 0; i < n; i++) { const double h = -pi + 2 * pi * (i + 0.5) / n; sum += std::fmax(0.0, std::sin(phi) * std::sin(dl) + std::cos(phi) * std::cos(dl) * std::cos(h)); }
+    return sum / n;
+  };
+  for (double lat : {0.0, 45.0, 68.6, 75.0, 85.0, -70.0}) for (double doy : {15.5, 105.0, 172.0, 288.0, 355.0}) {
+    CHECK(hgtr::cosz24(lat, doy) == doctest::Approx(num(lat, doy)).epsilon(1e-5));
+  }
+  CHECK(hgtr::cosz24(80.0, 355.0) == 0.0);                 // polar night
+  CHECK(hgtr::cosz24(80.0, 172.0) > 0.3);                  // polar day
+  CHECK(hgtr::mid_doy(0) == 16.0); CHECK(hgtr::days_in(1) == 28.0);
+}
+
+TEST_CASE("hg_t2 off: identical (bit-exact) to the T1 step, also with T2 fields set in the flux") {
+  std::mt19937 rng(7); std::uniform_real_distribution<double> U(0.0, 1.0);
+  hgtr::Params p; p.dep_soil = 12.0; hgtr::State s1, s2; hgtr::Snap a = column(8, 3000.0); hgtr::initialize(p, s1, a); s2 = s1;
+  hgtr::Params p2 = p; p2.t2 = 0;
+  for (int it = 0; it < 600; it++) {
+    hgtr::Snap b = a; hgtr::Flux f;
+    for (int i = 0; i < NUM_PFT; i++) for (int j = 0; j < NUM_PFT_PART; j++) {
+      if (a.veg[i][j] <= 0) continue;
+      f.npp[i][j] = 10 * U(rng) - 1; b.veg[i][j] = std::fmax(0.0, a.veg[i][j] + f.npp[i][j] - 8 * U(rng));
+    }
+    for (int l = 0; l < a.nsl; l++) { f.decomp[l] = 5 * U(rng); b.soil[l] = std::fmax(0.0, a.soil[l] - f.decomp[l] + 4 * U(rng)); }
+    f.dep_soil = 1.0;
+    hgtr::Flux g = f; g.t2 = 1; g.lai[0] = 2.0; g.vegcov[0] = 0.5; g.swe = 50; g.melt = 10; g.dep_wet = 1; g.dep_dry0 = 1;   // ignored: p2.t2 = 0
+    hgtr::step(p, s1, a, b, f); hgtr::step(p2, s2, a, b, g);
+    a = b;
+  }
+  for (int l = 0; l < MAX_SOI_LAY; l++) CHECK(s1.soil[l] == s2.soil[l]);
+  for (int i = 0; i < NUM_PFT; i++) for (int j = 0; j < NUM_PFT_PART; j++) CHECK(s1.veg[i][j] == s2.veg[i][j]);
+  CHECK(s1.total() == s2.total()); CHECK(s2.snow == 0.0); CHECK(s1.cum.evasion == s2.cum.evasion);
+}
+
+TEST_CASE("hg_t2 foliar uptake: leaf Hg from LAI x canopy x dry deposition (snow-free), stem/root keep NPP x ratio; exact balance") {
+  hgtr::Params p = t2params(); hgtr::State s; hgtr::Snap a = column(6); hgtr::initialize(p, s, a);
+  const double h0 = s.total(), l00 = s.veg[0][0], l30 = s.veg[3][0];
+  hgtr::Snap b = a; hgtr::Flux f = t2flux(2.0, 0.625, 0.0, 0.0, 0.0, 0.3);
+  f.npp[0][0] = 10.0; f.npp[0][1] = 4.0; b.veg[0][0] += 10.0; b.veg[0][1] += 4.0;
+  hgtr::step(p, s, a, b, f);
+  const double u0 = 0.25 * 0.6 * 0.45, u3 = 0.125 * 0.3 * 0.45;   // f_fix x vegcov x (dry0 + dry2)
+  CHECK(s.m.foliar == doctest::Approx(u0 + u3));
+  CHECK(s.veg[0][0] == doctest::Approx(l00 + u0)); CHECK(s.veg[3][0] == doctest::Approx(l30 + u3));
+  CHECK(s.m.uptake == doctest::Approx(u0 + u3 + 4.0 * p.r_stem));   // no leaf NPP x r_leaf
+  const double fc = 0.25 * 0.6 + 0.125 * 0.3;
+  CHECK(s.m.dep == doctest::Approx(0.1 + 0.2 * (1 - fc) + 0.0925));
+  CHECK(s.m.snowdep == 0.0); CHECK(s.snow == 0.0);
+  CHECK(std::fabs(s.total() - (h0 + s.m.uptake + s.m.dep - s.m.evasion - s.m.export_)) < 1e-14 * s.total());
+  CHECK(std::fabs(s.balance_error()) < 1e-14 * s.total());
+  // full snow cover: no foliar uptake; canopy cap: sum of fixing fractions <= 1
+  hgtr::State s2; hgtr::initialize(p, s2, a); hgtr::Flux g = t2flux(2.0, 2.0, 50.0, 0.0, 0.0, 0.1);
+  hgtr::step(p, s2, a, a, g); CHECK(s2.m.foliar == 0.0);
+  hgtr::Params pc = p; pc.fol_scale = 10.0; hgtr::State s3; hgtr::initialize(pc, s3, a); hgtr::Flux h = t2flux(2.0, 2.0, 0.0, 0.0, 0.0, 0.1);
+  hgtr::step(pc, s3, a, a, h); CHECK(s3.m.foliar == doctest::Approx(0.45)); CHECK(s3.m.dep == doctest::Approx(0.1 + 0.0925));
+  CHECK(std::fabs(s3.balance_error()) < 1e-14 * s3.total());
+}
+
+TEST_CASE("hg_t2 snowpack: accumulation, photic photoreduction, melt / sublimation release, exact balance") {
+  hgtr::Params p = t2params(); hgtr::State s; hgtr::Snap a = column(6); hgtr::initialize(p, s, a);
+  const double soil0 = s.soiltot();
+  // winter month, deep snow, polar night: everything Hg(II) goes to the snow, nothing reduced or released
+  hgtr::Flux w = t2flux(0.5, 0.0, 120.0, 0.0, 0.0, 0.0);
+  hgtr::step(p, s, a, a, w);
+  CHECK(s.snow == doctest::Approx(0.1 + 0.2)); CHECK(s.m.snowdep == doctest::Approx(0.3)); CHECK(s.m.foliar == 0.0);
+  CHECK(s.soiltot() - soil0 == doctest::Approx(0.0925));   // only the soil Hg(0) sink
+  // spring: photoreduction of the photic fraction 0.1 / (120 / 250) = 0.208 at k 0.09 /h x 24 x cos Z x 30 d
+  s.m.clear(); const double sn = s.snow;
+  hgtr::Flux sp = t2flux(0.5, 0.0, 120.0, 0.0, 0.0, 0.2);
+  hgtr::step(p, s, a, a, sp);
+  const double fph = 0.1 / (120.0 / 250.0), red = (sn + 0.3) * fph * (1 - std::exp(-0.09 * 24 * 0.2 * 30));
+  CHECK(s.m.snowred == doctest::Approx(red)); CHECK(s.snow == doctest::Approx(sn + 0.3 - red));
+  // melt month: release = (melt + sublim) / (melt + sublim + swe); melt share to soil, sublimation share to air
+  s.m.clear(); const double sn2 = s.snow, so2 = s.soiltot();
+  hgtr::Flux m = t2flux(0.5, 0.0, 40.0, 60.0, 20.0, 0.0);
+  hgtr::step(p, s, a, a, m);
+  const double fs = 1.0, add = 0.3 * fs, tot = sn2 + add, rel = 80.0 / 120.0;
+  CHECK(s.m.snowmelt == doctest::Approx(tot * rel * 0.75)); CHECK(s.m.snowred == doctest::Approx(tot * rel * 0.25));
+  CHECK(s.snow == doctest::Approx(tot * (1 - rel)));
+  CHECK(s.soiltot() - so2 == doctest::Approx(s.m.snowmelt + 0.0925));
+  // snow gone: everything left is released
+  s.m.clear(); hgtr::Flux z = t2flux(0.5, 0.0, 0.0, 5.0, 0.0, 0.3); hgtr::step(p, s, a, a, z); CHECK(s.snow == 0.0);
+  CHECK(std::fabs(s.balance_error()) < 1e-14 * s.total());
+}
+
+TEST_CASE("hg_t2 photoreduction of ground Hg(II) (hg_t2_photored)") {
+  hgtr::Params p = t2params(); p.t2_photored = 1; hgtr::State s; hgtr::Snap a = column(5); hgtr::initialize(p, s, a);
+  hgtr::Flux f = t2flux(0.0, 0.0, 0.0, 0.0, 0.0, 0.3); f.sw = 100.0;
+  hgtr::step(p, s, a, a, f);
+  const double fpr = 0.67 * std::exp(-0.016 * 100.0);
+  CHECK(s.m.photored == doctest::Approx(0.3 * fpr)); CHECK(s.m.evasion == doctest::Approx(0.3 * fpr));
+  CHECK(std::fabs(s.balance_error()) < 1e-14 * s.total());
+}
+
+TEST_CASE("hg_t2 random steps (geometry changes, fire, snow seasons): balance to roundoff, pools >= 0") {
+  std::mt19937 rng(11); std::uniform_real_distribution<double> U(0.0, 1.0);
+  hgtr::Params p = t2params(); p.t2_photored = 1; hgtr::State s; hgtr::Snap a = column(8, 3000.0); hgtr::initialize(p, s, a);
+  for (int it = 0; it < 3000; it++) {
+    const int mth = it % 12;
+    hgtr::Snap b = a; hgtr::Flux f = t2flux(3 * U(rng), U(rng), (mth < 5 || mth > 9) ? 200 * U(rng) : 0.0, 30 * U(rng), 5 * U(rng), 0.4 * U(rng));
+    if (U(rng) < 0.3) { f.t2 = 0; f.dep_soil = 1.0; }   // non-BGC sub-steps
+    for (int i = 0; i < NUM_PFT; i++) for (int j = 0; j < NUM_PFT_PART; j++) {
+      if (a.veg[i][j] <= 0) continue;
+      f.npp[i][j] = 10 * U(rng) - 1; b.veg[i][j] = std::fmax(0.0, a.veg[i][j] + f.npp[i][j] - 8 * U(rng));
+    }
+    const int kind = int(U(rng) * 3);
+    if (kind == 0) {
+      for (int l = 0; l < a.nsl; l++) { f.decomp[l] = 5 * U(rng); b.soil[l] = std::fmax(0.0, a.soil[l] - f.decomp[l] + 4 * U(rng)); }
+    } else {
+      int n = 3 + int(U(rng) * 15); b.nsl = n;
+      double c0 = 0; for (int l = 0; l < a.nsl; l++) c0 += a.soil[l];
+      double c1 = c0 * (0.97 + 0.05 * U(rng));
+      double w[MAX_SOI_LAY], ws = 0; for (int l = 0; l < n; l++) { w[l] = 0.2 + U(rng); ws += w[l]; }
+      for (int l = 0; l < MAX_SOI_LAY; l++) { b.soil[l] = (l < n) ? c1 * w[l] / ws : 0; b.dz[l] = (l < n) ? 0.05 + 0.1 * U(rng) : 0; b.type[l] = (l < 2) ? 1 : 3; }
+      if (kind == 2) { f.burn = std::fmax(0.0, c0 - c1) * U(rng); f.lateral = 3 * U(rng); f.pot_decomp = 2 * U(rng); }
+    }
+    hgtr::step(p, s, a, b, f);
+    a = b;
+    if (it % 12 == 11) { s.m.clear(); }
+  }
+  CHECK(std::fabs(s.balance_error()) < 1e-8 * std::fmax(1.0, s.total()));
+  for (int l = 0; l < MAX_SOI_LAY; l++) { CHECK(s.soil[l] >= 0.0); }
+  CHECK(s.snow >= 0.0); CHECK(s.cum.foliar > 0.0); CHECK(s.cum.snowred > 0.0); CHECK(s.cum.snowmelt > 0.0);
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2 spin-up jump with the snowpack == explicit repetition; restart v3 keeps the snow, v2 reads as 0") {
+  hgtr::Params p = t2params(); p.spinup = 1; p.spinup_cycle = 1; p.spinup_years = 23;
+  hgtr::Snap c = column(5);
+  std::vector<hgtr::Rec> yr = synth_year(c);
+  for (size_t k = 0; k < yr.size(); k += 2) {   // BGC records: T2 surface forcing with a snow season
+    const int mth = (int)(k / 2);
+    const bool snow = (mth < 4 || mth > 9);
+    yr[k].f = [&]() { hgtr::Flux f = yr[k].f; hgtr::Flux g = t2flux(mth >= 5 && mth <= 8 ? 1.0 : 0.2, 0.5, snow ? 80.0 : 0.0,
+                       mth == 4 ? 80.0 : 0.0, snow ? 2.0 : 0.0, 0.05 + 0.03 * mth);
+                       for (int i = 0; i < NUM_PFT; i++) for (int j = 0; j < NUM_PFT_PART; j++) g.npp[i][j] = f.npp[i][j];
+                       for (int l = 0; l < MAX_SOI_LAY; l++) g.decomp[l] = f.decomp[l];
+                       return g; }();
+  }
+  hgtr::State s; hgtr::initialize(p, s, c);
+  for (const hgtr::Rec& r : yr) hgtr::step(p, s, r.a, r.b, r.f);
+  hgtr::State e = s; for (int y = 0; y < 23; y++) for (const hgtr::Rec& r : yr) hgtr::step(p, e, r.a, r.b, r.f);
+  hgtr::State j = s; REQUIRE(hgtr::spinup_jump(p, j, yr, c.nsl));
+  for (int l = 0; l < 5; l++) CHECK(j.soil[l] == doctest::Approx(e.soil[l]).epsilon(1e-9));
+  CHECK(j.snow == doctest::Approx(e.snow).epsilon(1e-9)); CHECK(j.vegtot() == doctest::Approx(e.vegtot()).epsilon(1e-9));
+  CHECK(std::fabs(j.balance_error()) < 1e-8 * j.total());
+  // restart
+  s.snow = 0.75; double v[hgtr::NSTATE]; hgtr::pack(s, v); CHECK(v[0] == 3.0); CHECK(v[hgtr::NSTATE - 1] == 0.75);
+  hgtr::State t; REQUIRE(hgtr::unpack(t, v, 5)); CHECK(t.snow == 0.75); CHECK(t.total() == s.total());
+  v[0] = 2.0; hgtr::State u; REQUIRE(hgtr::unpack(u, v, 5)); CHECK(u.snow == 0.0);
+  std::remove(T2DEP);
 }

@@ -86,6 +86,22 @@
 //       (cd.ch4_on), else saturated fraction (water table) x RH / layer C (proxy); separate k_meth for
 //       the two drivers (k_meth_ch4, k_meth_proxy).
 //   MeHg(t+1) = Meq + (MeHg(t) - Meq) exp(-kd), Meq = P / kd, capped at the layer Hg.
+// T2 phase 1 (hg_t2 = 1, needs hg_tracer = 1; default 0 = T1 unchanged; docs_src/HG_T2_design.md):
+// atmosphere-surface interface. Diagnostic like T1 (reads LAI, snow, water and radiation; writes nothing).
+//   Foliar uptake (hg_t2_foliar, ORCHIDEE-Hg v1.0 stomate_Hg.f90 l.1046-1056): leaf Hg input of PFT p =
+//     hg_fol_scale x f_fix(LAI_p) x vegcov_p x (1 - f_snow) x (dry Hg(0) + dry Hg(II)), f_fix = hg_fol_fmax x
+//     min(1, LAI / hg_fol_lai) (0.25, 1.25), canopy total capped at 1; replaces the leaf NPP x hg_r_leaf uptake
+//     (stem / root keep NPP x ratio). The intercepted dry Hg(II) leaves the ground deposition; the non-fixed dry
+//     Hg(0) is re-emitted (GEOS-Chem dry Hg(0) is gross; not booked).
+//   Wet deposition by precipitation (hg_t2_wetprec): month = annual x P_month / P_year.
+//   Snowpack Hg (hg_t2_snow): Hg(II) on the snow-covered fraction f_snow = min(1, SWE / hg_swe_full) goes to the
+//     snow pool; photoreduction of its photic part min(1, hg_snow_photic / z_snow) at hg_snow_kred x 24 <cos Z>
+//     (ORCHIDEE l.845-849, 0.090 /h x cos zenith) -> evasion; release with melt (to the top C soil layer) and
+//     sublimation (to the air) in proportion to melt, sublimation and SWE (ORCHIDEE l.1018-1020).
+//   Photoreduction of ground Hg(II) (hg_t2_photored, default 0): hg_pr_a exp(-hg_pr_b SW) (ORCHIDEE l.852).
+//   Booking: foliar -> uptake; Hg(II) to ground + snow and the soil Hg(0) sink -> dep; photoreduction and
+//   snow sublimation -> evasion. The snow pool is part of the total, the restart (layout v3) and the spin-up
+//   vector, so the step stays affine in Hg and exactly conservative.
 #include <cmath>
 #include <string>
 #include <algorithm>
@@ -144,6 +160,24 @@ struct Params {
   double q10_meth   = 1.0;    // hg_q10_meth: extra T response of methylation (the C turnover already has one)
   double q10_demeth = 2.0;    // hg_q10_demeth
   double t_ref      = 10.0;   // hg_t_ref (C)
+  // T2 phase 1 (see top). Deposition components from hg_dep_file (ug/m2/yr): wet, dry Hg(II), gross dry Hg(0)
+  // (column hg0_dry; if absent hg0_soil / 0.37, the factor of the T1 GEOS-Chem files), soil Hg(0) sink.
+  int    t2          = 0;     // hg_t2: 0 off (default), 1 T2 phase-1 surface interface (needs hg_tracer = 1, hg_dep_file components)
+  int    t2_foliar   = 1;     // hg_t2_foliar: LAI-based foliar uptake (with hg_t2)
+  int    t2_snow     = 1;     // hg_t2_snow: snowpack Hg pool (with hg_t2)
+  int    t2_wetprec  = 1;     // hg_t2_wetprec: wet deposition in proportion to the month's precipitation (with hg_t2)
+  int    t2_photored = 0;     // hg_t2_photored: ORCHIDEE photoreduction of ground-deposited Hg(II) (decision D2; default off)
+  double fol_fmax    = 0.25;  // hg_fol_fmax: maximum fraction of dry deposition fixed by leaves (ORCHIDEE l.1051)
+  double fol_lai     = 1.25;  // hg_fol_lai: LAI at which the fixed fraction saturates (ORCHIDEE l.1049)
+  double fol_scale   = 1.0;   // hg_fol_scale: calibration factor of the foliar uptake (decision D3)
+  double snow_kred   = 0.090; // hg_snow_kred (1/h at cos Z = 1): snow Hg(II) photoreduction (ORCHIDEE l.845)
+  double snow_photic = 0.10;  // hg_snow_photic (m): photic depth of snow (King & Simpson 2001, UV e-folding 5-20 cm)
+  double snow_rho    = 250.0; // hg_snow_rho (kg/m3): snow density for the photic fraction
+  double swe_full    = 10.0;  // hg_swe_full (mm): SWE of full snow cover
+  double pr_a        = 0.67;  // hg_pr_a: photoreduced fraction of deposited Hg(II) at SW = 0 (ORCHIDEE l.852)
+  double pr_b        = 0.016; // hg_pr_b (m2/W): its decrease with shortwave (ORCHIDEE l.852)
+  bool   dep_comp    = false; // the deposition file has components (hg2_wet / hg2_dry / hg0_soil columns)
+  std::vector<double> dep_w, dep_d2, dep_d0, dep_s0;   // components per row (ug/m2/yr)
 };
 
 // Deposition CSV: '#' comments; header with columns year, [month], and either dep or any of hg2_wet,
@@ -153,6 +187,8 @@ inline std::string load_dep(const std::string& fn, Params& p) {
   if (!f) { return "hg_dep_file: cannot open " + fn; }
   std::string line; std::vector<std::string> hdr; int ln = 0;
   p.dep_y.clear(); p.dep_m.clear(); p.dep_v.clear(); p.dep_vs.clear();
+  p.dep_w.clear(); p.dep_d2.clear(); p.dep_d0.clear(); p.dep_s0.clear(); p.dep_comp = false;
+  int iw = -1, id2 = -1, is0 = -1, id0 = -1;   // T2 components (hg0_dry: gross dry Hg(0), not added to the T1 rate)
   auto split = [](const std::string& s) { std::vector<std::string> o; std::stringstream ss(s); std::string x;
     while (std::getline(ss, x, ',')) { size_t a = x.find_first_not_of(" \t\r"), b = x.find_last_not_of(" \t\r");
       o.push_back(a == std::string::npos ? "" : x.substr(a, b - a + 1)); } return o; };
@@ -166,7 +202,10 @@ inline std::string load_dep(const std::string& fn, Params& p) {
       for (size_t i = 0; i < c.size(); i++) {
         if (c[i] == "year") iy = (int)i; else if (c[i] == "month") im = (int)i; else if (c[i] == "veg_scale") ivs = (int)i;
         else if (c[i] == "dep" || c[i] == "hg2_wet" || c[i] == "hg2_dry" || c[i] == "hg0_soil") iv.push_back((int)i);
+        if (c[i] == "hg2_wet") iw = (int)i; else if (c[i] == "hg2_dry") id2 = (int)i; else if (c[i] == "hg0_soil") is0 = (int)i;
+        else if (c[i] == "hg0_dry") id0 = (int)i;
       }
+      p.dep_comp = (iw >= 0 || id2 >= 0 || is0 >= 0);
       if (iy < 0 || iv.empty()) { return "hg_dep_file " + fn + ": header needs 'year' and 'dep' or hg2_wet/hg2_dry/hg0_soil"; }
       continue;
     }
@@ -178,6 +217,9 @@ inline std::string load_dep(const std::string& fn, Params& p) {
       if (m < 0 || m > 12 || !(v >= 0.0) || !(vs >= 0.0) || !std::isfinite(v) || !std::isfinite(vs)) { throw std::invalid_argument("range"); }
       if (!p.dep_y.empty() && m == 0 && p.dep_m.back() == 0 && y <= p.dep_y.back()) { throw std::invalid_argument("annual years must increase"); }
       p.dep_y.push_back(y); p.dep_m.push_back(m); p.dep_v.push_back(v); p.dep_vs.push_back(vs);
+      auto col = [&](int k) { const double x = (k >= 0) ? std::stod(c[k]) : 0.0; if (!(x >= 0.0) || !std::isfinite(x)) { throw std::invalid_argument("range"); } return x; };
+      const double w = col(iw), d2 = col(id2), s0 = col(is0);
+      p.dep_w.push_back(w); p.dep_d2.push_back(d2); p.dep_s0.push_back(s0); p.dep_d0.push_back((id0 >= 0) ? col(id0) : s0 / 0.37);
     } catch (const std::exception& e) {
       return "hg_dep_file " + fn + ": bad value at line " + std::to_string(ln) + " (" + e.what() + ")";
     }
@@ -186,7 +228,7 @@ inline std::string load_dep(const std::string& fn, Params& p) {
   return "";
 }
 
-struct DepVal { double rate = 0.0; double veg_scale = 1.0; };
+struct DepVal { double rate = 0.0; double veg_scale = 1.0; double wet = 0.0, dry2 = 0.0, dry0 = 0.0, soil0 = 0.0; };
 // Deposition rate (ug/m2/yr) and vegetation-uptake scale for a calendar year and month (1-12): an exact
 // monthly row if present, else linear interpolation of the annual rows (constant beyond the ends), else the
 // constant hg_dep_soil with scale 1.
@@ -194,7 +236,11 @@ inline DepVal dep_at(const Params& p, int year, int month) {
   DepVal d; d.rate = p.dep_soil;
   if (p.dep_y.empty()) { return d; }
   for (size_t i = 0; i < p.dep_y.size(); i++) {
-    if (p.dep_m[i] == month && p.dep_y[i] == year) { d.rate = p.dep_v[i]; d.veg_scale = p.dep_vs[i]; return d; }
+    if (p.dep_m[i] == month && p.dep_y[i] == year) {
+      d.rate = p.dep_v[i]; d.veg_scale = p.dep_vs[i];
+      if (i < p.dep_w.size()) { d.wet = p.dep_w[i]; d.dry2 = p.dep_d2[i]; d.dry0 = p.dep_d0[i]; d.soil0 = p.dep_s0[i]; }
+      return d;
+    }
   }
   int lo = -1, hi = -1;
   for (size_t i = 0; i < p.dep_y.size(); i++) {
@@ -207,6 +253,10 @@ inline DepVal dep_at(const Params& p, int year, int month) {
   const double w = (p.dep_y[hi] > p.dep_y[lo]) ? double(year - p.dep_y[lo]) / double(p.dep_y[hi] - p.dep_y[lo]) : 0.0;
   d.rate = p.dep_v[lo] + w * (p.dep_v[hi] - p.dep_v[lo]);
   d.veg_scale = p.dep_vs[lo] + w * (p.dep_vs[hi] - p.dep_vs[lo]);
+  if ((size_t)hi < p.dep_w.size()) {
+    d.wet = p.dep_w[lo] + w * (p.dep_w[hi] - p.dep_w[lo]); d.dry2 = p.dep_d2[lo] + w * (p.dep_d2[hi] - p.dep_d2[lo]);
+    d.dry0 = p.dep_d0[lo] + w * (p.dep_d0[hi] - p.dep_d0[lo]); d.soil0 = p.dep_s0[lo] + w * (p.dep_s0[hi] - p.dep_s0[lo]);
+  }
   return d;
 }
 
@@ -223,11 +273,16 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_spinup_years", &p.spinup_years, 1, 1e6}, {"hg_log_kd_org", &p.log_kd_org, 0, 9}, {"hg_log_kd_min", &p.log_kd_min, 0, 9},
             {"hg_k_meth_ch4", &p.k_meth_ch4, 0, 1e9}, {"hg_k_meth_proxy", &p.k_meth_proxy, 0, 1e9},
             {"hg_k_demeth", &p.k_demeth, 1e-9, 1e6}, {"hg_q10_meth", &p.q10_meth, 1e-3, 100},
-            {"hg_q10_demeth", &p.q10_demeth, 1e-3, 100}, {"hg_t_ref", &p.t_ref, -50, 50}};
+            {"hg_q10_demeth", &p.q10_demeth, 1e-3, 100}, {"hg_t_ref", &p.t_ref, -50, 50},
+            {"hg_fol_fmax", &p.fol_fmax, 0, 1}, {"hg_fol_lai", &p.fol_lai, 1e-3, 100}, {"hg_fol_scale", &p.fol_scale, 0, 100},
+            {"hg_snow_kred", &p.snow_kred, 0, 100}, {"hg_snow_photic", &p.snow_photic, 0, 100}, {"hg_snow_rho", &p.snow_rho, 10, 1000},
+            {"hg_swe_full", &p.swe_full, 1e-3, 1e4}, {"hg_pr_a", &p.pr_a, 0, 1}, {"hg_pr_b", &p.pr_b, 0, 10}};
   struct I { const char* k; int* v; int lo, hi; };
   I is[] = {{"hg_tracer", &p.tracer, 0, 1}, {"hg_mehg", &p.mehg, 0, 1}, {"hg_mehg_driver", &p.mehg_driver, 0, 1},
             {"hg_spinup", &p.spinup, 0, 1}, {"hg_transport", &p.transport, 0, 1}, {"hg_spinup_cycle", &p.spinup_cycle, 1, 50}, {"hg_spinup_closure", &p.spinup_closure, 0, 2}, {"hg_tr_year0", &p.tr_year0, -100000, 100000},
-            {"hg_sc_year0", &p.sc_year0, -100000, 100000}, {"hg_dep_spin_year", &p.spin_year, -100000, 100000}};
+            {"hg_sc_year0", &p.sc_year0, -100000, 100000}, {"hg_dep_spin_year", &p.spin_year, -100000, 100000},
+            {"hg_t2", &p.t2, 0, 1}, {"hg_t2_foliar", &p.t2_foliar, 0, 1}, {"hg_t2_snow", &p.t2_snow, 0, 1},
+            {"hg_t2_wetprec", &p.t2_wetprec, 0, 1}, {"hg_t2_photored", &p.t2_photored, 0, 1}};
   for (const std::string& key : ms.getMemberNames()) {
     if (key.rfind("hg_", 0) != 0) { continue; }
     bool known = false;
@@ -260,6 +315,8 @@ inline std::string parse(const Json::Value& ms, Params& p) {
   // hg_spinup (default 1) and hg_transport (default 1) act only with hg_tracer = 1 (ignored otherwise)
   if (!p.dep_file.empty()) { std::string e = load_dep(p.dep_file, p); if (!e.empty()) { return e; } }
   if (p.mehg == 1 && p.tracer != 1) { return "model_settings.hg_mehg = 1 needs hg_tracer = 1"; }
+  if (p.t2 == 1 && p.tracer != 1) { return "model_settings.hg_t2 = 1 needs hg_tracer = 1"; }
+  if (p.t2 == 1 && !p.dep_comp) { return "model_settings.hg_t2 = 1 needs an hg_dep_file with hg2_wet / hg2_dry / hg0_soil columns"; }
   return "";
 }
 
@@ -292,15 +349,23 @@ struct Flux {
   double q_in = 0.0, q_out = 0.0;           // infiltration, total drainage (mm/month; q_out: record only)
   double drain_l[MAX_SOI_LAY] = {};         // lateral drainage by soil layer (mm/month; Richards layer_drain)
   double liq[MAX_SOI_LAY] = {}, ice[MAX_SOI_LAY] = {}, por[MAX_SOI_LAY] = {};   // monthly mean liq / ice (mm), porosity (-)
+  // T2 phase 1 surface sub-step (t2 = 1; BGC step only): month's deposition components (ug/m2), canopy, snow, radiation
+  int    t2 = 0;
+  double dep_wet = 0.0, dep_dry2 = 0.0, dep_dry0 = 0.0, dep_soil0 = 0.0;   // wet Hg(II), dry Hg(II), gross dry Hg(0), soil Hg(0) sink
+  double lai[NUM_PFT] = {}, vegcov[NUM_PFT] = {};
+  double swe = 0.0, melt = 0.0, sublim = 0.0;   // monthly-mean SWE (mm), melt and sublimation (mm/month)
+  double sw = 0.0, cosz = 0.0, ndays = 30.0;    // mean shortwave (W/m2), 24-h mean cos zenith, days
 };
 
 struct Acc {
   double uptake = 0, dep = 0, evasion = 0, export_ = 0, fire = 0, unexpl_closs = 0, unexpl_cgain = 0, spin = 0;
   double drain = 0, down = 0;   // T1c diagnostics: drainage export (part of export_), organic -> mineral transfer
+  double foliar = 0, snowdep = 0, snowred = 0, snowmelt = 0, photored = 0;   // T2 diagnostics (parts of uptake / dep / evasion; melt internal)
   void clear() { *this = Acc(); }
   void add(const Acc& o) {
     uptake += o.uptake; dep += o.dep; evasion += o.evasion; export_ += o.export_; fire += o.fire;
     unexpl_closs += o.unexpl_closs; unexpl_cgain += o.unexpl_cgain; spin += o.spin; drain += o.drain; down += o.down;
+    foliar += o.foliar; snowdep += o.snowdep; snowred += o.snowred; snowmelt += o.snowmelt; photored += o.photored;
   }
   double net() const { return uptake + dep - evasion - export_ - fire + spin; }   // spin: spin-up jump
 };
@@ -313,6 +378,7 @@ struct State {
   int nsl = 0;
   double soil[MAX_SOI_LAY] = {};
   double mehg[MAX_SOI_LAY] = {};
+  double snow = 0.0;      // T2: snowpack Hg (ug/m2)
   Acc m, y;               // this month / this year (outputs)
   Acc cum;                // since initialization (conservation diagnostic)
   double h_init = 0.0;    // total Hg at initialization
@@ -323,7 +389,7 @@ struct State {
   double deadtot() const { double s = wd; for (int i = 0; i < NUM_PFT; i++) s += dead[i]; return s; }
   double soiltot() const { double s = 0; for (int i = 0; i < MAX_SOI_LAY; i++) s += soil[i]; return s; }
   double mehgtot() const { double s = 0; for (int i = 0; i < MAX_SOI_LAY; i++) s += mehg[i]; return s; }
-  double total() const { return vegtot() + deadtot() + soiltot(); }
+  double total() const { return vegtot() + deadtot() + soiltot() + snow; }
   // conservation residual since initialization (ug/m2); roundoff only
   double balance_error() const { return total() - h_init - cum.net(); }
 };
@@ -344,6 +410,7 @@ inline void initialize(const Params& p, State& s, const Snap& c) {
     s.soil[l] = (l < c.nsl) ? std::fmax(0.0, c.soil[l]) * (is_mineral(c.type[l]) ? p.r_min : p.r_org) : 0.0;
     s.mehg[l] = 0.0;
   }
+  s.snow = 0.0;
   s.init = true;
   s.cum.clear();
   s.h_init = s.total();
@@ -405,6 +472,72 @@ inline void transport_(const Params& p, State& s, const Snap& b, const Flux& f, 
   }
 }
 
+// T2: 24-h mean cosine of the solar zenith angle (night = 0) at latitude lat (deg) and solar declination of
+// day-of-year doy (Cooper 1969): (h0 sin(phi) sin(delta) + cos(phi) cos(delta) sin(h0)) / pi, h0 = sunset hour angle.
+inline double cosz24(double lat_deg, double doy) {
+  const double pi = 3.14159265358979323846;
+  const double phi = lat_deg * pi / 180.0, dl = 23.45 * pi / 180.0 * std::sin(2.0 * pi * (284.0 + doy) / 365.0);
+  const double x = -std::tan(phi) * std::tan(dl);
+  const double h0 = (x >= 1.0) ? 0.0 : (x <= -1.0) ? pi : std::acos(x);
+  return std::fmax(0.0, (h0 * std::sin(phi) * std::sin(dl) + std::cos(phi) * std::cos(dl) * std::sin(h0)) / pi);
+}
+// mid-month day of year (month 0-11) and days in the month (no leap years, as the model)
+inline double mid_doy(int m0) { static const int c[12] = {0, 31, 59, 90, 120, 151, 181, 212, 243, 273, 304, 334}; static const int d[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}; const int m = std::min(11, std::max(0, m0)); return c[m] + 0.5 * d[m] + 0.5; }
+inline double days_in(int m0) { static const int d[12] = {31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31}; return d[std::min(11, std::max(0, m0))]; }
+// ORCHIDEE-Hg fixed fraction of dry deposition taken up by leaves (stomate_Hg.f90 l.1046-1052)
+inline double f_fix(const Params& p, double lai) { return (lai > 1.0e-12) ? p.fol_fmax * std::fmin(1.0, lai / p.fol_lai) : 0.0; }
+
+// T2 phase-1 surface part of a BGC step (f.t2 = 1): foliar uptake per PFT (returned in fol, ug/m2), snowpack, ground
+// deposition; returns the Hg to add to the top C soil layer (deposition + melt release). Linear in Hg.
+inline double surface_t2_(const Params& p, State& s, const Flux& f, Acc& acc, double fol[NUM_PFT], bool have_soil) {
+  for (int i = 0; i < NUM_PFT; i++) { fol[i] = 0.0; }
+  const double fs = (p.t2_snow == 1) ? std::fmin(1.0, std::fmax(0.0, f.swe) / p.swe_full) : 0.0;
+  const double wet = std::fmax(0.0, f.dep_wet), d2 = std::fmax(0.0, f.dep_dry2), d0 = std::fmax(0.0, f.dep_dry0);
+  // foliar uptake
+  double fc = 0.0;   // canopy fraction that fixes dry deposition
+  if (p.t2_foliar == 1) {
+    double w[NUM_PFT] = {}; double tw = 0.0;
+    for (int i = 0; i < NUM_PFT; i++) {
+      if (f.vegcov[i] > 0.0) { w[i] = p.fol_scale * f_fix(p, f.lai[i]) * f.vegcov[i] * (1.0 - fs); tw += w[i]; }
+    }
+    const double sc = (tw > 1.0) ? 1.0 / tw : 1.0;
+    for (int i = 0; i < NUM_PFT; i++) { fol[i] = w[i] * sc * (d0 + d2); fc += w[i] * sc; acc.foliar += fol[i]; }   // booked as uptake in the leaf loop
+  }
+  // Hg(II) to the ground / snow (dry Hg(II) intercepted by the canopy removed); soil Hg(0) sink to the soil
+  const double g = wet + d2 * (1.0 - fc);
+  const double gsnow = g * fs, gground = g - gsnow;
+  const double fpr = (p.t2_photored == 1) ? std::fmin(1.0, std::fmax(0.0, p.pr_a * std::exp(-p.pr_b * std::fmax(0.0, f.sw)))) : 0.0;
+  const double pr = gground * fpr;
+  double to_soil = 0.0;
+  if (have_soil) {
+    acc.dep += g + std::fmax(0.0, f.dep_soil0);
+    acc.photored += pr; acc.evasion += pr;
+    to_soil = gground - pr + std::fmax(0.0, f.dep_soil0);
+  } else {   // no soil column: only the snow part is kept (as T1, deposition needs a soil layer)
+    acc.dep += gsnow;
+  }
+  // snowpack
+  s.snow += gsnow; acc.snowdep += gsnow;
+  if (s.snow > 0.0) {
+    const double swe = std::fmax(0.0, f.swe);
+    const double zs = swe / p.snow_rho;   // m (swe mm = kg/m2)
+    const double fph = (zs > 0.0) ? std::fmin(1.0, p.snow_photic / zs) : 1.0;
+    const double red = s.snow * fph * (1.0 - std::exp(-p.snow_kred * 24.0 * std::fmax(0.0, f.cosz) * std::fmax(0.0, f.ndays)));
+    s.snow -= red; acc.snowred += red; acc.evasion += red;
+    const double mlt = std::fmax(0.0, f.melt), sub = std::fmax(0.0, f.sublim);
+    double rel = (swe < 0.5) ? 1.0 : (mlt + sub) / (mlt + sub + swe);
+    if (!have_soil) { rel = 0.0; }
+    if (rel > 0.0) {
+      const double out = s.snow * rel;
+      const double fsub = (mlt + sub > 0.0) ? sub / (mlt + sub) : 0.0;
+      const double xs = out * fsub, xm = out - xs;
+      s.snow -= out; acc.evasion += xs; acc.snowred += xs; acc.snowmelt += xm; to_soil += xm;
+    }
+    if (s.snow < 0.0) { s.snow = 0.0; }
+  }
+  return to_soil;
+}
+
 // One sub-step. a, b: C before / after; f: the sub-step's external C fluxes. Updates s (and s.m, s.cum).
 inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const Flux& f) {
   if (!s.init) { return; }
@@ -417,6 +550,10 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
   // unassigned Hg, so that Hg never piles up in a layer without C turnover
   int topc = 0;
   for (int l = 0; l < nb; l++) { if (b.soil[l] > 1.0e-6) { topc = l; break; } }
+  // T2 phase 1 (hg_t2): surface interface (foliar uptake, snowpack, deposition components)
+  const bool t2 = (f.t2 == 1 && p.t2 == 1);
+  double fol[NUM_PFT] = {}; double t2_soil = 0.0;
+  if (t2) { t2_soil = surface_t2_(p, s, f, acc, fol, nb > 0); }
 
   // ---- non-soil pools (flattened): veg parts, standing dead, woody debris
   double* hp[NPOOL]; double dint[NPOOL]; double r[NPOOL];
@@ -425,7 +562,7 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
     for (int j = 0; j < NUM_PFT_PART; j++, k++) {
       hp[k] = &s.veg[i][j];
       const double in = f.npp[i][j];
-      const double hin = std::fmax(0.0, in) * rv[j] * f.veg_scale;
+      const double hin = (t2 && p.t2_foliar == 1 && j == 0) ? fol[i] : std::fmax(0.0, in) * rv[j] * f.veg_scale;
       *hp[k] += hin; acc.uptake += hin;
       r[k] = ratio_(*hp[k], a.veg[i][j] + std::fmax(0.0, in));
       dint[k] = b.veg[i][j] - a.veg[i][j] - in;
@@ -468,6 +605,7 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
     soilnet = c1 - c0 + dec + doc;
   }
   if (f.dep_soil > 0.0 && nb > 0) { acc.dep += f.dep_soil; }   // added to the top C layer after the remap
+  const double dep_add = t2 ? t2_soil : acc.dep;                 // T2: deposition to the ground + snow melt release
 
   // ---- donors / receivers
   double D = 0.0, R = 0.0;
@@ -572,7 +710,7 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
       if (nb > 0) { s.soil[topc] += left; } else { s.wd += left; }
     }
   }
-  if (acc.dep > 0.0) { s.soil[topc] += acc.dep; }
+  if (dep_add > 0.0) { s.soil[topc] += dep_add; }
   acc.unexpl_cgain = std::fmax(0.0, R - (cflow - std::fmin(S, cflow)));
   if (f.tr == 1 && p.transport == 1) { transport_(p, s, b, f, acc); }
   s.nsl = nb;
@@ -581,13 +719,14 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
 
 // ---- Hg spin-up (hg_spinup = 1)
 struct Rec { Snap a, b; Flux f; };   // one recorded tracer step
-const int NVEC = NPOOL + MAX_SOI_LAY;
+const int NVEC = NPOOL + MAX_SOI_LAY + 1;   // + T2 snowpack Hg (0 without hg_t2)
 inline void to_vec_(const State& s, double* x) {
   int k = 0;
   for (int i = 0; i < NUM_PFT; i++) for (int j = 0; j < NUM_PFT_PART; j++) x[k++] = s.veg[i][j];
   for (int i = 0; i < NUM_PFT; i++) x[k++] = s.dead[i];
   x[k++] = s.wd;
   for (int l = 0; l < MAX_SOI_LAY; l++) x[k++] = s.soil[l];
+  x[k++] = s.snow;
 }
 inline void from_vec_(State& s, const double* x) {
   int k = 0;
@@ -595,6 +734,7 @@ inline void from_vec_(State& s, const double* x) {
   for (int i = 0; i < NUM_PFT; i++) s.dead[i] = x[k++];
   s.wd = x[k++];
   for (int l = 0; l < MAX_SOI_LAY; l++) s.soil[l] = x[k++];
+  s.snow = x[k++];
 }
 // Affine map x -> M x + b (row-major M, NVEC x NVEC).
 struct Aff { std::vector<double> M, b; };
@@ -765,12 +905,12 @@ inline void mehg_month(const Params& p, State& s, const double* a_turn, const do
   s.mehg_prod_m += prod; s.mehg_prod_y += prod;
 }
 
-// Restart layout (version 2): [0] version, veg (NUM_PFT x 3), dead (NUM_PFT), wd, soil (MAX_SOI_LAY),
-// mehg (MAX_SOI_LAY), h_init, cum uptake, dep, evasion, export, fire, spin, spun (diagnostic continuity).
-// Version 1 (T1, no spin / spun) is still read.
-const int NSTATE = 1 + NUM_PFT * NUM_PFT_PART + NUM_PFT + 1 + 2 * MAX_SOI_LAY + 8;
+// Restart layout (version 3): [0] version, veg (NUM_PFT x 3), dead (NUM_PFT), wd, soil (MAX_SOI_LAY),
+// mehg (MAX_SOI_LAY), h_init, cum uptake, dep, evasion, export, fire, spin, spun (diagnostic continuity), snow (T2).
+// Version 2 (T1b-T1d, no snow; NSTATE - 1 values) and version 1 (T1, no spin / spun; NSTATE - 3) are still read.
+const int NSTATE = 1 + NUM_PFT * NUM_PFT_PART + NUM_PFT + 1 + 2 * MAX_SOI_LAY + 9;
 inline void pack(const State& s, double* v) {
-  int k = 0; v[k++] = 2.0;
+  int k = 0; v[k++] = 3.0;
   for (int i = 0; i < NUM_PFT; i++) for (int j = 0; j < NUM_PFT_PART; j++) v[k++] = s.veg[i][j];
   for (int i = 0; i < NUM_PFT; i++) v[k++] = s.dead[i];
   v[k++] = s.wd;
@@ -778,9 +918,10 @@ inline void pack(const State& s, double* v) {
   for (int l = 0; l < MAX_SOI_LAY; l++) v[k++] = s.mehg[l];
   v[k++] = s.h_init; v[k++] = s.cum.uptake; v[k++] = s.cum.dep; v[k++] = s.cum.evasion; v[k++] = s.cum.export_; v[k++] = s.cum.fire;
   v[k++] = s.cum.spin; v[k++] = (double)s.spun;
+  v[k++] = s.snow;
 }
 inline bool unpack(State& s, const double* v, int nsl) {
-  if (!(v[0] == 1.0 || v[0] == 2.0)) { return false; }
+  if (!(v[0] == 1.0 || v[0] == 2.0 || v[0] == 3.0)) { return false; }
   int k = 1;
   for (int i = 0; i < NUM_PFT; i++) for (int j = 0; j < NUM_PFT_PART; j++) s.veg[i][j] = v[k++];
   for (int i = 0; i < NUM_PFT; i++) s.dead[i] = v[k++];
@@ -789,7 +930,8 @@ inline bool unpack(State& s, const double* v, int nsl) {
   for (int l = 0; l < MAX_SOI_LAY; l++) s.mehg[l] = v[k++];
   s.h_init = v[k++]; s.cum.clear(); s.cum.uptake = v[k++]; s.cum.dep = v[k++]; s.cum.evasion = v[k++]; s.cum.export_ = v[k++]; s.cum.fire = v[k++];
   s.spun = 0; s.spin_tries = 0;
-  if (v[0] == 2.0) { s.cum.spin = v[k++]; s.spun = (int)std::lround(v[k++]); }
+  if (v[0] >= 2.0) { s.cum.spin = v[k++]; s.spun = (int)std::lround(v[k++]); }
+  s.snow = (v[0] >= 3.0) ? v[k++] : 0.0;
   s.nsl = nsl; s.init = true; s.m.clear(); s.y.clear();
   return true;
 }
