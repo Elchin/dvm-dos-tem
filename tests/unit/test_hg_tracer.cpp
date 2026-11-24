@@ -648,7 +648,7 @@ hgtr::Flux dflux(int nl, int nd, double qin, double qover, double drain_l2, doub
 
 TEST_CASE("hg_t2_diss parse: defaults, needs hg_t2; D7 default keeps sublimated snow Hg in the pack") {
   hgtr::Params p; REQUIRE(hgtr::parse(ms0(), p) == "");
-  CHECK(p.t2_diss == 0); CHECK(p.tau_sorb == 0.25); CHECK(p.rho_moss == 30.0); CHECK(p.v_adv == 0.2); CHECK(p.z_runoff == 0.045); CHECK(p.d_cryo == 1e-3); CHECK(p.d_bio == 1e-4);
+  CHECK(p.t2_diss == 0); CHECK(p.t2_log_kd_org == 3.5); CHECK(p.tau_sorb == 0.25); CHECK(p.rho_moss == 30.0); CHECK(p.v_adv == 0.2); CHECK(p.z_runoff == 0.045); CHECK(p.d_cryo == 1e-3); CHECK(p.d_bio == 1e-4);
   CHECK(p.snow_sublim_loss == 0);
   Json::Value a = ms0(); a["hg_tracer"] = 1; a["hg_t2_diss"] = 1; CHECK(hgtr::parse(a, p) != "");
   hgtr::Params q = t2params(); hgtr::State s; hgtr::Snap c = column(5); hgtr::initialize(q, s, c);

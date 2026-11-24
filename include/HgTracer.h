@@ -197,7 +197,9 @@ struct Params {
   int    snow_sublim_loss = 0; // hg_snow_sublim_loss: 0 Hg stays in the pack when snow sublimates (D7, default), 1 ORCHIDEE (lost)
   // T2 phase 2 (see top)
   int    t2_diss     = 0;     // hg_t2_diss: explicit dissolved pool + daily export + cryo/bioturbation (needs hg_t2 = 1)
-  double t2_log_kd_org = 3.3; // hg_t2_log_kd_org (log10 L/kg): organic Kd with hg_t2_diss (refit, WORK_NOTES_hg_t2 section 2)
+  double t2_log_kd_org = 3.5; // hg_t2_log_kd_org (log10 L/kg): organic Kd with hg_t2_diss; phase-2 refit (WORK_NOTES_hg_t2
+                              // section 2) to Toolik organic Hg:C 0.29-0.41 (Obrist 2017) and HPC 0.32-0.35 (T0): 3.5
+                              // (Toolik 0.35, HPC 0.33, TVC 0.43); provisional until the phase-5 joint refit
   double tau_sorb    = 0.25;  // hg_tau_sorb (days): sorption relaxation time (Hg(II)-soil sorption near equilibrium within
                               // hours, Yin et al. 1996 J Environ Qual 25:837; phase-2 scan: tau <= 0.5 d all alike)
   double rho_moss    = 30.0;  // hg_t2_rho_moss (kg/m3): moss-layer dry bulk density as its sorbent mass (live + dead
