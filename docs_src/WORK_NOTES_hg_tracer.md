@@ -463,3 +463,153 @@ diagnostics D1/dbg 0.03, identity L1+L2 0.068). Builds not counted.
 
 Figures: `hg_t1c_fig7_profiles.png` (T1b vs T1c H2 profiles), `_fig8_budget.png` (budgets, drainage vs
 Zolkos), `_fig9_kd_dep.png` (Kd calibration, GEOS-Chem series), `_fig10_mehg.png` (%MeHg vs Thompson 2025).
+
+## 10. T1d (round 4): spin-up fix with explicit validation, Kd_org, MeHg recalibration, hg_f_export
+
+Elchin (2026-11-24): fix the spin-up (constant geometry over the window, or handle the remaps; check against a
+longer explicit spin), then settle Kd_org, recalibrate MeHg, and probably lower hg_f_export. Budget 1.0 core-h.
+
+Code commit `09182928` (on `1566ab2f`). Binary `bins/binT1d_final`, md5 a3342026, built from the clean tree
+(GIT_SHA g091829).
+
+**Correction to section 9:** the committed T1c default `hg_log_kd_org` was already **3.3**, not 4.0 as written in
+9.1. The T1c identity checks (L1/L2) used 3.3.
+
+### 10.1 Diagnosis
+
+- In the 1950–69 spin stage the C model is **not periodic**. Over 300 explicit years organic C falls
+  16.8 → 11.8 kg m⁻² at TVC, 16.3 → 15.5 at HPC; Toolik mineral C falls 106 → 102.7. Organic layers
+  thin or thicken, and the layer count can differ at the two ends of a recorded cycle (HPC: 21 vs 20).
+- The T1c jump repeated the raw record. That needed the same layer count at both ends (otherwise refused:
+  HPC got no spin-up at all), and the C drift of one cycle was booked again in every repetition. Hence the
+  ±13 mg m⁻² TVC jump difference between the 1- and 10-yr cycles.
+- Requiring constant geometry over the window does not work: organic `dz` changes about once a year in every
+  run, so no 10-yr window has constant geometry.
+
+### 10.2 Spin-up fix: closure
+
+`hgtr::spinup_jump` now closes the record with a map from its end geometry back to its start geometry:
+
+    s -> closure -> (cycle + closure)^(n-1) -> cycle,   n = hg_spinup_years / hg_spinup_cycle.
+
+The repeated map is periodic, the last plain cycle ends in the current geometry, and the first
+`hg_spinup_cycle` years are always used (no layer-count condition, no sliding window). If the record is
+periodic, the closure is the identity and the jump is n plain repetitions, as before.
+`hg_spinup_closure` has three modes:
+
+| mode | closure | outcome |
+|---|---|---|
+| **0 (default)** | Hg/MeHg mass moved **within each horizon**: organic layers by relative depth in the organic horizon, mineral layers by depth below the organic–mineral interface (`depth_map_`) | conservative, linear, identity for the same geometry; matches explicit (10.3) |
+| 1 | C-neutral model step end → start (bottom-up cumulative-C re-map) | a 0.1 % mineral C drift moved organic Hg into the mineral soil every cycle (Toolik organic R 0.20 vs explicit 0.36) |
+| 2 | none (T1c raw repetition) | refused when the layer count differs (HPC) |
+
+A plain depth-overlap map, tried as dev7, was rejected: a thinning organic horizon pulled mineral Hg up in every
+repetition, and HPC mineral Hg went to 0.
+
+### 10.3 Validation: jump vs explicit spin stage
+
+Explicit runs use `hg_spinup` 0, kd_org 3.3, 1850 deposition, chained segments of ≤ 75 yr
+(TVC/HPC 20-yr segments, Toolik 75-yr segments). The jump runs use the same setup with `hg_spinup_years` set
+to the same horizon, ±1 yr. Values are organic-horizon Hg in mg m⁻², with organic Hg:C in brackets.
+
+| site | horizon | explicit | closure 0, 10-yr | closure 0, 1-yr | T1c raw, 10-yr | dev6 C re-map |
+|---|---|---|---|---|---|---|
+| TVC | 300 yr | 9.48 (0.81) | **9.73** (0.56) | 7.49 (0.41) | 9.32 (0.53) | 4.57 |
+| HPC | 300 yr | 7.59 (0.49) | **7.36** (0.45) | 8.63 (0.51) | refused | 8.40 |
+| HPC | 1000 yr | 10.46 (0.71) | **9.71** (0.59) | 14.70 (0.87) | – | – |
+| Toolik | 300 yr | 3.95 (0.36) | **4.04** (0.37) | 3.97 (0.36) | 4.04 | 2.22 (0.20) |
+| Toolik | 1050 yr | 3.97 (0.37) | **4.25** (0.39) | 4.03 (0.37) | – | – |
+
+- With the 10-yr cycle and closure 0, the organic Hg mass is within 3–7 % of explicit; total soil Hg is within
+  4 % (HPC 1000 yr: 40.9 vs 42.5).
+- The 1-yr cycle can be off by +40 % (HPC 1000 yr), which supports the 10-yr default.
+- At TVC the Hg:C differs although the Hg mass agrees. The explicit organic C falls by 30 %, while the jump
+  holds the recorded C. This is a C spin-up issue, not an Hg one.
+- See Fig. 11 (`hg_t1d_fig11_spin_validation.png`).
+
+### 10.4 Calibration (binT1d_dev8 / final; spin-up on; GEOS-Chem dep TVC/HPC, Obrist Toolik; last 20 yr)
+
+| run | kd_org | f_export | site | R org / R min | export (drain) | net Hg(0) | %MeHg JJAS |
+|---|---|---|---|---|---|---|---|
+| Y1 | 3.3 | 0.015 | Toolik (proxy / CH4) | 0.41 / 1.56 | 0.70 | +5.0 | 0.105 / 1.97 |
+| | | | TVC | 2.12 / 1.41 | 6.83 (2.52) | +18.7 | 1.08 |
+| | | | HPC | 0.91 / 1.93 | 6.46 (4.45) | +12.5 | 0.088 |
+| Y2 | 3.8 | 0.015 | Toolik | 0.84 / 1.50 | 0.81 | +4.9 | 0.14 / 2.23 |
+| | | | TVC | 2.33 / 1.37 | 5.63 (0.91) | +18.2 | 1.10 |
+| | | | HPC | 0.71 / 1.59 | 6.17 (2.04) | +9.7 | 0.21 |
+| Y3 | 3.3 | 0.005 | Toolik | 0.42 / 1.58 | 0.24 | +5.0 | 0.105 / 1.97 |
+| | | | TVC | 2.63 / 1.46 | 4.26 (2.53) | +17.5 | 1.10 |
+| | | | HPC | 1.06 / 2.00 | 5.80 (5.05) | +12.2 | 0.089 |
+
+Decisions:
+
+- **Kd_org stays 3.3.** It is the only tested value that puts the Toolik organic Hg:C in the observed range
+  (0.29–0.41; Olson 2018 / Schuster 2018); 3.8 gives 0.84. It is within the Allison & Allison 2005 soil
+  range 10^2.2–10^5.8.
+- **`hg_f_export` 0.015 → 0.005.**
+  - Dissolved export now leaves explicitly with the drainage (`hg_transport`), so the implicit
+    decomposition-export fraction of Schaefer 2020 would double count.
+  - TVC export falls to 4.26 µg m⁻² yr⁻¹, at the Zolkos 2020 upper bound.
+  - HPC stays at 5.8 because 5.05 of it is drainage, which is not sensitive to f_export.
+  - Toolik falls to 0.24, below the 0.8 lower bound. Toolik has no lateral drainage in the model, and the river
+    yields are basin-scale.
+- **MeHg** (%MeHg is linear in k_meth):
+  - `hg_k_meth_proxy` 77 → **87** gives HPC 0.100 % (plateau 0.1 %).
+  - `hg_k_meth_ch4` 3200 → **3250** gives Toolik 2.00 % (fen 2 %).
+  - TVC proxy is 1.24 %, above bog 0.7 %; TVC is upland tundra, not a bog.
+
+### 10.5 Final defaults: VF4 (binT1d_final, no overrides except the deposition files)
+
+| site | R org / R min | export (drain) | net Hg(0) | net total | %MeHg JJAS | Thompson 2025 |
+|---|---|---|---|---|---|---|
+| Toolik CMT06, proxy | **0.42** / 1.58 | 0.24 (0) | +5.0 sink (obs 6.5 ± 0.7) | +7.5 | 0.12 | – |
+| Toolik CMT06, CH4 | **0.41** / 1.58 | 0.26 (0) | +5.0 sink | +7.4 | **2.00** | fen 2.0 ✓ |
+| TVC S22 | 2.63 / 1.46 | 4.26 (2.53) | +17.5 sink | +16.4 | 1.24 | bog 0.7 (n/a) |
+| HPC S21H | 1.06 / 2.00 | 5.80 (5.05) | +12.2 sink | +9.2 | **0.100** | plateau 0.1 ✓ |
+
+VF4 reproduces Y3 to all printed digits; Hg did not change, only MeHg.
+
+TVC/HPC organic Hg:C stays high. Decay-released Hg is mostly retained (only f_evade + f_export = 2.5 % leaves
+the pool), so the equilibrium organic Hg:C ≈ litter Hg input / (0.025 × decomposition + transport). The TVC
+vegetation uptake is 21.7 µg m⁻² yr⁻¹ (6× Toolik). No organic Hg:C observations exist for TVC/HPC.
+
+Figures: 12 profiles (T1c H1 vs T1d), 13 budgets vs Zolkos / Obrist, 14 Kd and deposition, 15 %MeHg.
+
+### 10.6 Checks
+
+- Unit tests (final build): **501/501** test cases; 8 assertion failures, the same known ones
+  (test_climate 47/52, test_richards_water_energy 198/215, test_seb 177/178, test_stefan_water 142/271).
+- New tests:
+  - closure 1 == explicit (cycle + closure) repetition;
+  - closure 0 identity, split, organic thinning (no Hg crosses the interface), organic merge, == explicit
+    repetition, conservation;
+  - closure 2 refuses a layer-count change.
+- M1 (full 8-case prod set, all Hg off, binM vs binT1d_final): **PASS, bit-identical**.
+- M3 (8-case prod_hg, tracer + MeHg, so spin-up + transport by default): **PASS**; `cmp_on.py` C/N/water/energy
+  identical **True** (16 stages, 0 diffs); Hg balance ≤ 1.2e-10 µg m⁻².
+- Balance ≤ 2e-10 µg m⁻² in every site run, including the jump.
+
+### 10.7 Core-hours
+
+Ledger 1.4022 → 2.0586: **0.656 core-h** of the 1.0 round budget (total cap 2.4).
+
+| item | core-h |
+|---|---|
+| explicit chains (300 + 1000 yr) and jumps | 0.22 |
+| calibration Y1–Y3 | 0.13 |
+| final VF4 | 0.04 |
+| identity M1 + M3 (full 8-case sets) | 0.27 |
+
+Builds are not counted. Z1 (stopped by the old 1.5 cap in runT1c.sh) did not run.
+
+### 10.8 Open decisions
+
+1. TVC/HPC organic Hg:C 1.1–2.6. Options: accept (no site data); raise the loss fraction of decay-released Hg
+   in organic layers (this conflicts with the Toolik net sink if done through f_evade); or check the TVC
+   vegetation uptake (r_leaf/r_stem/r_root × NPP, 21.7 µg m⁻² yr⁻¹).
+2. HPC export 5.8 is drainage-dominated (lateral drainage of the thawed peat). Options: accept as plot-scale vs
+   basin-scale yields, or raise Kd_min within its literature range.
+3. Toolik export 0.24 is below the 0.8–4.0 basin range (no model lateral drainage at Toolik).
+4. The C spin-up at TVC is not at equilibrium in the 1950–69 spin stage (organic C −30 % in 300 yr). The Hg
+   jump holds the recorded C; a longer C spin-up would change the TVC numbers.
+5. %MeHg at TVC (1.24 %) has no direct Thompson class.
