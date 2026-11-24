@@ -26,7 +26,7 @@ TEST_CASE("hg_tracer parse: absent = off, defaults, errors") {
   hgtr::Params p;
   CHECK(hgtr::parse(ms0(), p) == "");
   CHECK(p.tracer == 0); CHECK(p.mehg == 0);
-  CHECK(p.f_evade == doctest::Approx(0.02)); CHECK(p.f_export == doctest::Approx(0.015)); CHECK(p.f_leach == 0.0);
+  CHECK(p.f_evade == doctest::Approx(0.02)); CHECK(p.f_export == doctest::Approx(0.005)); CHECK(p.spinup_closure == 0); CHECK(p.k_meth_ch4 == 3250.0); CHECK(p.k_meth_proxy == 87.0); CHECK(p.f_leach == 0.0);
   CHECK(p.spinup == 1); CHECK(p.spinup_cycle == 10); CHECK(p.transport == 1); CHECK(p.log_kd_min == doctest::Approx(3.8)); CHECK(p.dep_file.empty()); CHECK(hgtr::dep_at(p, 2000, 6).rate == 0.0);
   CHECK(p.r_org == doctest::Approx(0.35)); CHECK(p.r_min == doctest::Approx(1.47));
   Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_r_min"] = 1.6; m["other_switch"] = 3;
@@ -249,8 +249,46 @@ TEST_CASE("hg_spinup: affine jump == explicit repetition of the recorded cycle; 
   hgtr::State k2 = k; for (const hgtr::Rec& r : yr) hgtr::step(p, k2, r.a, r.b, r.f);
   for (int l = 0; l < 4; l++) CHECK(k2.soil[l] == doctest::Approx(k.soil[l]).epsilon(1e-6));
   CHECK(std::fabs(k2.total() - k.total()) < 1e-3 * std::fabs(k.total() - s.total()));   // pools without turnover may still grow linearly
-  // geometry mismatch: refused, state unchanged
-  hgtr::State q = s; CHECK_FALSE(hgtr::spinup_jump(p, q, yr, c.nsl + 1)); CHECK(q.total() == s.total());
+  // state not at the end geometry of the record: refused, state unchanged
+  hgtr::State q = s; q.nsl = c.nsl + 1; const double q0 = q.total(); CHECK_FALSE(hgtr::spinup_jump(p, q, yr, c.nsl)); CHECK(q.total() == q0);
+}
+
+TEST_CASE("hg_spinup closure: non-periodic record (C drift, layer re-division) == explicit (cycle + closure) repetition; conserves; no runaway") {
+  hgtr::Params p; p.tracer = 1; p.spinup = 1; p.spinup_cycle = 1; p.spinup_years = 15; p.dep_soil = 0.0; p.spinup_closure = 1;
+  hgtr::Snap c0 = column(5);
+  // record: 12 months of decomposition + litter, soil C grows 2 % in layers 1-2 over the year, then a re-division 5 -> 6 layers
+  std::vector<hgtr::Rec> yr; hgtr::Snap cur = c0;
+  for (int m = 0; m < 12; m++) {
+    hgtr::Rec r; r.a = cur; r.b = cur;
+    for (int l = 0; l < 5; l++) { r.f.decomp[l] = 2.0 + l; }
+    r.f.npp[0][0] = 3.0;
+    r.b.soil[1] += 1.0; r.b.soil[2] += 0.7;                       // net C gain (not periodic)
+    r.b.soil[0] = cur.soil[0] - (2.0) + 3.0;                       // litter in, decay out
+    for (int l = 3; l < 5; l++) { r.b.soil[l] = cur.soil[l] - (2.0 + l); }
+    yr.push_back(r); cur = r.b;
+  }
+  hgtr::Rec dv; dv.a = cur; dv.b = cur; dv.b.nsl = 6;               // re-division: layer 4 split in two
+  dv.b.soil[4] = cur.soil[4] * 0.5; dv.b.soil[5] = cur.soil[4] * 0.5; dv.b.dz[4] = cur.dz[4] * 0.5; dv.b.dz[5] = cur.dz[4] * 0.5; dv.b.type[5] = cur.type[4];
+  yr.push_back(dv);
+  hgtr::State s; hgtr::initialize(p, s, c0);
+  for (const hgtr::Rec& r : yr) hgtr::step(p, s, r.a, r.b, r.f);
+  REQUIRE(s.nsl == 6);
+  const hgtr::Flux none;
+  hgtr::State e = s;                                                // explicit: closure, 14 x (cycle + closure), cycle
+  hgtr::step(p, e, yr.back().b, yr.front().a, none);
+  for (int y = 0; y < 14; y++) { for (const hgtr::Rec& r : yr) hgtr::step(p, e, r.a, r.b, r.f); hgtr::step(p, e, yr.back().b, yr.front().a, none); }
+  for (const hgtr::Rec& r : yr) hgtr::step(p, e, r.a, r.b, r.f);
+  hgtr::State j = s; REQUIRE(hgtr::spinup_jump(p, j, yr, 0));
+  CHECK(j.nsl == 6);
+  for (int l = 0; l < 6; l++) CHECK(j.soil[l] == doctest::Approx(e.soil[l]).epsilon(1e-9));
+  CHECK(j.vegtot() == doctest::Approx(e.vegtot()).epsilon(1e-9));
+  CHECK(std::fabs(j.balance_error()) < 1e-8 * j.total());
+  CHECK(hgtr::rec_c_drift(yr) > 0.0);
+  // long jump: bounded periodic steady state (the C gain of the record is not booked again in every repetition)
+  p.spinup_years = 200000; hgtr::State k = s; REQUIRE(hgtr::spinup_jump(p, k, yr, 0));
+  p.spinup_years = 100000; hgtr::State k2 = s; REQUIRE(hgtr::spinup_jump(p, k2, yr, 0));
+  for (int l = 0; l < 6; l++) CHECK(k.soil[l] == doctest::Approx(k2.soil[l]).epsilon(1e-3));
+  CHECK(std::isfinite(k.total()));
 }
 
 TEST_CASE("hg restart layout v2 round trip (spin, spun) and v1 still read") {
@@ -347,4 +385,51 @@ TEST_CASE("hg_spinup / hg_transport defaults are ignored without the tracer") {
   hgtr::Params p; Json::Value m(Json::objectValue); m["hg_spinup"] = 1; m["hg_transport"] = 1;
   CHECK(hgtr::parse(m, p) == ""); CHECK(p.tracer == 0);
   Json::Value b(Json::objectValue); b["hg_log_kd_org"] = 12; CHECK(hgtr::parse(b, p) != "");
+}
+
+TEST_CASE("hg_spinup closure 0 (default): depth-overlap Hg mass map; identity for same geometry; == explicit; conserves") {
+  hgtr::Params p; p.tracer = 1; p.spinup = 1; p.spinup_cycle = 1; p.spinup_years = 12; p.dep_soil = 0.0;
+  CHECK(p.spinup_closure == 0);
+  hgtr::Snap c0 = column(5);
+  // depth map: same geometry = identity; split layer 4 in two halves -> its Hg halves; merge back -> original
+  hgtr::State s; hgtr::initialize(p, s, c0);
+  hgtr::State i1 = s; hgtr::depth_map_(i1, c0, c0);
+  for (int l = 0; l < 5; l++) CHECK(i1.soil[l] == s.soil[l]);
+  hgtr::Snap c1 = c0; c1.nsl = 6; c1.dz[4] = c0.dz[4] * 0.5; c1.dz[5] = c0.dz[4] * 0.5; c1.soil[4] = c0.soil[4] * 0.5; c1.soil[5] = c0.soil[4] * 0.5; c1.type[5] = c0.type[4];
+  hgtr::State i2 = s; hgtr::depth_map_(i2, c0, c1);
+  CHECK(i2.nsl == 6); CHECK(i2.soil[4] == doctest::Approx(0.5 * s.soil[4])); CHECK(i2.soil[5] == doctest::Approx(0.5 * s.soil[4]));
+  CHECK(i2.total() == doctest::Approx(s.total()).epsilon(1e-12));
+  hgtr::State i3 = i2; hgtr::depth_map_(i3, c1, c0);
+  for (int l = 0; l < 5; l++) CHECK(i3.soil[l] == doctest::Approx(s.soil[l]).epsilon(1e-12));
+  // organic horizon thins (layers 0-2 lose 40 % of their thickness): no Hg crosses the organic-mineral interface
+  hgtr::Snap c2 = c0; for (int l = 0; l < 3; l++) c2.dz[l] = c0.dz[l] * 0.6;
+  hgtr::State i4 = s; hgtr::depth_map_(i4, c0, c2);
+  for (int l = 0; l < 5; l++) CHECK(i4.soil[l] == doctest::Approx(s.soil[l]).epsilon(1e-12));
+  // organic layers merge 3 -> 2: organic Hg stays organic, mineral unchanged
+  hgtr::Snap c3 = c0; c3.nsl = 4; c3.dz[0] = c0.dz[0]; c3.dz[1] = c0.dz[1] + c0.dz[2]; c3.type[1] = c0.type[1];
+  for (int l = 2; l < 4; l++) { c3.dz[l] = c0.dz[l + 1]; c3.type[l] = c0.type[l + 1]; c3.soil[l] = c0.soil[l + 1]; }
+  hgtr::State i5 = s; hgtr::depth_map_(i5, c0, c3);
+  CHECK(i5.soil[0] + i5.soil[1] == doctest::Approx(s.soil[0] + s.soil[1] + s.soil[2]).epsilon(1e-12));
+  CHECK(i5.soil[2] == doctest::Approx(s.soil[3])); CHECK(i5.soil[3] == doctest::Approx(s.soil[4]));
+  // non-periodic record (C drift + re-division 5 -> 6): jump == explicit closure-0 repetition
+  std::vector<hgtr::Rec> yr; hgtr::Snap cur = c0;
+  for (int m = 0; m < 12; m++) {
+    hgtr::Rec r; r.a = cur; r.b = cur;
+    for (int l = 0; l < 5; l++) { r.f.decomp[l] = 2.0 + l; }
+    r.f.npp[0][0] = 3.0; r.b.soil[1] += 1.0; r.b.soil[2] += 0.7; r.b.soil[0] = cur.soil[0] + 1.0;
+    for (int l = 3; l < 5; l++) { r.b.soil[l] = cur.soil[l] - (2.0 + l); }
+    yr.push_back(r); cur = r.b;
+  }
+  hgtr::Rec dv; dv.a = cur; dv.b = cur; dv.b.nsl = 6; dv.b.soil[4] = cur.soil[4] * 0.5; dv.b.soil[5] = cur.soil[4] * 0.5;
+  dv.b.dz[4] = cur.dz[4] * 0.5; dv.b.dz[5] = cur.dz[4] * 0.5; dv.b.type[5] = cur.type[4]; yr.push_back(dv);
+  hgtr::State s1 = s; for (const hgtr::Rec& r : yr) hgtr::step(p, s1, r.a, r.b, r.f);
+  hgtr::State e = s1; hgtr::depth_map_(e, yr.back().b, yr.front().a);
+  for (int y = 0; y < 11; y++) { for (const hgtr::Rec& r : yr) hgtr::step(p, e, r.a, r.b, r.f); hgtr::depth_map_(e, yr.back().b, yr.front().a); }
+  for (const hgtr::Rec& r : yr) hgtr::step(p, e, r.a, r.b, r.f);
+  hgtr::State j = s1; REQUIRE(hgtr::spinup_jump(p, j, yr, 0));
+  CHECK(j.nsl == 6);
+  for (int l = 0; l < 6; l++) CHECK(j.soil[l] == doctest::Approx(e.soil[l]).epsilon(1e-9));
+  CHECK(std::fabs(j.balance_error()) < 1e-8 * j.total());
+  // closure 2 (raw) refuses a record whose layer count differs at the two ends
+  p.spinup_closure = 2; hgtr::State q = s1; CHECK_FALSE(hgtr::spinup_jump(p, q, yr, 0));
 }

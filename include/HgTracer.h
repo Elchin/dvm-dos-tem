@@ -46,6 +46,16 @@
 //   hg_spinup_cycle default 10 years (was 1): a single recorded year can have almost no transport (snowmelt
 //   on frozen ground, dry summer), and the 5000-yr jump would then carry that year's state.
 //
+// T1d (2026-11-24): spin-up closure (hg_spinup_closure, default 0). The recorded C cycle is not periodic (layer
+//   C drifts, organic layers thin or thicken, layers are re-divided, the layer count may differ at the two
+//   ends), so the jump closes the record with a map from its end geometry back to its start geometry:
+//   Hg (and MeHg) mass moved within each horizon, organic layers by relative depth in the organic horizon and
+//   mineral layers by depth below the organic-mineral interface (depth_map_). The repeated map
+//   start -> cycle -> end -> closure -> start is then periodic, the jump ends with one plain cycle in the
+//   current geometry, and the first hg_spinup_cycle years are always usable (no layer-count condition).
+//   Validated against explicit 300- and 1000-yr spin stages (WORK_NOTES 10). Defaults recalibrated:
+//   hg_f_export 0.005 (was 0.015), hg_k_meth_ch4 3250, hg_k_meth_proxy 87.
+//
 // Units: C in g C/m2, Hg and MeHg in ug/m2, ratios in ug Hg / g C, fluxes per model month.
 //
 // Pools (parallel to C): live vegetation per PFT x {leaf, stem, root}; standing dead per PFT; woody
@@ -96,7 +106,9 @@ struct Params {
   double r_stem     = 0.02;   // hg_r_stem: RHgC of new stem tissue (wood ~5-10 ng/g)
   double r_root     = 0.07;   // hg_r_root: RHgC of new root tissue
   double f_evade    = 0.02;   // hg_f_evade: fraction of decay-released Hg that evades (0.16 Schaefer 2020; 0.02: Obrist 2017 Toolik net Hg(0) sink, see top)
-  double f_export   = 0.015;  // hg_f_export: fraction of decay-released Hg exported (Schaefer 2020)
+  double f_export   = 0.005;  // hg_f_export: fraction of decay-released Hg exported (Schaefer 2020: 0.015). T1d: 0.005, since
+                              // dissolved export now leaves explicitly with the drainage (hg_transport); keeps TVC export
+                              // within the pan-Arctic river yields 0.8-4.0 ug m-2 yr-1 (Zolkos 2020), see WORK_NOTES 10
   double f_leach    = 0.0;    // hg_f_leach: fraction of decay-released Hg moved to the next soil layer down (DOC-bound), bottom -> export
   // T1c downward transport of dissolved (DOM-bound) Hg with the percolating soil water, once a month, any
   // geometry: Hg leaving layer l = q_l * Hg_l / (liq_l + Kd * M_l) (Kd partitioning between the solid phase
@@ -112,8 +124,11 @@ struct Params {
   int    spin_year  = 1850;   // hg_dep_spin_year: deposition year used in pre-run / eq-run / sp-run (pre-industrial)
   int    spinup     = 1;      // hg_spinup: 1 (default; acts only with hg_tracer = 1), 0 off; 1 = analytical spin-up after the first hg_spinup_cycle years
   double spinup_years = 5000; // hg_spinup_years: equivalent spin-up length (yr; Schaefer 2020: 5000)
+  int    spinup_closure = 0;  // hg_spinup_closure: T1d, how the recorded cycle is closed (end -> start geometry): 0 Hg mass
+                              // by depth overlap (default), 1 C-neutral model step (bottom-up C re-map), 2 none (raw repetition)
   int    spinup_cycle = 10;   // hg_spinup_cycle: model years whose C + water cycle is recorded and repeated (1-50); T1c: 10 (was 1)
-                              // so that the interannual variability of infiltration / thaw (transport) is averaged
+                              // so that the interannual variability of infiltration / thaw (transport) is averaged;
+                              // T1d: the first full years after the initialization, closed by a C-neutral closure step
   // deposition table (from hg_dep_file): rows with month 0 = annual (interpolated in year), 1-12 = monthly
   std::vector<int> dep_y, dep_m; std::vector<double> dep_v, dep_vs;
   int    mehg       = 0;      // hg_mehg: 0 off (default), 1 MeHg index
@@ -121,8 +136,10 @@ struct Params {
   // k_meth: calibrated (T1, 2026-11-23) to Thompson et al. 2025 growing-season (Jun-Sep) active-layer %MeHg in
   // steady state: CH4 driver -> 2.0 % (fen) at Toolik CMT06 wet sedge with the CH4 module on (k 30 gave 0.0189 %);
   // proxy driver -> 0.1 % (permafrost plateau) at HPC S21H (k 0.6 gave 0.00078 %). %MeHg is linear in k_meth.
-  double k_meth_ch4   = 3200.0; // hg_k_meth_ch4 (-): MeHg production per unit Hg x CH4-C turnover fraction
-  double k_meth_proxy = 77.0;   // hg_k_meth_proxy (-): same, per saturated-fraction RH C turnover fraction
+  // T1d recalibration with spin-up (10-yr cycle, closure 0), transport and deposition series (GEOS-Chem TVC/HPC, Obrist
+  // Toolik): Toolik CH4 driver 1.97 % at 3200 -> 3250 (fen 2 %); HPC proxy 0.089 % at 77 -> 87 (plateau 0.1 %).
+  double k_meth_ch4   = 3250.0; // hg_k_meth_ch4 (-): MeHg production per unit Hg x CH4-C turnover fraction
+  double k_meth_proxy = 87.0;   // hg_k_meth_proxy (-): same, per saturated-fraction RH C turnover fraction
   double k_demeth   = 3.0;    // hg_k_demeth (1/month at t_ref): ~0.1 /day, peat incubations
   double q10_meth   = 1.0;    // hg_q10_meth: extra T response of methylation (the C turnover already has one)
   double q10_demeth = 2.0;    // hg_q10_demeth
@@ -209,7 +226,7 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_q10_demeth", &p.q10_demeth, 1e-3, 100}, {"hg_t_ref", &p.t_ref, -50, 50}};
   struct I { const char* k; int* v; int lo, hi; };
   I is[] = {{"hg_tracer", &p.tracer, 0, 1}, {"hg_mehg", &p.mehg, 0, 1}, {"hg_mehg_driver", &p.mehg_driver, 0, 1},
-            {"hg_spinup", &p.spinup, 0, 1}, {"hg_transport", &p.transport, 0, 1}, {"hg_spinup_cycle", &p.spinup_cycle, 1, 50}, {"hg_tr_year0", &p.tr_year0, -100000, 100000},
+            {"hg_spinup", &p.spinup, 0, 1}, {"hg_transport", &p.transport, 0, 1}, {"hg_spinup_cycle", &p.spinup_cycle, 1, 50}, {"hg_spinup_closure", &p.spinup_closure, 0, 2}, {"hg_tr_year0", &p.tr_year0, -100000, 100000},
             {"hg_sc_year0", &p.sc_year0, -100000, 100000}, {"hg_dep_spin_year", &p.spin_year, -100000, 100000}};
   for (const std::string& key : ms.getMemberNames()) {
     if (key.rfind("hg_", 0) != 0) { continue; }
@@ -594,47 +611,141 @@ inline Aff compose_(const Aff& B, const Aff& A) {   // B o A
   }
   return C;
 }
-// Apply hg_spinup_years / cycle repetitions of the recorded cycle to s (s = the state at the end of the
-// cycle; the cycle must start and end with the same number of soil layers). Returns false (s unchanged)
-// if the geometry differs or the result is not finite.
-inline bool spinup_jump(const Params& p, State& s, const std::vector<Rec>& rec, int nsl_start) {
-  if (rec.empty() || nsl_start != s.nsl) { return false; }
-  auto run = [&](const double* x0, double* x1) {
-    State t; t.init = true; t.nsl = nsl_start; from_vec_(t, x0);
+// Apply hg_spinup_years of the recorded cycle to s (s = the state at the end of the cycle, geometry
+// rec.back().b). T1d: geometry closure. The C model is not exactly periodic over the recorded years (layer
+// C drifts, layers are re-divided, the layer count may differ at the two ends). Repeating the raw record
+// would book the C drift of one cycle again in every repetition (layers that gained C over the cycle keep
+// receiving Hg, the donors keep losing it), which biased the equilibrium (T1c: TVC +13 vs -12.5 mg m-2 for
+// 10- vs 1-yr cycles). The closure is one C-neutral step from the end snapshot back to the start snapshot
+// (the same step function: internal C transfers at the layers' Hg:C, bottom-up re-map if the geometry
+// differs), so that the repeated map  start -> cycle -> end -> closure -> start  is periodic in C and
+// geometry and its fixed point is the Hg equilibrium for the recorded C state. The jump is
+//   s -> closure -> (cycle + closure)^(n-1) -> cycle,   n = round(spinup_years / cycle),
+// i.e. it ends in the current geometry. If the record is periodic (end snapshot == start snapshot) the
+// closure step changes nothing and the jump is n plain repetitions. Exactly conservative except for the
+// closure's dilution / concentration of unexplained C (no Hg created or lost: Hg is only moved). Returns false
+// (s unchanged) if s is not at the end geometry of the record or the result is not finite.
+inline bool snap_equal_(const Snap& a, const Snap& b) {
+  if (a.nsl != b.nsl) { return false; }
+  for (int l = 0; l < MAX_SOI_LAY; l++) { if (a.soil[l] != b.soil[l] || a.dz[l] != b.dz[l] || a.type[l] != b.type[l]) { return false; } }
+  for (int i = 0; i < NUM_PFT; i++) { for (int j = 0; j < NUM_PFT_PART; j++) { if (a.veg[i][j] != b.veg[i][j]) { return false; } } if (a.dead[i] != b.dead[i]) { return false; } }
+  return a.wd == b.wd;
+}
+// Closure mode 0: soil Hg / MeHg of the layers of geometry `from` are moved to the layers of `to` within each soil
+// horizon: organic layers (moss, fibric, humic) by overlap in relative depth z / Z_org of the organic horizon,
+// mineral layers by overlap in depth below the organic-mineral interface (below the new column -> its bottom
+// layer). A horizon missing in `to` sends its Hg to the nearest layer of the other horizon; zero-thickness layers
+// keep their index. Linear, exactly conservative, the identity for the same geometry. T1d: plain depth overlap
+// moved mineral Hg up into a thinning organic horizon in every repetition (HPC lost its mineral Hg).
+inline void depth_map_(State& t, const Snap& from, const Snap& to) {
+  const int nf = std::min(from.nsl, MAX_SOI_LAY), nt = std::min(to.nsl, MAX_SOI_LAY);
+  if (nt <= 0) { return; }
+  if (same_geometry(from, to)) {   // exact identity (same layer count and thicknesses)
+    bool st = true; for (int l = 0; l < nt; l++) { if (from.type[l] != to.type[l]) { st = false; } }
+    if (st) { t.nsl = to.nsl; return; }
+  }
+  auto coords = [](const Snap& g, int n, double* c0, double* c1, bool* org, int& no, int& nm) {
+    double zo = 0.0; no = 0; nm = 0;
+    for (int l = 0; l < n; l++) { org[l] = !is_mineral(g.type[l]); if (org[l]) { zo += std::fmax(0.0, g.dz[l]); no++; } else { nm++; } }
+    double z = 0.0, zm = 0.0;
+    for (int l = 0; l < n; l++) {
+      const double d = std::fmax(0.0, g.dz[l]);
+      if (org[l]) { c0[l] = (zo > 0.0) ? z / zo : 0.0; z += d; c1[l] = (zo > 0.0) ? z / zo : 0.0; }
+      else { c0[l] = zm; zm += d; c1[l] = zm; }
+    }
+  };
+  double f0[MAX_SOI_LAY], f1[MAX_SOI_LAY], t0[MAX_SOI_LAY], t1[MAX_SOI_LAY]; bool fo[MAX_SOI_LAY], to_[MAX_SOI_LAY];
+  int nfo, nfm, nto, ntm;
+  coords(from, nf, f0, f1, fo, nfo, nfm); coords(to, nt, t0, t1, to_, nto, ntm);
+  int topo = -1, boto = -1, topm = -1, botm = -1;
+  for (int l = 0; l < nt; l++) { if (to_[l]) { if (topo < 0) topo = l; boto = l; } else { if (topm < 0) topm = l; botm = l; } }
+  double h[MAX_SOI_LAY] = {}, m[MAX_SOI_LAY] = {};
+  for (int k = 0; k < MAX_SOI_LAY; k++) {
+    const double hk = t.soil[k], mk = t.mehg[k];
+    if (hk == 0.0 && mk == 0.0) { continue; }
+    if (k >= nf) { h[nt - 1] += hk; m[nt - 1] += mk; continue; }
+    const bool og = fo[k];
+    const int bot = og ? (boto >= 0 ? boto : topm) : (botm >= 0 ? botm : boto);
+    if ((og && topo < 0) || (!og && topm < 0)) { h[bot] += hk; m[bot] += mk; continue; }   // horizon missing in `to`
+    const double dk = f1[k] - f0[k];
+    if (!(dk > 0.0)) { const int l = std::min(k, nt - 1); h[l] += hk; m[l] += mk; continue; }
+    double left = 1.0;
+    for (int l = 0; l < nt && left > 0.0; l++) {
+      if (to_[l] != og) { continue; }
+      const double ov = std::fmin(f1[k], t1[l]) - std::fmax(f0[k], t0[l]);
+      if (ov <= 0.0) { continue; }
+      const double fr = std::fmin(left, ov / dk); h[l] += hk * fr; m[l] += mk * fr; left -= fr;
+    }
+    if (left > 0.0) { h[bot] += hk * left; m[bot] += mk * left; }
+  }
+  for (int l = 0; l < MAX_SOI_LAY; l++) { t.soil[l] = h[l]; t.mehg[l] = m[l]; }
+  t.nsl = to.nsl;
+}
+inline bool spinup_jump(const Params& p, State& s, const std::vector<Rec>& rec, int /*nsl_start*/) {
+  if (rec.empty() || s.nsl != rec.back().b.nsl) { return false; }
+  const Snap& a0 = rec.front().a; const Snap& b1 = rec.back().b;
+  if (p.spinup_closure == 2 && a0.nsl != b1.nsl) { return false; }
+  const bool periodic = snap_equal_(a0, b1);
+  const Flux none;
+  auto closure = [&](State& t) {
+    if (periodic || p.spinup_closure == 2) { t.nsl = a0.nsl; return; }
+    if (p.spinup_closure == 1) { step(p, t, b1, a0, none); } else { depth_map_(t, b1, a0); }
+  };
+  auto pools = [&](const State& src, State& dst) { std::vector<double> x(NVEC); to_vec_(src, &x[0]); from_vec_(dst, &x[0]); dst.nsl = src.nsl; };
+  auto run = [&](const double* x0, double* x1) {   // start geometry -> cycle -> closure -> start geometry
+    State t; t.init = true; t.nsl = a0.nsl; from_vec_(t, x0);
     for (const Rec& r : rec) { step(p, t, r.a, r.b, r.f); }
+    closure(t);
     to_vec_(t, x1);
   };
-  Aff A; A.M.assign(NVEC * NVEC, 0.0); A.b.assign(NVEC, 0.0);
-  std::vector<double> z(NVEC, 0.0), y(NVEC);
-  run(&z[0], &A.b[0]);
-  for (int j = 0; j < NVEC; j++) {
-    std::vector<double> e(NVEC, 0.0); e[j] = 1.0;
-    run(&e[0], &y[0]);
-    for (int i = 0; i < NVEC; i++) A.M[i * NVEC + j] = y[i] - A.b[i];
-  }
   long n = std::lround(p.spinup_years / std::max(1, p.spinup_cycle));
   if (n < 1) n = 1;
-  Aff R; R.M.assign(NVEC * NVEC, 0.0); R.b.assign(NVEC, 0.0);
-  for (int i = 0; i < NVEC; i++) R.M[i * NVEC + i] = 1.0;
-  Aff B = A;
-  while (n > 0) { if (n & 1) R = compose_(B, R); n >>= 1; if (n > 0) B = compose_(B, B); }
+  // s (end geometry) -> start geometry
+  State t0s; t0s.init = true; pools(s, t0s); closure(t0s); t0s.nsl = a0.nsl;
   std::vector<double> x(NVEC), xn(NVEC, 0.0);
-  to_vec_(s, &x[0]);
-  for (int i = 0; i < NVEC; i++) {
-    double v = R.b[i];
-    for (int j = 0; j < NVEC; j++) v += R.M[i * NVEC + j] * x[j];
-    if (!std::isfinite(v)) { return false; }
-    xn[i] = std::fmax(0.0, v);
-  }
+  to_vec_(t0s, &x[0]);
+  if (n > 1) {
+    Aff A; A.M.assign(NVEC * NVEC, 0.0); A.b.assign(NVEC, 0.0);
+    std::vector<double> z(NVEC, 0.0), y(NVEC);
+    run(&z[0], &A.b[0]);
+    for (int j = 0; j < NVEC; j++) {
+      std::vector<double> e(NVEC, 0.0); e[j] = 1.0;
+      run(&e[0], &y[0]);
+      for (int i = 0; i < NVEC; i++) A.M[i * NVEC + j] = y[i] - A.b[i];
+    }
+    long m = n - 1;
+    Aff R; R.M.assign(NVEC * NVEC, 0.0); R.b.assign(NVEC, 0.0);
+    for (int i = 0; i < NVEC; i++) R.M[i * NVEC + i] = 1.0;
+    Aff B = A;
+    while (m > 0) { if (m & 1) R = compose_(B, R); m >>= 1; if (m > 0) B = compose_(B, B); }
+    for (int i = 0; i < NVEC; i++) {
+      double v = R.b[i];
+      for (int j = 0; j < NVEC; j++) v += R.M[i * NVEC + j] * x[j];
+      if (!std::isfinite(v)) { return false; }
+      xn[i] = std::fmax(0.0, v);
+    }
+  } else { xn = x; }
+  // last cycle (no closure): back to the end geometry
+  State t; t.init = true; t.nsl = a0.nsl; from_vec_(t, &xn[0]);
+  for (const Rec& r : rec) { step(p, t, r.a, r.b, r.f); }
+  to_vec_(t, &xn[0]);
+  for (int i = 0; i < NVEC; i++) { if (!std::isfinite(xn[i])) { return false; } xn[i] = std::fmax(0.0, xn[i]); }
   double h0[MAX_SOI_LAY]; for (int l = 0; l < MAX_SOI_LAY; l++) h0[l] = s.soil[l];
-  const double t0 = s.total();
+  const double tt0 = s.total();
   from_vec_(s, &xn[0]);
   for (int l = 0; l < MAX_SOI_LAY; l++) {
     s.mehg[l] = (h0[l] > 0.0) ? std::fmin(s.soil[l], s.mehg[l] * s.soil[l] / h0[l]) : 0.0;
   }
-  const double d = s.total() - t0;
+  const double d = s.total() - tt0;
   s.m.spin += d; s.y.spin += d; s.cum.spin += d;
   return true;
+}
+// Relative soil C drift of a record (|C_end - C_start| / C_start; diagnostic of how far the C cycle is from periodic).
+inline double rec_c_drift(const std::vector<Rec>& rec) {
+  if (rec.empty()) { return 0.0; }
+  double c0 = 0.0, c1 = 0.0;
+  for (int l = 0; l < MAX_SOI_LAY; l++) { c0 += std::fmax(0.0, rec.front().a.soil[l]); c1 += std::fmax(0.0, rec.back().b.soil[l]); }
+  return (c0 > 0.0) ? std::fabs(c1 - c0) / c0 : 0.0;
 }
 
 // MeHg index for one month. a_turn[l]: anaerobic C turnover fraction of the month (-); ts[l]: layer T (C).

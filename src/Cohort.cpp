@@ -3159,39 +3159,26 @@ void Cohort::hg_month_begin(const int currmind, hgtr::Snap & a) {
     if (hg_recording) {
       hg_rec_years++;
       hg_rec_ys.push_back(hg_rec.size()); hg_rec_yn.push_back(hg.nsl);
-      // sliding window: the last hg_spinup_cycle full years whose first January had today's layer count
-      const int k0 = hg_rec_years - md->hg.spinup_cycle;
-      if (k0 >= 0 && hg_rec_yn[k0] == hg.nsl) {
+      // T1d: the first hg_spinup_cycle full years (Jan to Jan) after the initialization; the jump closes the
+      // record with a C-neutral step back to its start (hgtr::spinup_jump), so the geometry may differ at the two ends
+      if (hg_rec_years >= md->hg.spinup_cycle) {
         hg_recording = false;
-        hg_rec.erase(hg_rec.begin(), hg_rec.begin() + hg_rec_ys[k0]);
-        hg_rec_nsl0 = hg_rec_yn[k0];
+        hg_rec_nsl0 = hg_rec_yn[0];
         const double t0 = hg.total();
         static const bool sdiag = getenv("HG_DIAG") != NULL;
         hgtr::State pre = hg;
+        const double cdrift = hgtr::rec_c_drift(hg_rec);
         if (hgtr::spinup_jump(md->hg, hg, hg_rec, hg_rec_nsl0)) {
           hg.spun = 1;
-          if (sdiag) {   // replay the recorded cycle once from the pre-jump and the post-jump state
-            for (int w = 0; w < 2; w++) {
-              hgtr::State t = (w == 0) ? pre : hg; t.m.clear();
-              const double tt0 = t.total();
-              for (const hgtr::Rec & r : hg_rec) { hgtr::step(md->hg, t, r.a, r.b, r.f); }
-              fprintf(stderr, "HGSPIN %s nrec %d nsl %d total %.6g -> %.6g up %.4g dep %.4g ev %.4g ex %.4g fire %.4g uclo %.4g ucga %.4g\n",
-                      w == 0 ? "pre" : "post", (int)hg_rec.size(), hg.nsl, tt0, t.total(), t.m.uptake, t.m.dep, t.m.evasion, t.m.export_, t.m.fire, t.m.unexpl_closs, t.m.unexpl_cgain);
-              for (int l = 0; l < std::min(hg.nsl, 8); l++) {
-                fprintf(stderr, "HGSPIN   l%d C(a0) %.6g Hgpre %.6g Hgpost %.6g Hg(post+1cycle) %.6g\n", l, hg_rec[0].a.soil[l], pre.soil[l], hg.soil[l], (w == 1) ? t.soil[l] : -1.0);
-              }
-            }
+          if (sdiag) {
+            fprintf(stderr, "HGSPIN nrec %d nsl %d -> %d Cdrift %.4g total %.6g -> %.6g\n", (int)hg_rec.size(), hg_rec_nsl0, hg.nsl, cdrift, pre.total(), hg.total());
           }
-          BOOST_LOG_SEV(glg, info) << "Hg spin-up: " << md->hg.spinup_years << " yr jump, total Hg " << t0 << " -> " << hg.total() << " ug/m2";
+          BOOST_LOG_SEV(glg, info) << "Hg spin-up: " << md->hg.spinup_years << " yr jump (" << md->hg.spinup_cycle << "-yr record, soil C drift " << cdrift << "), total Hg " << t0 << " -> " << hg.total() << " ug/m2";
         } else {
           hg.spun = 2;
           BOOST_LOG_SEV(glg, warn) << "Hg spin-up: jump not finite; spin-up skipped";
         }
         hg_rec.clear(); hg_rec.shrink_to_fit(); hg_rec_ys.clear(); hg_rec_yn.clear();
-      } else if (k0 >= 10) {
-        hg_recording = false; hg.spun = 2;
-        hg_rec.clear(); hg_rec.shrink_to_fit(); hg_rec_ys.clear(); hg_rec_yn.clear();
-        BOOST_LOG_SEV(glg, warn) << "Hg spin-up: soil layer count never repeated over a cycle (10 windows); spin-up skipped";
       }
     }
     if (hg.spun == 0 && !hg_recording) {
