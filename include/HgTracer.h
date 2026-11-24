@@ -140,6 +140,22 @@
 //     Hg(II) goes to the ground with the throughfall instead of the leaves (HG_WASH, part of HG_DEP).
 // D7 (T2): hg_snow_sublim_loss = 0 (default): Hg of sublimated snow stays in the pack (concentrates) and leaves with
 // the melt (release fraction melt / (melt + SWE)); 1 = ORCHIDEE (sublimation share lost to the air).
+// T2 phase 5b (docs_src/HG_T2_design.md section 18, WORK_NOTES_hg_t2 section 6), all need hg_t2 = 1:
+//   hg_t2_kdsplit = 1 (with hg_t2_diss): humic (deep organic, type 2) layers sorb with log10 Kd = hg_t2_log_kd_org +
+//     hg_t2_dlog_kd_hum; moss and fibric (shallow) layers keep hg_t2_log_kd_org (decomposed humic peat binds Hg(II) to more
+//     reduced-S sites per unit C than fibric moss litter: Skyllberg et al. 2003 Environ Sci Technol 37:2048, Grigal 2003).
+//   hg_t2_xpath = 1 (with hg_t2_diss): explicit export path. Of the dissolved Hg leaving the organic layers above the first
+//     mineral layer by overland flow (incl. the melt overland share) or lateral drainage, the fraction hg_f_conn reaches the
+//     stream (export); the rest is re-sorbed along the hillslope / riparian flow path, booked into the dissolved pool of the
+//     first mineral layer (HG_DOWN; a 1-D stand-in for flow-path retention, e.g. INCA-Hg / Futter et al. 2012).
+//   hg_t2_snowsink = 1 (with hg_t2_evasion): the ground Hg(0) sink of the snow-covered fraction f_snow uses its own
+//     deposition velocity hg_v_snow (net Hg(0) uptake through the snowpack into the soil, Obrist et al. 2017: 37 % of
+//     the annual net uptake in Oct-May): sink = GEM x veg_scale x s x ((1 - f_snow) hg_v_ground + f_snow hg_v_snow).
+//   hg_t2_preset (default 1, acts only with hg_t2 = 1): the absent hg_t2 settings take the phase-5 calibrated values
+//     (Params::t2_preset_); hg_t2_preset = 0 keeps the component defaults (all T2 options off). The T1 / Hg-off paths
+//     (hg_t2 = 0) never read these. T2-only copies hg_t2_r_stem, hg_t2_r_root, hg_t2_k_meth_proxy replace hg_r_stem,
+//     hg_r_root, hg_k_meth_proxy when hg_t2 = 1 (giving the T1 names with hg_t2 = 1 is an error).
+//   All new coefficients come from water, snow, geometry and type only: the step stays affine and exactly conservative.
 #include <cmath>
 #include <string>
 #include <algorithm>
@@ -255,9 +271,28 @@ struct Params {
                               // Rea et al. 2000 ES&T 34:2418, Wright et al. 2016 Environ Rev 24:205: throughfall carries the
                               // washed dry Hg(II)); phase-4 test value 0.5
   double wash_pref   = 10.0;  // hg_wash_pref (mm/month): half-saturation rainfall of the wash-off
+  // T2 phase 5b (see top)
+  int    t2_preset   = 1;     // hg_t2_preset: 1 absent hg_t2 settings take the calibrated values (t2_preset_), 0 component defaults
+  int    t2_kdsplit  = 0;     // hg_t2_kdsplit: humic-layer Kd offset (needs hg_t2_diss = 1)
+  double t2_dlog_kd_hum = 0.0; // hg_t2_dlog_kd_hum (log10 L/kg): humic minus moss/fibric organic log10 Kd
+  int    t2_xpath    = 0;     // hg_t2_xpath: explicit export path / flow-path retention (needs hg_t2_diss = 1)
+  double f_conn      = 1.0;   // hg_f_conn: share of the organic-layer dissolved export that reaches the stream
+  int    t2_snowsink = 0;     // hg_t2_snowsink: separate ground Hg(0) sink velocity under snow (needs hg_t2_evasion = 1)
+  double v_snow      = 8.5e-5; // hg_v_snow (m/s): Hg(0) deposition velocity to the ground through the snowpack
+  double t2_r_stem   = 0.02;  // hg_t2_r_stem: T2 copy of hg_r_stem (used when hg_t2 = 1)
+  double t2_r_root   = 0.07;  // hg_t2_r_root: T2 copy of hg_r_root (used when hg_t2 = 1)
+  double t2_k_meth_proxy = 87.0; // hg_t2_k_meth_proxy: T2 copy of hg_k_meth_proxy (used when hg_t2 = 1)
   bool   dep_comp    = false; // the deposition file has components (hg2_wet / hg2_dry / hg0_soil columns)
   std::vector<double> dep_w, dep_d2, dep_d0, dep_s0;   // components per row (ug/m2/yr)
 };
+
+// T2 phase 5: calibrated values of the hg_t2 settings (applied with hg_t2 = 1 and hg_t2_preset = 1 before the explicit
+// model_settings; WORK_NOTES_hg_t2 sections 5-6, config/hg_t2_calibrated.json). Never used with hg_t2 = 0.
+inline void t2_preset_(Params& p) {
+  p.t2_diss = 1; p.t2_evasion = 1; p.t2_foliar = 2; p.t2_meltroute = 1; p.fire_ash = 0.1; p.t2_rts = 1; p.wash = 0.5;
+  p.t2_log_kd_org = 3.46; p.v_ground = 1.1e-4; p.fd = 0.10; p.ev_z = 0.20; p.snow_kred = 0.090;
+  p.t2_r_stem = 0.0044; p.t2_r_root = 0.0067; p.t2_k_meth_proxy = 71.0;
+}
 
 // Deposition CSV: '#' comments; header with columns year, [month], and either dep or any of hg2_wet,
 // hg2_dry, hg0_soil (summed), optional veg_scale (default 1). Rates in ug/m2/yr (monthly rows too).
@@ -345,6 +380,11 @@ inline bool num_(const Json::Value& v) { return !v.isBool() && v.isNumeric() && 
 inline std::string parse(const Json::Value& ms, Params& p) {
   p = Params();
   if (!ms.isObject()) { return ""; }
+  // T2 phase 5: with hg_t2 = 1 (and hg_t2_preset absent or 1) the calibrated values replace the component defaults
+  // (validated below with the other keys); explicit settings still win
+  const auto num1 = [&](const char* k) { return ms.isMember(k) && num_(ms[k]) && ms[k].asDouble() == 1.0; };
+  const bool pre = num1("hg_t2") && (!ms.isMember("hg_t2_preset") || num1("hg_t2_preset"));
+  if (pre) { t2_preset_(p); }
   struct D { const char* k; double* v; double lo, hi; };
   D ds[] = {{"hg_r_org", &p.r_org, 0, 1e3}, {"hg_r_min", &p.r_min, 0, 1e3}, {"hg_r_leaf", &p.r_leaf, 0, 1e3},
             {"hg_r_stem", &p.r_stem, 0, 1e3}, {"hg_r_root", &p.r_root, 0, 1e3}, {"hg_f_evade", &p.f_evade, 0, 1},
@@ -360,7 +400,9 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_z_runoff", &p.z_runoff, 0, 1}, {"hg_d_cryo", &p.d_cryo, 0, 1}, {"hg_z_cryo", &p.z_cryo, 1e-3, 100}, {"hg_d_bio", &p.d_bio, 0, 1},
             {"hg_fd", &p.fd, 0, 1}, {"hg_ev_z", &p.ev_z, 1e-4, 100}, {"hg_v_ground", &p.v_ground, 0, 1}, {"hg_gem", &p.gem, 0, 100},
             {"hg_gs_m", &p.gs_m, 1, 100}, {"hg_gs_eff", &p.gs_eff, 0, 100},
-            {"hg_fire_ash", &p.fire_ash, 0, 1}, {"hg_wash", &p.wash, 0, 1}, {"hg_wash_pref", &p.wash_pref, 1e-3, 1e4}};
+            {"hg_fire_ash", &p.fire_ash, 0, 1}, {"hg_wash", &p.wash, 0, 1}, {"hg_wash_pref", &p.wash_pref, 1e-3, 1e4},
+            {"hg_t2_dlog_kd_hum", &p.t2_dlog_kd_hum, -3, 3}, {"hg_f_conn", &p.f_conn, 0, 1}, {"hg_v_snow", &p.v_snow, 0, 1},
+            {"hg_t2_r_stem", &p.t2_r_stem, 0, 1e3}, {"hg_t2_r_root", &p.t2_r_root, 0, 1e3}, {"hg_t2_k_meth_proxy", &p.t2_k_meth_proxy, 0, 1e9}};
   struct I { const char* k; int* v; int lo, hi; };
   I is[] = {{"hg_tracer", &p.tracer, 0, 1}, {"hg_mehg", &p.mehg, 0, 1}, {"hg_mehg_driver", &p.mehg_driver, 0, 1},
             {"hg_spinup", &p.spinup, 0, 1}, {"hg_transport", &p.transport, 0, 1}, {"hg_spinup_cycle", &p.spinup_cycle, 1, 50}, {"hg_spinup_closure", &p.spinup_closure, 0, 2}, {"hg_tr_year0", &p.tr_year0, -100000, 100000},
@@ -369,7 +411,8 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_t2_wetprec", &p.t2_wetprec, 0, 1}, {"hg_t2_photored", &p.t2_photored, 0, 1},
             {"hg_t2_diss", &p.t2_diss, 0, 1}, {"hg_snow_sublim_loss", &p.snow_sublim_loss, 0, 1},
             {"hg_t2_evasion", &p.t2_evasion, 0, 1}, {"hg_t2_meltroute", &p.t2_meltroute, 0, 1}, {"hg_gs_ingpp", &p.gs_ingpp, 0, 1},
-            {"hg_t2_rts", &p.t2_rts, 0, 1}};
+            {"hg_t2_rts", &p.t2_rts, 0, 1}, {"hg_t2_preset", &p.t2_preset, 0, 1}, {"hg_t2_kdsplit", &p.t2_kdsplit, 0, 1},
+            {"hg_t2_xpath", &p.t2_xpath, 0, 1}, {"hg_t2_snowsink", &p.t2_snowsink, 0, 1}};
   for (const std::string& key : ms.getMemberNames()) {
     if (key.rfind("hg_", 0) != 0) { continue; }
     bool known = false;
@@ -398,6 +441,20 @@ inline std::string parse(const Json::Value& ms, Params& p) {
     }
     if (!known) { return "model_settings." + key + ": unknown hg_* setting"; }
   }
+  if (pre) {   // preset options whose prerequisite was switched off explicitly follow it (unless given explicitly too)
+    const auto set = [&](const char* k) { return ms.isMember(k); };
+    if (p.t2_diss != 1 && !set("hg_t2_meltroute")) { p.t2_meltroute = 0; }
+    if (p.t2_diss != 1 && !set("hg_t2_kdsplit")) { p.t2_kdsplit = 0; }
+    if (p.t2_diss != 1 && !set("hg_t2_xpath")) { p.t2_xpath = 0; }
+    if (p.t2_evasion != 1 && !set("hg_t2_snowsink")) { p.t2_snowsink = 0; }
+    if (p.t2_foliar < 1 && !set("hg_wash")) { p.wash = 0.0; }
+  }
+  if (p.t2 == 1) {   // T2-only copies of the parameters shared with T1 (the T1 path, hg_t2 = 0, keeps the T1 values)
+    for (const char* k : {"hg_r_stem", "hg_r_root", "hg_k_meth_proxy"}) {
+      if (ms.isMember(k)) { return std::string("model_settings.") + k + " is a T1 setting; with hg_t2 = 1 use hg_t2_" + (k + 3); }
+    }
+    p.r_stem = p.t2_r_stem; p.r_root = p.t2_r_root; p.k_meth_proxy = p.t2_k_meth_proxy;
+  }
   if (p.f_evade + p.f_export + p.f_leach > 1.0) { return "model_settings.hg_f_evade + hg_f_export + hg_f_leach must be <= 1"; }
   // hg_spinup (default 1) and hg_transport (default 1) act only with hg_tracer = 1 (ignored otherwise)
   if (!p.dep_file.empty()) { std::string e = load_dep(p.dep_file, p); if (!e.empty()) { return e; } }
@@ -410,6 +467,9 @@ inline std::string parse(const Json::Value& ms, Params& p) {
   if (p.fire_ash > 0.0 && p.t2 != 1) { return "model_settings.hg_fire_ash > 0 needs hg_t2 = 1"; }
   if (p.t2_rts == 1 && p.t2 != 1) { return "model_settings.hg_t2_rts = 1 needs hg_t2 = 1"; }
   if (p.wash > 0.0 && !(p.t2 == 1 && p.t2_foliar >= 1)) { return "model_settings.hg_wash > 0 needs hg_t2 = 1 and hg_t2_foliar >= 1"; }
+  if (p.t2_kdsplit == 1 && !(p.t2 == 1 && p.t2_diss == 1)) { return "model_settings.hg_t2_kdsplit = 1 needs hg_t2 = 1 and hg_t2_diss = 1"; }
+  if (p.t2_xpath == 1 && !(p.t2 == 1 && p.t2_diss == 1)) { return "model_settings.hg_t2_xpath = 1 needs hg_t2 = 1 and hg_t2_diss = 1"; }
+  if (p.t2_snowsink == 1 && !(p.t2 == 1 && p.t2_evasion == 1)) { return "model_settings.hg_t2_snowsink = 1 needs hg_t2 = 1 and hg_t2_evasion = 1"; }
   if (p.t2 == 1 && !p.dep_comp) { return "model_settings.hg_t2 = 1 needs an hg_dep_file with hg2_wet / hg2_dry / hg0_soil columns"; }
   return "";
 }
@@ -592,7 +652,11 @@ inline void diss_transport_(const Params& p, State& s, const Snap& b, const Flux
   const int nb = std::min(b.nsl, MAX_SOI_LAY);
   if (nb <= 0) { return; }
   const double kdo = std::pow(10.0, p.t2_log_kd_org), kdm = std::pow(10.0, p.log_kd_min);
+  const double kdh = (p.t2_kdsplit == 1) ? std::pow(10.0, p.t2_log_kd_org + p.t2_dlog_kd_hum) : kdo;   // phase 5b: humic Kd
   const double ks = 1.0 - std::exp(-1.0 / p.tau_sorb);
+  // phase 5b (hg_t2_xpath): first mineral layer (receives the flow-path retention), share reaching the stream
+  int lm = -1; for (int l = 0; l < nb; l++) { if (is_mineral(b.type[l])) { lm = l; break; } }
+  const double fcx = (p.t2_xpath == 1 && lm > 0) ? p.f_conn : 1.0;
   double M[MAX_SOI_LAY] = {}, ztop[MAX_SOI_LAY] = {};
   { double z = 0.0;
     for (int l = 0; l < nb; l++) {
@@ -613,12 +677,14 @@ inline void diss_transport_(const Params& p, State& s, const Snap& b, const Flux
       s.mpend -= x;
       const double qo = std::fmax(0.0, f.dq_over[d]), qi = std::fmax(0.0, f.dq_in[d]);
       const double xo = (qo + qi > 0.0) ? x * qo / (qo + qi) : 0.0;
-      s.diss[0] += x - xo; acc.export_ += xo; acc.runoff += xo; acc.meltrun += xo;
+      const double xr = xo * (1.0 - fcx), xe = xo - xr;   // phase 5b: flow-path retention of the melt overland share
+      s.diss[0] += x - xo; acc.export_ += xe; acc.runoff += xe; acc.meltrun += xe;
+      if (xr > 0.0) { s.diss[lm] += xr; acc.down += xr; }
     }
     // sorption in every layer toward the Kd equilibrium of the day's liquid water
     for (int l = 0; l < nb; l++) {
       const double liq = std::fmax(0.0, f.d_liq[d][l]);
-      const double den = liq + (is_mineral(b.type[l]) ? kdm : kdo) * M[l];
+      const double den = liq + (is_mineral(b.type[l]) ? kdm : ((b.type[l] == 2) ? kdh : kdo)) * M[l];
       const double phi = (den > 0.0) ? liq / den : 0.0;
       const double dx = (phi * (s.soil[l] + s.diss[l]) - s.diss[l]) * ks;
       s.diss[l] += dx; s.soil[l] -= dx;
@@ -655,6 +721,10 @@ inline void diss_transport_(const Params& p, State& s, const Snap& b, const Flux
     }
     for (int l = 0; l <= tb; l++) {
       s.diss[l] -= ov[l] + out[l] + lat[l];
+      if (fcx < 1.0 && l < lm) {   // phase 5b: organic-layer export, the share 1 - f_conn retained on the flow path
+        const double ro = ov[l] * (1.0 - fcx), rl = lat[l] * (1.0 - fcx);
+        ov[l] -= ro; lat[l] -= rl; s.diss[lm] += ro + rl; acc.down += ro + rl;
+      }
       acc.export_ += ov[l] + lat[l]; acc.runoff += ov[l]; acc.drain += lat[l];
       if (l < tb) { s.diss[l + 1] += out[l]; if (!is_mineral(b.type[l]) && is_mineral(b.type[l + 1])) { acc.down += out[l]; } }
     }
@@ -709,6 +779,10 @@ inline double stomatal_k(const Params& p, const Flux& f) {
 }
 // T2 phase 3: ground Hg(0) sink of the month (ug/m2) = v_ground x GEM x veg_scale x seconds
 inline double ground_sink(const Params& p, const Flux& f) { return p.v_ground * p.gem * f.veg_scale * std::fmax(0.0, f.ndays) * 86.4; }
+// T2 phase 5b (hg_t2_snowsink): the snow-covered fraction fs takes up Hg(0) at hg_v_snow
+inline double ground_sink_snow(const Params& p, const Flux& f, double fs) {
+  return ((1.0 - fs) * p.v_ground + fs * p.v_snow) * p.gem * f.veg_scale * std::fmax(0.0, f.ndays) * 86.4;
+}
 // T2 phase 3: re-emitted fraction of the Hg released by decay in a layer centred at depth zm (m) of temperature ts (C)
 inline double fev_layer(const Params& p, double fsnow, double zm, double ts) {
   return (ts > 0.0) ? p.fd * (1.0 - fsnow) * std::exp(-std::fmax(0.0, zm) / p.ev_z) : 0.0;
@@ -755,7 +829,8 @@ inline double surface_t2_(const Params& p, State& s, const Flux& f, Acc& acc, do
   const double fpr = (p.t2_photored == 1) ? std::fmin(1.0, std::fmax(0.0, p.pr_a * std::exp(-p.pr_b * std::fmax(0.0, f.sw)))) : 0.0;
   const double pr = gground * fpr;
   double to_soil = 0.0;
-  const double s0 = (p.t2_evasion == 1) ? ground_sink(p, f) : std::fmax(0.0, f.dep_soil0);   // phase 3: process ground Hg(0) sink
+  const double s0 = (p.t2_evasion == 1) ? ((p.t2_snowsink == 1) ? ground_sink_snow(p, f, fs) : ground_sink(p, f))
+                                        : std::fmax(0.0, f.dep_soil0);   // phase 3: process ground Hg(0) sink (5b: under snow)
   if (have_soil) {
     acc.dep += g + s0; if (p.t2_evasion == 1) { acc.sink0 += s0; }
     acc.photored += pr; acc.evasion += pr;

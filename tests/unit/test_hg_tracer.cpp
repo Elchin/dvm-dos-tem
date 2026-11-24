@@ -441,7 +441,7 @@ hgtr::Params t2params(bool dry0col = true) {
   { std::ofstream f(T2DEP);
     if (dry0col) f << "year,hg2_wet,hg2_dry,hg0_soil,hg0_dry,veg_scale\n1850,1.2,2.4,1.11,3.0,1\n2000,1.2,2.4,1.11,3.0,1\n";
     else f << "year,hg2_wet,hg2_dry,hg0_soil,veg_scale\n1850,1.2,2.4,1.11,1\n"; }
-  hgtr::Params p; Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_t2"] = 1; m["hg_dep_file"] = T2DEP;
+  hgtr::Params p; Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_t2"] = 1; m["hg_dep_file"] = T2DEP; m["hg_t2_preset"] = 0;   // component defaults (phase-5 preset off)
   REQUIRE(hgtr::parse(m, p) == "");
   return p;
 }
@@ -802,10 +802,10 @@ TEST_CASE("hg_t2 phase 3 parse: defaults off, ranges, dependencies") {
   CHECK(p.t2_evasion == 0); CHECK(p.t2_meltroute == 0); CHECK(p.t2_foliar == 1);
   CHECK(p.fd == 0.053); CHECK(p.ev_z == 0.05); CHECK(p.v_ground == 8.5e-5); CHECK(p.gem == 1.3); CHECK(p.gs_m == 4.0); CHECK(p.gs_eff == 0.75); CHECK(p.gs_ingpp == 1);
   Json::Value a = ms0(); a["hg_tracer"] = 1; a["hg_t2_evasion"] = 1; CHECK(hgtr::parse(a, p) != "");          // needs hg_t2
-  Json::Value b = ms0(); b["hg_tracer"] = 1; b["hg_t2"] = 1; b["hg_dep_file"] = T2DEP; b["hg_t2_meltroute"] = 1;
+  Json::Value b = ms0(); b["hg_tracer"] = 1; b["hg_t2"] = 1; b["hg_dep_file"] = T2DEP; b["hg_t2_preset"] = 0; b["hg_t2_meltroute"] = 1;
   CHECK(hgtr::parse(b, p) != "");                                                                          // needs hg_t2_diss
   b["hg_t2_diss"] = 1; CHECK(hgtr::parse(b, p) == ""); CHECK(p.t2_meltroute == 1);
-  Json::Value c = ms0(); c["hg_tracer"] = 1; c["hg_t2"] = 1; c["hg_dep_file"] = T2DEP; c["hg_t2_foliar"] = 2; c["hg_gs_eff"] = 0.5;
+  Json::Value c = ms0(); c["hg_tracer"] = 1; c["hg_t2"] = 1; c["hg_dep_file"] = T2DEP; c["hg_t2_preset"] = 0; c["hg_t2_foliar"] = 2; c["hg_gs_eff"] = 0.5;
   CHECK(hgtr::parse(c, p) == ""); CHECK(p.t2_foliar == 2); CHECK(p.gs_eff == 0.5);
   c["hg_t2_foliar"] = 3; CHECK(hgtr::parse(c, p) != "");
   std::remove(T2DEP);
@@ -935,7 +935,7 @@ TEST_CASE("hg_t2 phase 4 parse: defaults off, ranges, dependencies") {
   CHECK(p.fire_ash == 0.0); CHECK(p.t2_rts == 0); CHECK(p.wash == 0.0); CHECK(p.wash_pref == 10.0);
   Json::Value a = ms0(); a["hg_tracer"] = 1; a["hg_fire_ash"] = 0.1; CHECK(hgtr::parse(a, p) != "");      // needs hg_t2
   Json::Value b = ms0(); b["hg_tracer"] = 1; b["hg_t2_rts"] = 1; CHECK(hgtr::parse(b, p) != "");
-  Json::Value c = ms0(); c["hg_tracer"] = 1; c["hg_t2"] = 1; c["hg_dep_file"] = T2DEP; c["hg_fire_ash"] = 0.1; c["hg_t2_rts"] = 1; c["hg_wash"] = 0.5; c["hg_wash_pref"] = 20.0;
+  Json::Value c = ms0(); c["hg_tracer"] = 1; c["hg_t2"] = 1; c["hg_dep_file"] = T2DEP; c["hg_t2_preset"] = 0; c["hg_fire_ash"] = 0.1; c["hg_t2_rts"] = 1; c["hg_wash"] = 0.5; c["hg_wash_pref"] = 20.0;
   CHECK(hgtr::parse(c, p) == ""); CHECK(p.fire_ash == 0.1); CHECK(p.t2_rts == 1); CHECK(p.wash == 0.5); CHECK(p.wash_pref == 20.0);
   c["hg_t2_foliar"] = 0; CHECK(hgtr::parse(c, p) != "");                                                   // wash-off needs a canopy scheme
   c["hg_t2_foliar"] = 1; c["hg_fire_ash"] = 1.5; CHECK(hgtr::parse(c, p) != "");
@@ -1031,5 +1031,115 @@ TEST_CASE("hg_t2 phase 4 all on (with phase 3), random steps with fire / RTS and
   CHECK(std::fabs(s.balance_error()) < 1e-8 * std::fmax(1.0, s.total()));
   for (int l = 0; l < MAX_SOI_LAY; l++) { CHECK(s.soil[l] >= 0.0); CHECK(s.diss[l] >= 0.0); }
   CHECK(s.cum.fire > 0.0); CHECK(s.cum.export_ > 0.0);
+  std::remove(T2DEP);
+}
+
+// ---- T2 phase 5b: humic Kd offset, export path (flow-path retention), ground Hg(0) sink under snow, hg_t2 preset, T2 copies
+TEST_CASE("hg_t2 phase 5 parse: preset with hg_t2 = 1 (explicit wins), hg_t2_preset 0, T2-only copies, T1 untouched, dependencies") {
+  hgtr::Params p = t2params();   // writes T2DEP
+  CHECK(p.t2_kdsplit == 0); CHECK(p.t2_xpath == 0); CHECK(p.t2_snowsink == 0); CHECK(p.f_conn == 1.0); CHECK(p.t2_dlog_kd_hum == 0.0);
+  CHECK(p.r_stem == 0.02); CHECK(p.r_root == 0.07); CHECK(p.k_meth_proxy == 87.0); CHECK(p.t2_diss == 0);   // preset 0: component defaults
+  Json::Value t1 = ms0(); t1["hg_tracer"] = 1; t1["hg_mehg"] = 1; t1["hg_r_stem"] = 0.01; t1["hg_k_meth_proxy"] = 50.0;
+  hgtr::Params q; REQUIRE(hgtr::parse(t1, q) == "");   // T1 path: T1 names, no preset
+  CHECK(q.r_stem == 0.01); CHECK(q.k_meth_proxy == 50.0); CHECK(q.t2_diss == 0); CHECK(q.t2_evasion == 0); CHECK(q.v_ground == 8.5e-5); CHECK(q.t2_log_kd_org == 3.5);
+  Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_t2"] = 1; m["hg_dep_file"] = T2DEP;
+  hgtr::Params r; REQUIRE(hgtr::parse(m, r) == "");   // preset
+  CHECK(r.t2_diss == 1); CHECK(r.t2_evasion == 1); CHECK(r.t2_foliar == 2); CHECK(r.t2_meltroute == 1); CHECK(r.t2_rts == 1);
+  CHECK(r.fire_ash == 0.1); CHECK(r.wash == 0.5);
+  hgtr::Params pp; hgtr::t2_preset_(pp);
+  CHECK(r.t2_log_kd_org == pp.t2_log_kd_org); CHECK(r.v_ground == pp.v_ground); CHECK(r.fd == pp.fd); CHECK(r.ev_z == pp.ev_z);
+  CHECK(r.t2_kdsplit == pp.t2_kdsplit); CHECK(r.t2_xpath == pp.t2_xpath); CHECK(r.t2_snowsink == pp.t2_snowsink);
+  CHECK(r.r_stem == pp.t2_r_stem); CHECK(r.r_root == pp.t2_r_root); CHECK(r.k_meth_proxy == pp.t2_k_meth_proxy);
+  Json::Value e = m; e["hg_v_ground"] = 2e-4; e["hg_t2_rts"] = 0; e["hg_t2_r_stem"] = 0.01;
+  REQUIRE(hgtr::parse(e, r) == ""); CHECK(r.v_ground == 2e-4); CHECK(r.t2_rts == 0); CHECK(r.r_stem == 0.01); CHECK(r.t2_diss == 1);   // explicit wins
+  Json::Value g = m; g["hg_t2_diss"] = 0; REQUIRE(hgtr::parse(g, r) == ""); CHECK(r.t2_meltroute == 0); CHECK(r.t2_xpath == 0); CHECK(r.t2_kdsplit == 0);
+  Json::Value g2 = m; g2["hg_t2_evasion"] = 0; REQUIRE(hgtr::parse(g2, r) == ""); CHECK(r.t2_snowsink == 0);
+  Json::Value h = m; h["hg_r_stem"] = 0.01; CHECK(hgtr::parse(h, r) != "");          // T1 name with hg_t2 = 1
+  Json::Value h2 = m; h2["hg_k_meth_proxy"] = 70.0; CHECK(hgtr::parse(h2, r) != "");
+  Json::Value k = m; k["hg_t2_preset"] = 0; k["hg_t2_kdsplit"] = 1; CHECK(hgtr::parse(k, r) != "");   // needs hg_t2_diss
+  k["hg_t2_diss"] = 1; k["hg_t2_dlog_kd_hum"] = 0.5; REQUIRE(hgtr::parse(k, r) == ""); CHECK(r.t2_kdsplit == 1); CHECK(r.t2_dlog_kd_hum == 0.5);
+  Json::Value x = m; x["hg_t2_preset"] = 0; x["hg_t2_xpath"] = 1; CHECK(hgtr::parse(x, r) != "");
+  Json::Value y = m; y["hg_t2_preset"] = 0; y["hg_t2_snowsink"] = 1; CHECK(hgtr::parse(y, r) != "");   // needs hg_t2_evasion
+  y["hg_t2_evasion"] = 1; y["hg_v_snow"] = 3e-4; REQUIRE(hgtr::parse(y, r) == ""); CHECK(r.v_snow == 3e-4);
+  Json::Value z = m; z["hg_f_conn"] = 1.5; CHECK(hgtr::parse(z, r) != "");
+  Json::Value w = ms0(); w["hg_tracer"] = 1; w["hg_t2_xpath"] = 1; CHECK(hgtr::parse(w, r) != "");    // needs hg_t2
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_snowsink: ground sink ((1 - f_snow) v_ground + f_snow v_snow) x GEM x s; v_snow = v_ground == off") {
+  hgtr::Params p = t2params(); p.t2_evasion = 1; p.t2_foliar = 0;
+  hgtr::Snap a = column(4); hgtr::Flux f = t2flux(0, 0, 5.0, 0, 0, 0.3);   // SWE 5 of swe_full 10: f_snow 0.5
+  hgtr::Params q = p; q.t2_snowsink = 1; q.v_snow = 3.0e-4;
+  hgtr::State s; hgtr::initialize(q, s, a); hgtr::step(q, s, a, a, f);
+  CHECK(s.m.sink0 == doctest::Approx((0.5 * p.v_ground + 0.5 * 3.0e-4) * p.gem * 30.0 * 86.4).epsilon(1e-12));
+  CHECK(std::fabs(s.balance_error()) < 1e-13 * s.total());
+  hgtr::Params r = q; r.v_snow = r.v_ground;
+  hgtr::State u, v; hgtr::initialize(p, u, a); hgtr::initialize(r, v, a); hgtr::step(p, u, a, a, f); hgtr::step(r, v, a, a, f);
+  CHECK(v.m.sink0 == doctest::Approx(u.m.sink0).epsilon(1e-15)); CHECK(v.total() == doctest::Approx(u.total()).epsilon(1e-15));
+  hgtr::Flux g = t2flux(0, 0, 0.0, 0, 0, 0.3); hgtr::State w; hgtr::initialize(q, w, a); hgtr::step(q, w, a, a, g);   // no snow: v_ground only
+  CHECK(w.m.sink0 == doctest::Approx(p.v_ground * p.gem * 30.0 * 86.4).epsilon(1e-12));
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_kdsplit: humic layers sorb with Kd x 10^dlog; dlog 0 == off (bit-identical)") {
+  hgtr::Params p = t2dparams(); p.d_cryo = 0; p.d_bio = 0;
+  hgtr::Snap a = column(5); hgtr::Flux t = dflux(5, 10, 2.0, 0.0, 1.0, 20.0);
+  auto run = [&](const hgtr::Params& q) { hgtr::State s; hgtr::initialize(q, s, a); for (int l = 0; l < 5; l++) { s.diss[l] = 0.5 * s.soil[l]; s.soil[l] *= 0.5; }
+    s.h_init = s.total(); hgtr::step(q, s, a, a, t); return s; };
+  hgtr::State s0 = run(p); hgtr::Params q = p; q.t2_kdsplit = 1; hgtr::State s1 = run(q);
+  for (int l = 0; l < 5; l++) { CHECK(s1.diss[l] == s0.diss[l]); CHECK(s1.soil[l] == s0.soil[l]); }
+  CHECK(s1.m.export_ == s0.m.export_);
+  q.t2_dlog_kd_hum = 1.0; hgtr::State s2 = run(q);
+  CHECK(s2.diss[1] < s0.diss[1]); CHECK(s2.diss[2] < s0.diss[2]);    // humic (type 2) layers: more sorbed
+  CHECK(s2.m.drain < s0.m.drain);                                    // the drained layer 2 is humic
+  CHECK(std::fabs(s2.balance_error()) < 1e-13 * s2.total());
+  q.t2_dlog_kd_hum = -1.0; hgtr::State s3 = run(q); CHECK(s3.diss[2] > s0.diss[2]); CHECK(std::fabs(s3.balance_error()) < 1e-13 * s3.total());
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_xpath: share f_conn of the organic-layer overland / lateral export reaches the stream, the rest goes to the first mineral layer") {
+  hgtr::Params p = t2dparams(); p.d_cryo = 0; p.d_bio = 0; p.tau_sorb = 1e5;   // no sorption during the month: transport only
+  hgtr::Snap a = column(5); hgtr::Flux t = dflux(5, 10, 2.0, 6.0, 1.0, 20.0);
+  auto run = [&](const hgtr::Params& q) { hgtr::State s; hgtr::initialize(q, s, a); for (int l = 0; l < 5; l++) { s.diss[l] = 0.5 * s.soil[l]; s.soil[l] *= 0.5; }
+    s.h_init = s.total(); hgtr::step(q, s, a, a, t); return s; };
+  hgtr::State s0 = run(p); hgtr::Params q = p; q.t2_xpath = 1; q.f_conn = 1.0; hgtr::State s1 = run(q);
+  for (int l = 0; l < 5; l++) { CHECK(s1.diss[l] == s0.diss[l]); } CHECK(s1.m.export_ == s0.m.export_); CHECK(s1.m.down == s0.m.down);
+  q.f_conn = 0.4; hgtr::State s2 = run(q);
+  CHECK(s2.m.export_ < s0.m.export_); CHECK(s2.m.down > s0.m.down); CHECK(s2.diss[3] > s0.diss[3]);
+  CHECK(std::fabs(s2.balance_error()) < 1e-13 * s2.total());
+  q.f_conn = 0.0; hgtr::State s3 = run(q); CHECK(s3.m.runoff == 0.0); CHECK(s3.m.drain == 0.0);   // organic layers only: column(5) mineral layers 3-4 not drained
+  CHECK(std::fabs(s3.balance_error()) < 1e-13 * s3.total());
+  // melt overland share retained too
+  hgtr::Params r = p; r.t2_meltroute = 1; r.t2_xpath = 1; r.f_conn = 0.25;
+  hgtr::State u; hgtr::initialize(r, u, a); u.mpend = 1.0; u.h_init = u.total(); hgtr::Flux m = t; for (int d = 0; d < 10; d++) m.d_melt[d] = 3.0;
+  hgtr::step(r, u, a, a, m); CHECK(u.m.meltrun == doctest::Approx(0.25 * 6.0 / 8.0).epsilon(1e-12)); CHECK(std::fabs(u.balance_error()) < 1e-13 * u.total());
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2 phase 5b all on (with phases 3-4), random steps: balance to roundoff, pools >= 0") {
+  std::mt19937 rng(59); std::uniform_real_distribution<double> U(0.0, 1.0);
+  hgtr::Params p = t2dparams(); p.t2_evasion = 1; p.t2_foliar = 2; p.t2_meltroute = 1; p.fire_ash = 0.2; p.t2_rts = 1; p.wash = 0.5;
+  p.t2_kdsplit = 1; p.t2_dlog_kd_hum = 0.7; p.t2_xpath = 1; p.f_conn = 0.3; p.t2_snowsink = 1; p.v_snow = 4e-4;
+  hgtr::State s; hgtr::Snap a = column(8, 3000.0); hgtr::initialize(p, s, a);
+  for (int it = 0; it < 1500; it++) {
+    const int mth = it % 12;
+    hgtr::Snap b = a; hgtr::Flux f = t2flux(3 * U(rng), U(rng), (mth < 5 || mth > 9) ? 200 * U(rng) : 0.0, 30 * U(rng), 5 * U(rng), 0.4 * U(rng));
+    for (int i = 0; i < NUM_PFT; i++) { f.gpp[i] = 50 * U(rng); }
+    f.ta = 30 * U(rng) - 15; f.co2 = 300 + 200 * U(rng); f.rain = 60 * U(rng);
+    for (int l = 0; l < a.nsl; l++) { f.ts[l] = 20 * U(rng) - 10; f.decomp[l] = 5 * U(rng); b.soil[l] = std::fmax(0.0, a.soil[l] - f.decomp[l] + 4 * U(rng)); }
+    if (U(rng) < 0.3) {
+      int n = 3 + int(U(rng) * 12); b.nsl = n; double c0 = 0; for (int l = 0; l < a.nsl; l++) c0 += a.soil[l];
+      for (int l = 0; l < MAX_SOI_LAY; l++) { b.soil[l] = (l < n) ? c0 / n : 0; b.dz[l] = (l < n) ? 0.05 + 0.1 * U(rng) : 0; b.type[l] = (l == 0) ? 0 : ((l < 2) ? 1 : ((l < 3) ? 2 : 3)); }
+    }
+    hgtr::step(p, s, a, b, f);
+    hgtr::Flux t = dflux(b.nsl, 30, 20 * U(rng), 10 * U(rng), 3 * U(rng), 5 + 40 * U(rng), (mth < 5 || mth > 9) ? int(U(rng) * 3) : 99);
+    for (int d = 0; d < 30; d++) t.d_melt[d] = (U(rng) < 0.3) ? 5 * U(rng) : 0.0;
+    hgtr::step(p, s, b, b, t);
+    a = b;
+    if (it % 12 == 11) { s.m.clear(); }
+  }
+  CHECK(std::fabs(s.balance_error()) < 1e-8 * std::fmax(1.0, s.total()));
+  for (int l = 0; l < MAX_SOI_LAY; l++) { CHECK(s.soil[l] >= 0.0); CHECK(s.diss[l] >= 0.0); }
+  CHECK(s.cum.export_ > 0.0); CHECK(s.cum.down > 0.0);
   std::remove(T2DEP);
 }
