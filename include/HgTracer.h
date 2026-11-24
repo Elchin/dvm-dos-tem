@@ -16,6 +16,23 @@
 //   Thompson et al. 2025, ES&T 59, 19457, doi:10.1021/acs.est.5c04510 (soil %MeHg 0.1 plateau, 0.7 bog,
 //     2.0 fen) for the MeHg index (hg_mehg).
 //
+// T1b additions (2026-11-23): Hg spin-up (hg_spinup), deposition time series (hg_dep_file), optional
+// downward leaching of decay-released Hg (hg_f_leach), and a lower default evasion fraction:
+//   hg_f_evade 0.16 (Schaefer 2020, from GTMM / Smith-Downey et al. 2010, temperate soils) -> 0.02. At
+//   Toolik, Obrist et al. 2017 (doi:10.1038/nature22997) measured a year-round net Hg(0) sink (6.5 +- 0.7
+//   ug/m2/yr) with soil pore-air Hg(0) below the atmosphere; Olson et al. 2018 note "almost no Hg
+//   re-emission" there; Lim et al. 2020 (BG 17, 3083) attribute the Toolik sink vs. a net Hg(0) source at a
+//   warmer boreal mire (Degero, Osterwalder et al. 2018) to a climate control on re-emission.
+//   Deposition (hg_dep_file, CSV): Hg(II) wet + Hg(II) dry + non-vegetation (soil/snow) Hg(0) uptake to the
+//   top soil layer, plus veg_scale, a multiplier of the vegetation uptake (atmospheric Hg(0) relative to the
+//   present day). See config/hg_deposition_toolik_obrist2017.csv.
+//   Spin-up (hg_spinup = 1): after hg_spinup_cycle full years from the C x RHgC initialization, the affine
+//   map of those years' tracer steps (Hg_end = M Hg_start + b; exact, the step is linear in Hg) is raised
+//   to the power hg_spinup_years / hg_spinup_cycle and applied: the state after hg_spinup_years years of
+//   repeating that C cycle and deposition (Schaefer 2020 used a 5000-yr spin-up). Booked as cum.spin.
+//   Deposition and unassigned Hg go to the top soil layer that holds SOM C (the moss layer usually has
+//   none), so Hg cannot pile up in a layer without C turnover. HG_DIAG (env) prints a replay check.
+//
 // Units: C in g C/m2, Hg and MeHg in ug/m2, ratios in ug Hg / g C, fluxes per model month.
 //
 // Pools (parallel to C): live vegetation per PFT x {leaf, stem, root}; standing dead per PFT; woody
@@ -49,6 +66,9 @@
 #include <cmath>
 #include <string>
 #include <algorithm>
+#include <vector>
+#include <fstream>
+#include <sstream>
 #include <json/json.h>
 #include "cohortconst.h"
 #include "layerconst.h"
@@ -62,9 +82,19 @@ struct Params {
   double r_leaf     = 0.07;   // hg_r_leaf: RHgC of new leaf tissue (NPP), ~30 ng/g dry mass
   double r_stem     = 0.02;   // hg_r_stem: RHgC of new stem tissue (wood ~5-10 ng/g)
   double r_root     = 0.07;   // hg_r_root: RHgC of new root tissue
-  double f_evade    = 0.16;   // hg_f_evade: fraction of decay-released Hg that evades (Schaefer 2020)
+  double f_evade    = 0.02;   // hg_f_evade: fraction of decay-released Hg that evades (0.16 Schaefer 2020; 0.02: Obrist 2017 Toolik net Hg(0) sink, see top)
   double f_export   = 0.015;  // hg_f_export: fraction of decay-released Hg exported (Schaefer 2020)
-  double dep_soil   = 0.0;    // hg_dep_soil: direct Hg(II) deposition to the top soil layer (ug/m2/yr)
+  double f_leach    = 0.0;    // hg_f_leach: fraction of decay-released Hg moved to the next soil layer down (DOC-bound), bottom -> export
+  double dep_soil   = 0.0;    // hg_dep_soil: constant deposition to the top soil layer (ug/m2/yr); fallback without hg_dep_file
+  std::string dep_file;       // hg_dep_file: optional CSV deposition series (see dep_at); "" = constant hg_dep_soil
+  int    tr_year0   = 1901;   // hg_tr_year0: calendar year of tr-run year 0 (deposition lookup)
+  int    sc_year0   = 2016;   // hg_sc_year0: calendar year of sc-run year 0
+  int    spin_year  = 1850;   // hg_dep_spin_year: deposition year used in pre-run / eq-run / sp-run (pre-industrial)
+  int    spinup     = 0;      // hg_spinup: 0 off (default), 1 analytical spin-up after the first hg_spinup_cycle years
+  double spinup_years = 5000; // hg_spinup_years: equivalent spin-up length (yr; Schaefer 2020: 5000)
+  int    spinup_cycle = 1;    // hg_spinup_cycle: number of model years whose C cycle is repeated (1-50)
+  // deposition table (from hg_dep_file): rows with month 0 = annual (interpolated in year), 1-12 = monthly
+  std::vector<int> dep_y, dep_m; std::vector<double> dep_v, dep_vs;
   int    mehg       = 0;      // hg_mehg: 0 off (default), 1 MeHg index
   int    mehg_driver = 0;     // hg_mehg_driver: 0 auto (CH4 production if the CH4 module is on), 1 proxy always
   // k_meth: calibrated (T1, 2026-11-23) to Thompson et al. 2025 growing-season (Jun-Sep) active-layer %MeHg in
@@ -78,6 +108,70 @@ struct Params {
   double t_ref      = 10.0;   // hg_t_ref (C)
 };
 
+// Deposition CSV: '#' comments; header with columns year, [month], and either dep or any of hg2_wet,
+// hg2_dry, hg0_soil (summed), optional veg_scale (default 1). Rates in ug/m2/yr (monthly rows too).
+inline std::string load_dep(const std::string& fn, Params& p) {
+  std::ifstream f(fn.c_str());
+  if (!f) { return "hg_dep_file: cannot open " + fn; }
+  std::string line; std::vector<std::string> hdr; int ln = 0;
+  p.dep_y.clear(); p.dep_m.clear(); p.dep_v.clear(); p.dep_vs.clear();
+  auto split = [](const std::string& s) { std::vector<std::string> o; std::stringstream ss(s); std::string x;
+    while (std::getline(ss, x, ',')) { size_t a = x.find_first_not_of(" \t\r"), b = x.find_last_not_of(" \t\r");
+      o.push_back(a == std::string::npos ? "" : x.substr(a, b - a + 1)); } return o; };
+  int iy = -1, im = -1, ivs = -1; std::vector<int> iv;
+  while (std::getline(f, line)) {
+    ln++;
+    if (line.find_first_not_of(" \t\r") == std::string::npos || line[line.find_first_not_of(" \t\r")] == '#') { continue; }
+    std::vector<std::string> c = split(line);
+    if (hdr.empty()) {
+      hdr = c;
+      for (size_t i = 0; i < c.size(); i++) {
+        if (c[i] == "year") iy = (int)i; else if (c[i] == "month") im = (int)i; else if (c[i] == "veg_scale") ivs = (int)i;
+        else if (c[i] == "dep" || c[i] == "hg2_wet" || c[i] == "hg2_dry" || c[i] == "hg0_soil") iv.push_back((int)i);
+      }
+      if (iy < 0 || iv.empty()) { return "hg_dep_file " + fn + ": header needs 'year' and 'dep' or hg2_wet/hg2_dry/hg0_soil"; }
+      continue;
+    }
+    if (c.size() < hdr.size()) { return "hg_dep_file " + fn + ": short row at line " + std::to_string(ln); }
+    try {
+      const int y = std::stoi(c[iy]); const int m = (im >= 0) ? std::stoi(c[im]) : 0;
+      double v = 0.0; for (int k : iv) { v += std::stod(c[k]); }
+      const double vs = (ivs >= 0) ? std::stod(c[ivs]) : 1.0;
+      if (m < 0 || m > 12 || !(v >= 0.0) || !(vs >= 0.0) || !std::isfinite(v) || !std::isfinite(vs)) { throw std::invalid_argument("range"); }
+      if (!p.dep_y.empty() && m == 0 && p.dep_m.back() == 0 && y <= p.dep_y.back()) { throw std::invalid_argument("annual years must increase"); }
+      p.dep_y.push_back(y); p.dep_m.push_back(m); p.dep_v.push_back(v); p.dep_vs.push_back(vs);
+    } catch (const std::exception& e) {
+      return "hg_dep_file " + fn + ": bad value at line " + std::to_string(ln) + " (" + e.what() + ")";
+    }
+  }
+  if (p.dep_y.empty()) { return "hg_dep_file " + fn + ": no data rows"; }
+  return "";
+}
+
+struct DepVal { double rate = 0.0; double veg_scale = 1.0; };
+// Deposition rate (ug/m2/yr) and vegetation-uptake scale for a calendar year and month (1-12): an exact
+// monthly row if present, else linear interpolation of the annual rows (constant beyond the ends), else the
+// constant hg_dep_soil with scale 1.
+inline DepVal dep_at(const Params& p, int year, int month) {
+  DepVal d; d.rate = p.dep_soil;
+  if (p.dep_y.empty()) { return d; }
+  for (size_t i = 0; i < p.dep_y.size(); i++) {
+    if (p.dep_m[i] == month && p.dep_y[i] == year) { d.rate = p.dep_v[i]; d.veg_scale = p.dep_vs[i]; return d; }
+  }
+  int lo = -1, hi = -1;
+  for (size_t i = 0; i < p.dep_y.size(); i++) {
+    if (p.dep_m[i] != 0) { continue; }
+    if (p.dep_y[i] <= year) { lo = (int)i; }
+    if (p.dep_y[i] >= year && hi < 0) { hi = (int)i; }
+  }
+  if (lo < 0 && hi < 0) { return d; }
+  if (lo < 0) { lo = hi; } if (hi < 0) { hi = lo; }
+  const double w = (p.dep_y[hi] > p.dep_y[lo]) ? double(year - p.dep_y[lo]) / double(p.dep_y[hi] - p.dep_y[lo]) : 0.0;
+  d.rate = p.dep_v[lo] + w * (p.dep_v[hi] - p.dep_v[lo]);
+  d.veg_scale = p.dep_vs[lo] + w * (p.dep_vs[hi] - p.dep_vs[lo]);
+  return d;
+}
+
 inline bool num_(const Json::Value& v) { return !v.isBool() && v.isNumeric() && std::isfinite(v.asDouble()); }
 
 // Parse model_settings; returns "" or the FATAL message. Absent keys = defaults; unknown hg_* keys are errors.
@@ -87,12 +181,15 @@ inline std::string parse(const Json::Value& ms, Params& p) {
   struct D { const char* k; double* v; double lo, hi; };
   D ds[] = {{"hg_r_org", &p.r_org, 0, 1e3}, {"hg_r_min", &p.r_min, 0, 1e3}, {"hg_r_leaf", &p.r_leaf, 0, 1e3},
             {"hg_r_stem", &p.r_stem, 0, 1e3}, {"hg_r_root", &p.r_root, 0, 1e3}, {"hg_f_evade", &p.f_evade, 0, 1},
-            {"hg_f_export", &p.f_export, 0, 1}, {"hg_dep_soil", &p.dep_soil, 0, 1e4},
+            {"hg_f_export", &p.f_export, 0, 1}, {"hg_f_leach", &p.f_leach, 0, 1}, {"hg_dep_soil", &p.dep_soil, 0, 1e4},
+            {"hg_spinup_years", &p.spinup_years, 1, 1e6},
             {"hg_k_meth_ch4", &p.k_meth_ch4, 0, 1e9}, {"hg_k_meth_proxy", &p.k_meth_proxy, 0, 1e9},
             {"hg_k_demeth", &p.k_demeth, 1e-9, 1e6}, {"hg_q10_meth", &p.q10_meth, 1e-3, 100},
             {"hg_q10_demeth", &p.q10_demeth, 1e-3, 100}, {"hg_t_ref", &p.t_ref, -50, 50}};
   struct I { const char* k; int* v; int lo, hi; };
-  I is[] = {{"hg_tracer", &p.tracer, 0, 1}, {"hg_mehg", &p.mehg, 0, 1}, {"hg_mehg_driver", &p.mehg_driver, 0, 1}};
+  I is[] = {{"hg_tracer", &p.tracer, 0, 1}, {"hg_mehg", &p.mehg, 0, 1}, {"hg_mehg_driver", &p.mehg_driver, 0, 1},
+            {"hg_spinup", &p.spinup, 0, 1}, {"hg_spinup_cycle", &p.spinup_cycle, 1, 50}, {"hg_tr_year0", &p.tr_year0, -100000, 100000},
+            {"hg_sc_year0", &p.sc_year0, -100000, 100000}, {"hg_dep_spin_year", &p.spin_year, -100000, 100000}};
   for (const std::string& key : ms.getMemberNames()) {
     if (key.rfind("hg_", 0) != 0) { continue; }
     bool known = false;
@@ -114,9 +211,16 @@ inline std::string parse(const Json::Value& ms, Params& p) {
         *d.v = v.asInt();
       }
     }
+    if (key == "hg_dep_file") {
+      known = true;
+      if (!ms[key].isString()) { return "model_settings.hg_dep_file must be a string (path of a CSV file)"; }
+      p.dep_file = ms[key].asString();
+    }
     if (!known) { return "model_settings." + key + ": unknown hg_* setting"; }
   }
-  if (p.f_evade + p.f_export > 1.0) { return "model_settings.hg_f_evade + hg_f_export must be <= 1"; }
+  if (p.f_evade + p.f_export + p.f_leach > 1.0) { return "model_settings.hg_f_evade + hg_f_export + hg_f_leach must be <= 1"; }
+  if (p.spinup == 1 && p.tracer != 1) { return "model_settings.hg_spinup = 1 needs hg_tracer = 1"; }
+  if (!p.dep_file.empty()) { std::string e = load_dep(p.dep_file, p); if (!e.empty()) { return e; } }
   if (p.mehg == 1 && p.tracer != 1) { return "model_settings.hg_mehg = 1 needs hg_tracer = 1"; }
   return "";
 }
@@ -141,19 +245,20 @@ struct Flux {
   double doc[MAX_SOI_LAY] = {};             // DOC C exported, by layer
   double decomp_wd = 0.0;                   // woody debris RH
   double dep_soil = 0.0;                    // direct Hg deposition to the top soil layer (ug/m2), not C
+  double veg_scale = 1.0;                   // multiplier of the vegetation uptake ratios (deposition series)
   double burn = 0.0;                        // fire C emission (aggregate, from the donor pot)
   double lateral = 0.0;                     // RTS lateral C export (aggregate, from the donor pot)
   double pot_decomp = 0.0;                  // RTS respiration (aggregate decomposition from the pot)
 };
 
 struct Acc {
-  double uptake = 0, dep = 0, evasion = 0, export_ = 0, fire = 0, unexpl_closs = 0, unexpl_cgain = 0;
+  double uptake = 0, dep = 0, evasion = 0, export_ = 0, fire = 0, unexpl_closs = 0, unexpl_cgain = 0, spin = 0;
   void clear() { *this = Acc(); }
   void add(const Acc& o) {
     uptake += o.uptake; dep += o.dep; evasion += o.evasion; export_ += o.export_; fire += o.fire;
-    unexpl_closs += o.unexpl_closs; unexpl_cgain += o.unexpl_cgain;
+    unexpl_closs += o.unexpl_closs; unexpl_cgain += o.unexpl_cgain; spin += o.spin;
   }
-  double net() const { return uptake + dep - evasion - export_ - fire; }
+  double net() const { return uptake + dep - evasion - export_ - fire + spin; }   // spin: spin-up jump
 };
 
 struct State {
@@ -168,6 +273,8 @@ struct State {
   Acc cum;                // since initialization (conservation diagnostic)
   double h_init = 0.0;    // total Hg at initialization
   double mehg_prod_m = 0.0, mehg_prod_y = 0.0;   // MeHg gross production (ug/m2) month / year
+  int spun = 0;           // spin-up: 0 not done, 1 done, 2 gave up (geometry never repeated)
+  int spin_tries = 0;
   double vegtot() const { double s = 0; for (int i = 0; i < NUM_PFT; i++) for (int j = 0; j < NUM_PFT_PART; j++) s += veg[i][j]; return s; }
   double deadtot() const { double s = wd; for (int i = 0; i < NUM_PFT; i++) s += dead[i]; return s; }
   double soiltot() const { double s = 0; for (int i = 0; i < MAX_SOI_LAY; i++) s += soil[i]; return s; }
@@ -214,6 +321,10 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
   const double rv[NUM_PFT_PART] = {p.r_leaf, p.r_stem, p.r_root};
   const int na = std::min(a.nsl, MAX_SOI_LAY), nb = std::min(b.nsl, MAX_SOI_LAY);
   const bool same = same_geometry(a, b);
+  // top soil layer that holds C (the moss layer usually has no SOM C): target of deposition and of
+  // unassigned Hg, so that Hg never piles up in a layer without C turnover
+  int topc = 0;
+  for (int l = 0; l < nb; l++) { if (b.soil[l] > 1.0e-6) { topc = l; break; } }
 
   // ---- non-soil pools (flattened): veg parts, standing dead, woody debris
   double* hp[NPOOL]; double dint[NPOOL]; double r[NPOOL];
@@ -222,7 +333,7 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
     for (int j = 0; j < NUM_PFT_PART; j++, k++) {
       hp[k] = &s.veg[i][j];
       const double in = f.npp[i][j];
-      const double hin = std::fmax(0.0, in) * rv[j];
+      const double hin = std::fmax(0.0, in) * rv[j] * f.veg_scale;
       *hp[k] += hin; acc.uptake += hin;
       r[k] = ratio_(*hp[k], a.veg[i][j] + std::fmax(0.0, in));
       dint[k] = b.veg[i][j] - a.veg[i][j] - in;
@@ -244,10 +355,15 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
   double soilnet = 0.0;             // different geometry: net soil C change (after the external fluxes)
   double h0soil[MAX_SOI_LAY];
   for (int l = 0; l < MAX_SOI_LAY; l++) { h0soil[l] = s.soil[l]; rs[l] = (l < na) ? ratio_(s.soil[l], a.soil[l]) : 0.0; }
+  double leach_in[MAX_SOI_LAY] = {};   // hg_f_leach: decay-released Hg moved one layer down (added after the MeHg map)
   if (same) {
     for (int l = 0; l < na; l++) {
       double rel = std::fmin(s.soil[l], std::fmax(0.0, f.decomp[l]) * rs[l]);
       acc.evasion += rel * p.f_evade; acc.export_ += rel * p.f_export; s.soil[l] -= rel * fr;
+      if (p.f_leach > 0.0) {
+        const double lx = std::fmin(s.soil[l], rel * p.f_leach); s.soil[l] -= lx;
+        if (l + 1 < na) { leach_in[l + 1] += lx; } else { acc.export_ += lx; }
+      }
       const double ex = std::fmin(s.soil[l], std::fmax(0.0, f.doc[l]) * rs[l]);
       acc.export_ += ex; s.soil[l] -= ex;
       sd[l] = b.soil[l] - a.soil[l] + f.decomp[l] + f.doc[l];
@@ -259,7 +375,7 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
     pot_decomp += dec; lateral += doc;          // per-layer fluxes with a geometry change: from the pot
     soilnet = c1 - c0 + dec + doc;
   }
-  if (f.dep_soil > 0.0 && nb > 0) { acc.dep += f.dep_soil; }   // added to the top layer after the remap
+  if (f.dep_soil > 0.0 && nb > 0) { acc.dep += f.dep_soil; }   // added to the top C layer after the remap
 
   // ---- donors / receivers
   double D = 0.0, R = 0.0;
@@ -314,7 +430,7 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
     // leftover old material (C loss with no sink): Hg stays, in the top new layer
     double lh = 0.0, lm = 0.0;
     for (int l = 0; l <= i && l < na; l++) { lh += hh[l]; lm += mm[l]; }
-    if (nb > 0) { newh[0] += lh; newm[0] += lm; } else { P += lh; give_col += lh; }
+    if (nb > 0) { newh[topc] += lh; newm[topc] += lm; } else { P += lh; give_col += lh; }
     for (int l = 0; l < MAX_SOI_LAY; l++) { s.soil[l] = (l < nb) ? newh[l] : 0.0; mehg_new[l] = (l < nb) ? newm[l] : 0.0; }
     // receivers: the top excess
     R = 0.0;
@@ -322,6 +438,7 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
     for (int j = 0; j < nb; j++) { sd[j] = excess[j]; R += excess[j]; }
   }
   for (int l = 0; l < MAX_SOI_LAY; l++) { s.mehg[l] = mehg_new[l]; }
+  if (same) { for (int l = 0; l < na; l++) { s.soil[l] += leach_in[l]; } }
 
   // ---- sinks from the pot
   if (P > 0.0 && cflow > 0.0) {
@@ -360,13 +477,88 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
         for (int i = 0; i < NPOOL; i++) { if (give[i] > 0) { const double h = P * give[i] / tg; *hp[i] += h; left -= h; } }
         for (int l = 0; l < MAX_SOI_LAY; l++) { if (give_soil[l] > 0) { const double h = P * give_soil[l] / tg; s.soil[l] += h; left -= h; } }
       }
-      if (nb > 0) { s.soil[0] += left; } else { s.wd += left; }
+      if (nb > 0) { s.soil[topc] += left; } else { s.wd += left; }
     }
   }
-  if (acc.dep > 0.0) { s.soil[0] += acc.dep; }
+  if (acc.dep > 0.0) { s.soil[topc] += acc.dep; }
   acc.unexpl_cgain = std::fmax(0.0, R - (cflow - std::fmin(S, cflow)));
   s.nsl = nb;
   s.m.add(acc); s.y.add(acc); s.cum.add(acc);
+}
+
+// ---- Hg spin-up (hg_spinup = 1)
+struct Rec { Snap a, b; Flux f; };   // one recorded tracer step
+const int NVEC = NPOOL + MAX_SOI_LAY;
+inline void to_vec_(const State& s, double* x) {
+  int k = 0;
+  for (int i = 0; i < NUM_PFT; i++) for (int j = 0; j < NUM_PFT_PART; j++) x[k++] = s.veg[i][j];
+  for (int i = 0; i < NUM_PFT; i++) x[k++] = s.dead[i];
+  x[k++] = s.wd;
+  for (int l = 0; l < MAX_SOI_LAY; l++) x[k++] = s.soil[l];
+}
+inline void from_vec_(State& s, const double* x) {
+  int k = 0;
+  for (int i = 0; i < NUM_PFT; i++) for (int j = 0; j < NUM_PFT_PART; j++) s.veg[i][j] = x[k++];
+  for (int i = 0; i < NUM_PFT; i++) s.dead[i] = x[k++];
+  s.wd = x[k++];
+  for (int l = 0; l < MAX_SOI_LAY; l++) s.soil[l] = x[k++];
+}
+// Affine map x -> M x + b (row-major M, NVEC x NVEC).
+struct Aff { std::vector<double> M, b; };
+inline Aff compose_(const Aff& B, const Aff& A) {   // B o A
+  Aff C; C.M.assign(NVEC * NVEC, 0.0); C.b.assign(NVEC, 0.0);
+  for (int i = 0; i < NVEC; i++) {
+    for (int k = 0; k < NVEC; k++) {
+      const double bik = B.M[i * NVEC + k];
+      if (bik == 0.0) continue;
+      for (int j = 0; j < NVEC; j++) C.M[i * NVEC + j] += bik * A.M[k * NVEC + j];
+      C.b[i] += bik * A.b[k];
+    }
+    C.b[i] += B.b[i];
+  }
+  return C;
+}
+// Apply hg_spinup_years / cycle repetitions of the recorded cycle to s (s = the state at the end of the
+// cycle; the cycle must start and end with the same number of soil layers). Returns false (s unchanged)
+// if the geometry differs or the result is not finite.
+inline bool spinup_jump(const Params& p, State& s, const std::vector<Rec>& rec, int nsl_start) {
+  if (rec.empty() || nsl_start != s.nsl) { return false; }
+  auto run = [&](const double* x0, double* x1) {
+    State t; t.init = true; t.nsl = nsl_start; from_vec_(t, x0);
+    for (const Rec& r : rec) { step(p, t, r.a, r.b, r.f); }
+    to_vec_(t, x1);
+  };
+  Aff A; A.M.assign(NVEC * NVEC, 0.0); A.b.assign(NVEC, 0.0);
+  std::vector<double> z(NVEC, 0.0), y(NVEC);
+  run(&z[0], &A.b[0]);
+  for (int j = 0; j < NVEC; j++) {
+    std::vector<double> e(NVEC, 0.0); e[j] = 1.0;
+    run(&e[0], &y[0]);
+    for (int i = 0; i < NVEC; i++) A.M[i * NVEC + j] = y[i] - A.b[i];
+  }
+  long n = std::lround(p.spinup_years / std::max(1, p.spinup_cycle));
+  if (n < 1) n = 1;
+  Aff R; R.M.assign(NVEC * NVEC, 0.0); R.b.assign(NVEC, 0.0);
+  for (int i = 0; i < NVEC; i++) R.M[i * NVEC + i] = 1.0;
+  Aff B = A;
+  while (n > 0) { if (n & 1) R = compose_(B, R); n >>= 1; if (n > 0) B = compose_(B, B); }
+  std::vector<double> x(NVEC), xn(NVEC, 0.0);
+  to_vec_(s, &x[0]);
+  for (int i = 0; i < NVEC; i++) {
+    double v = R.b[i];
+    for (int j = 0; j < NVEC; j++) v += R.M[i * NVEC + j] * x[j];
+    if (!std::isfinite(v)) { return false; }
+    xn[i] = std::fmax(0.0, v);
+  }
+  double h0[MAX_SOI_LAY]; for (int l = 0; l < MAX_SOI_LAY; l++) h0[l] = s.soil[l];
+  const double t0 = s.total();
+  from_vec_(s, &xn[0]);
+  for (int l = 0; l < MAX_SOI_LAY; l++) {
+    s.mehg[l] = (h0[l] > 0.0) ? std::fmin(s.soil[l], s.mehg[l] * s.soil[l] / h0[l]) : 0.0;
+  }
+  const double d = s.total() - t0;
+  s.m.spin += d; s.y.spin += d; s.cum.spin += d;
+  return true;
 }
 
 // MeHg index for one month. a_turn[l]: anaerobic C turnover fraction of the month (-); ts[l]: layer T (C).
@@ -386,20 +578,22 @@ inline void mehg_month(const Params& p, State& s, const double* a_turn, const do
   s.mehg_prod_m += prod; s.mehg_prod_y += prod;
 }
 
-// Restart layout (version 1): [0] version, veg (NUM_PFT x 3), dead (NUM_PFT), wd, soil (MAX_SOI_LAY),
-// mehg (MAX_SOI_LAY), h_init, cum uptake, dep, evasion, export, fire (diagnostic continuity).
-const int NSTATE = 1 + NUM_PFT * NUM_PFT_PART + NUM_PFT + 1 + 2 * MAX_SOI_LAY + 6;
+// Restart layout (version 2): [0] version, veg (NUM_PFT x 3), dead (NUM_PFT), wd, soil (MAX_SOI_LAY),
+// mehg (MAX_SOI_LAY), h_init, cum uptake, dep, evasion, export, fire, spin, spun (diagnostic continuity).
+// Version 1 (T1, no spin / spun) is still read.
+const int NSTATE = 1 + NUM_PFT * NUM_PFT_PART + NUM_PFT + 1 + 2 * MAX_SOI_LAY + 8;
 inline void pack(const State& s, double* v) {
-  int k = 0; v[k++] = 1.0;
+  int k = 0; v[k++] = 2.0;
   for (int i = 0; i < NUM_PFT; i++) for (int j = 0; j < NUM_PFT_PART; j++) v[k++] = s.veg[i][j];
   for (int i = 0; i < NUM_PFT; i++) v[k++] = s.dead[i];
   v[k++] = s.wd;
   for (int l = 0; l < MAX_SOI_LAY; l++) v[k++] = s.soil[l];
   for (int l = 0; l < MAX_SOI_LAY; l++) v[k++] = s.mehg[l];
   v[k++] = s.h_init; v[k++] = s.cum.uptake; v[k++] = s.cum.dep; v[k++] = s.cum.evasion; v[k++] = s.cum.export_; v[k++] = s.cum.fire;
+  v[k++] = s.cum.spin; v[k++] = (double)s.spun;
 }
 inline bool unpack(State& s, const double* v, int nsl) {
-  if (!(v[0] == 1.0)) { return false; }
+  if (!(v[0] == 1.0 || v[0] == 2.0)) { return false; }
   int k = 1;
   for (int i = 0; i < NUM_PFT; i++) for (int j = 0; j < NUM_PFT_PART; j++) s.veg[i][j] = v[k++];
   for (int i = 0; i < NUM_PFT; i++) s.dead[i] = v[k++];
@@ -407,6 +601,8 @@ inline bool unpack(State& s, const double* v, int nsl) {
   for (int l = 0; l < MAX_SOI_LAY; l++) s.soil[l] = v[k++];
   for (int l = 0; l < MAX_SOI_LAY; l++) s.mehg[l] = v[k++];
   s.h_init = v[k++]; s.cum.clear(); s.cum.uptake = v[k++]; s.cum.dep = v[k++]; s.cum.evasion = v[k++]; s.cum.export_ = v[k++]; s.cum.fire = v[k++];
+  s.spun = 0; s.spin_tries = 0;
+  if (v[0] == 2.0) { s.cum.spin = v[k++]; s.spun = (int)std::lround(v[k++]); }
   s.nsl = nsl; s.init = true; s.m.clear(); s.y.clear();
   return true;
 }

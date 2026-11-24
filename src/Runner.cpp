@@ -2795,7 +2795,9 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
       layered("MEHGSOIL", h.mehg);
       scalar("HGVEG", h.vegtot(), h.vegtot());
       scalar("HGDEAD", h.deadtot(), h.deadtot());
-      scalar("HG_UPTAKE", h.m.uptake + h.m.dep, h.y.uptake + h.y.dep);
+      scalar("HG_UPTAKE", h.m.uptake, h.y.uptake);
+      scalar("HG_DEP", h.m.dep, h.y.dep);
+      scalar("HG_SPINADJ", h.cum.spin, h.cum.spin);
       scalar("HG_EVASION", h.m.evasion, h.y.evasion);
       scalar("HG_EXPORT", h.m.export_, h.y.export_);
       scalar("HG_FIRE", h.m.fire, h.y.fire);

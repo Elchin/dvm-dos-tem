@@ -163,6 +163,12 @@ public :
   void hg_track(hgtr::Snap & a, const hgtr::Flux & f, const char * label);
   void hg_month_begin(const int currmind, hgtr::Snap & a);
   void hg_mehg_month(const hgtr::Flux & fbgc);
+  // T1b: Hg spin-up recording (hg_spinup = 1) and calendar year of the deposition series
+  std::vector<hgtr::Rec> hg_rec;
+  bool hg_recording = false;
+  int hg_rec_years = 0, hg_rec_nsl0 = 0;
+  void hg_do_step(const hgtr::Snap & a, const hgtr::Snap & b, const hgtr::Flux & f);
+  int hg_cal_year(const int yrcnt, const std::string & stage) const;
 
 private:
   // v5p daily_c_split: soil layer structure of the Env loop and of the Bgc step

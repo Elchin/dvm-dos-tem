@@ -6,6 +6,9 @@
 #include <json/json.h>
 #include <cmath>
 #include <random>
+#include <fstream>
+#include <cstdio>
+#include <vector>
 
 namespace {
 Json::Value ms0() { Json::Value m(Json::objectValue); return m; }
@@ -23,7 +26,8 @@ TEST_CASE("hg_tracer parse: absent = off, defaults, errors") {
   hgtr::Params p;
   CHECK(hgtr::parse(ms0(), p) == "");
   CHECK(p.tracer == 0); CHECK(p.mehg == 0);
-  CHECK(p.f_evade == doctest::Approx(0.16)); CHECK(p.f_export == doctest::Approx(0.015));
+  CHECK(p.f_evade == doctest::Approx(0.02)); CHECK(p.f_export == doctest::Approx(0.015)); CHECK(p.f_leach == 0.0);
+  CHECK(p.spinup == 0); CHECK(p.dep_file.empty()); CHECK(hgtr::dep_at(p, 2000, 6).rate == 0.0);
   CHECK(p.r_org == doctest::Approx(0.35)); CHECK(p.r_min == doctest::Approx(1.47));
   Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_r_min"] = 1.6; m["other_switch"] = 3;
   CHECK(hgtr::parse(m, p) == ""); CHECK(p.tracer == 1); CHECK(p.r_min == doctest::Approx(1.6));
@@ -60,8 +64,8 @@ TEST_CASE("hg_tracer fixed-geometry BGC step: uptake, decay partition, litter tr
   const double up = 12.0 * p.r_leaf + 5.0 * p.r_root;
   CHECK(s.m.uptake == doctest::Approx(up));
   const double rel = 20.0 * hsoil1 / a.soil[1] + 2.0 * p.r_leaf;
-  CHECK(s.m.evasion == doctest::Approx(rel * 0.16));
-  CHECK(s.m.export_ == doctest::Approx(rel * 0.015));
+  CHECK(s.m.evasion == doctest::Approx(rel * p.f_evade));
+  CHECK(s.m.export_ == doctest::Approx(rel * p.f_export));
   CHECK(std::fabs(tot(s) - (h0 + up - s.m.evasion - s.m.export_)) < 1e-10);
   CHECK(std::fabs(s.balance_error()) < 1e-10);
   CHECK(s.m.unexpl_closs == doctest::Approx(0.0)); CHECK(s.m.unexpl_cgain == doctest::Approx(0.0));
@@ -166,4 +170,103 @@ TEST_CASE("hg_mehg: steady state %MeHg = k_meth A / k_demeth at t_ref, capped by
   for (int l = 0; l < MAX_SOI_LAY; l++) { A[l] = 1e3; }
   hgtr::mehg_month(p, s, A, T, 4, true);
   for (int l = 0; l < 4; l++) { CHECK(s.mehg[l] <= s.soil[l]); }
+}
+
+// ---------------- T1b: deposition series, leaching, spin-up, restart v2
+TEST_CASE("hg_dep_file: CSV parse, annual interpolation, monthly rows, veg_scale, errors") {
+  const char* fn = "/tmp/hg_dep_unittest.csv";
+  { std::ofstream f(fn); f << "# test\nyear,month,hg2_wet,hg2_dry,hg0_soil,veg_scale\n1850,0,0.1,0.5,0.4,0.4\n1950,0,0.2,1.5,1.3,0.8\n2000,7,1,1,1,2\n"; }
+  hgtr::Params p; Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_dep_file"] = fn; m["hg_dep_soil"] = 9.0;
+  REQUIRE(hgtr::parse(m, p) == "");
+  CHECK(hgtr::dep_at(p, 1800, 1).rate == doctest::Approx(1.0));            // clamped to the first row
+  CHECK(hgtr::dep_at(p, 1900, 1).rate == doctest::Approx(2.0));            // (1.0 + 3.0) / 2
+  CHECK(hgtr::dep_at(p, 1900, 1).veg_scale == doctest::Approx(0.6));
+  CHECK(hgtr::dep_at(p, 2100, 1).rate == doctest::Approx(3.0));
+  CHECK(hgtr::dep_at(p, 2000, 7).rate == doctest::Approx(3.0)); CHECK(hgtr::dep_at(p, 2000, 7).veg_scale == doctest::Approx(2.0));
+  { std::ofstream f(fn); f << "year,foo\n1850,1\n"; }
+  CHECK(hgtr::parse(m, p) != "");                                           // no deposition column
+  { std::ofstream f(fn); f << "year,dep\n1850,-1\n"; }
+  CHECK(hgtr::parse(m, p) != "");                                           // negative
+  Json::Value b = ms0(); b["hg_tracer"] = 1; b["hg_dep_file"] = "/nonexistent/x.csv"; CHECK(hgtr::parse(b, p) != "");
+  Json::Value c = ms0(); c["hg_tracer"] = 1; c["hg_dep_file"] = 3; CHECK(hgtr::parse(c, p) != "");
+  Json::Value d = ms0(); d["hg_spinup"] = 1; CHECK(hgtr::parse(d, p) != "");    // needs the tracer
+  Json::Value e = ms0(); e["hg_tracer"] = 1; e["hg_f_leach"] = 0.99; CHECK(hgtr::parse(e, p) != "");
+  std::remove(fn);
+}
+
+TEST_CASE("hg_f_leach: decay-released Hg moves one layer down (bottom layer -> export), exact balance; veg_scale") {
+  hgtr::Params p; p.f_leach = 0.3; hgtr::State s; hgtr::Snap a = column(4); hgtr::initialize(p, s, a);
+  const double h1 = s.soil[1], h2 = s.soil[2], h3 = s.soil[3];
+  hgtr::Snap b = a; hgtr::Flux f; f.decomp[1] = 10.0; f.decomp[3] = 5.0; b.soil[1] -= 10.0; b.soil[3] -= 5.0;
+  f.npp[0][0] = 4.0; f.veg_scale = 0.5; b.veg[0][0] += 4.0;
+  hgtr::step(p, s, a, b, f);
+  const double r1 = 10.0 * h1 / a.soil[1], r3 = 5.0 * h3 / a.soil[3];
+  CHECK(s.soil[2] == doctest::Approx(h2 + 0.3 * r1));
+  CHECK(s.soil[1] == doctest::Approx(h1 - r1 * (p.f_evade + p.f_export + 0.3)));
+  CHECK(s.m.export_ == doctest::Approx((r1 + r3) * p.f_export + 0.3 * r3));
+  CHECK(s.m.uptake == doctest::Approx(4.0 * p.r_leaf * 0.5));
+  CHECK(std::fabs(s.balance_error()) < 1e-10);
+}
+
+namespace {
+// one synthetic year (12 months): NPP, litterfall to layer 0, decomposition in all layers, s2d-like
+// transfer 0 -> 1, deposition; C in steady state (b == a for the soil totals over the month).
+std::vector<hgtr::Rec> synth_year(const hgtr::Snap& c) {
+  std::vector<hgtr::Rec> v;
+  for (int mth = 0; mth < 12; mth++) {
+    hgtr::Rec r; r.a = c; r.b = c;
+    const double g = (mth >= 5 && mth <= 8) ? 1.0 : 0.1;
+    r.f.npp[0][0] = 6.0 * g; r.f.npp[0][2] = 3.0 * g; r.f.dep_soil = 0.6;
+    r.b.veg[0][0] = c.veg[0][0]; r.b.veg[0][2] = c.veg[0][2];          // litterfall = NPP
+    r.f.decomp[0] = 6.0 * g; r.f.decomp[1] = 3.0 * g; r.f.decomp[2] = 0.5 * g; r.f.decomp[3] = 0.05 * g;
+    r.b.soil[0] = c.soil[0] + 9.0 * g - 6.0 * g - 1.0 * g;            // litter in, decay, 1 g to layer 1
+    r.b.soil[1] = c.soil[1] + 1.0 * g - 3.0 * g + 2.0 * g;             // (2 g from layer 2, see below)
+    r.b.soil[2] = c.soil[2] - 0.5 * g - 2.0 * g + 2.5 * g;             // cryoturbation-like mixing
+    r.b.soil[3] = c.soil[3] - 0.05 * g - 0.45 * g;                     // ... unbalanced on purpose
+    v.push_back(r);
+    hgtr::Rec back; back.a = r.b; back.b = c; v.push_back(back);       // month-end C returns to c (gap step)
+  }
+  return v;
+}
+}
+
+TEST_CASE("hg_spinup: affine jump == explicit repetition of the recorded cycle; booked as spin; conserves") {
+  hgtr::Params p; p.tracer = 1; p.spinup = 1; p.spinup_cycle = 1; p.f_leach = 0.1; p.spinup_years = 37;
+  hgtr::Snap c = column(5);
+  const std::vector<hgtr::Rec> yr = synth_year(c);
+  hgtr::State s; hgtr::initialize(p, s, c);
+  for (const hgtr::Rec& r : yr) hgtr::step(p, s, r.a, r.b, r.f);                 // year 1 (recorded)
+  hgtr::State e = s;                                                              // explicit: 37 more years
+  for (int y = 0; y < 37; y++) for (const hgtr::Rec& r : yr) hgtr::step(p, e, r.a, r.b, r.f);
+  hgtr::State j = s;
+  REQUIRE(hgtr::spinup_jump(p, j, yr, c.nsl));
+  for (int l = 0; l < 5; l++) CHECK(j.soil[l] == doctest::Approx(e.soil[l]).epsilon(1e-9));
+  CHECK(j.vegtot() == doctest::Approx(e.vegtot()).epsilon(1e-9));
+  CHECK(j.cum.spin == doctest::Approx(e.total() - s.total()).epsilon(1e-9));
+  CHECK(std::fabs(j.balance_error()) < 1e-8 * j.total());
+  // long jump: converges to the periodic steady state (one more cycle changes nothing)
+  p.spinup_years = 200000; hgtr::State k = s; REQUIRE(hgtr::spinup_jump(p, k, yr, c.nsl));
+  hgtr::State k2 = k; for (const hgtr::Rec& r : yr) hgtr::step(p, k2, r.a, r.b, r.f);
+  for (int l = 0; l < 4; l++) CHECK(k2.soil[l] == doctest::Approx(k.soil[l]).epsilon(1e-6));
+  CHECK(std::fabs(k2.total() - k.total()) < 1e-3 * std::fabs(k.total() - s.total()));   // pools without turnover may still grow linearly
+  // geometry mismatch: refused, state unchanged
+  hgtr::State q = s; CHECK_FALSE(hgtr::spinup_jump(p, q, yr, c.nsl + 1)); CHECK(q.total() == s.total());
+}
+
+TEST_CASE("hg restart layout v2 round trip (spin, spun) and v1 still read") {
+  hgtr::Params p; hgtr::State s; hgtr::Snap a = column(6); hgtr::initialize(p, s, a);
+  s.cum.spin = 12.5; s.spun = 1; s.mehg[1] = 0.25;
+  double v[hgtr::NSTATE]; hgtr::pack(s, v); CHECK(v[0] == 2.0);
+  hgtr::State t; REQUIRE(hgtr::unpack(t, v, 6));
+  CHECK(t.spun == 1); CHECK(t.cum.spin == 12.5); CHECK(t.balance_error() == doctest::Approx(s.balance_error()));
+  v[0] = 1.0; hgtr::State u; REQUIRE(hgtr::unpack(u, v, 6)); CHECK(u.spun == 0); CHECK(u.cum.spin == 0.0);
+}
+
+TEST_CASE("hg deposition goes to the top soil layer that holds C (moss layer without SOM C skipped)") {
+  hgtr::Params p; hgtr::State s; hgtr::Snap a = column(5); a.soil[0] = 0.0; hgtr::initialize(p, s, a);
+  hgtr::Snap b = a; hgtr::Flux f; f.dep_soil = 0.5;
+  const double h1 = s.soil[1];
+  hgtr::step(p, s, a, b, f);
+  CHECK(s.soil[0] == 0.0); CHECK(s.soil[1] == doctest::Approx(h1 + 0.5));
+  CHECK(std::fabs(s.balance_error()) < 1e-12);
 }

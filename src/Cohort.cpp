@@ -674,7 +674,10 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
         }
       }
       f.decomp_wd = bdall->m_soi2a.rhwdeb;
-      f.dep_soil = md->hg.dep_soil / 12.0;
+      {   // deposition: hg_dep_file series (calendar year from the stage) or the constant hg_dep_soil
+        const hgtr::DepVal dv = hgtr::dep_at(md->hg, hg_cal_year(yrcnt, stage), currmind + 1);
+        f.dep_soil = dv.rate / 12.0; f.veg_scale = dv.veg_scale;
+      }
       hg_track(hg_a, f, "bgc");
       if (md->hg.mehg == 1) { hg_mehg_month(f); }
     }
@@ -2237,7 +2240,7 @@ void Cohort::set_state_from_restartdata() {
   set_tk_state_from_restartdata();     // RTS (no-op when thermokarst = 0)
   // Hg tracer (hg_tracer = 1 only): state from the optional hg_state variable, else initialized from
   // C x RHgC at the start of the next month (hg_month_begin)
-  hg = hgtr::State(); hg_have_prev = false;
+  hg = hgtr::State(); hg_have_prev = false; hg_recording = false; hg_rec.clear();
   if (md->hg.tracer == 1 && restartdata.has_hg_state) {
     hgtr::unpack(hg, restartdata.hg_state, cd.m_soil.numsl);
   }
@@ -3094,7 +3097,7 @@ void Cohort::hg_snap(hgtr::Snap & s) const {
 void Cohort::hg_track(hgtr::Snap & a, const hgtr::Flux & f, const char * label) {
   hgtr::Snap b; hg_snap(b);
   const hgtr::Acc m0 = hg.m;
-  hgtr::step(md->hg, hg, a, b, f);
+  hg_do_step(a, b, f);
   static const bool diag = getenv("HG_DIAG") != NULL;
   if (diag) {
     const double ul = hg.m.unexpl_closs - m0.unexpl_closs, ug = hg.m.unexpl_cgain - m0.unexpl_cgain;
@@ -3102,6 +3105,20 @@ void Cohort::hg_track(hgtr::Snap & a, const hgtr::Flux & f, const char * label) 
             cd.year, cd.month, a.nsl, b.nsl, ul, ug, hg.total(), hg.balance_error());
   }
   a = b;
+}
+
+/** One tracer step (recorded for the spin-up while hg_recording). */
+void Cohort::hg_do_step(const hgtr::Snap & a, const hgtr::Snap & b, const hgtr::Flux & f) {
+  if (hg_recording) { hgtr::Rec r; r.a = a; r.b = b; r.f = f; hg_rec.push_back(r); }
+  hgtr::step(md->hg, hg, a, b, f);
+}
+
+/** Calendar year for the deposition series: tr-run hg_tr_year0 + yrcnt, sc-run hg_sc_year0 + yrcnt,
+ *  pre-run / eq-run / sp-run hg_dep_spin_year. */
+int Cohort::hg_cal_year(const int yrcnt, const std::string & stage) const {
+  if (stage.find("tr") != std::string::npos) { return md->hg.tr_year0 + yrcnt; }
+  if (stage.find("sc") != std::string::npos) { return md->hg.sc_year0 + yrcnt; }
+  return md->hg.spin_year;
 }
 
 /** Start of the month: initialize from C x RHgC if needed, apply the gap since last month, clear accumulators. */
@@ -3113,8 +3130,42 @@ void Cohort::hg_month_begin(const int currmind, hgtr::Snap & a) {
   } else if (hg_have_prev) {
     const hgtr::Flux none;
     const hgtr::Acc m0 = hg.m;
-    hgtr::step(md->hg, hg, hg_prev, a, none);
+    hg_do_step(hg_prev, a, none);
     hg.m = m0;   // the gap belongs to the previous month's totals (cum keeps it)
+  }
+  // Hg spin-up (hg_spinup = 1): record hg_spinup_cycle full years (Jan to Jan) after the C x RHgC
+  // initialization, then jump hg_spinup_years ahead (hgtr::spinup_jump); once per state (hg.spun, restart).
+  if (md->hg.spinup == 1 && hg.init && hg.spun == 0 && currmind == 0) {
+    if (hg_recording) {
+      hg_rec_years++;
+      if (hg_rec_years >= md->hg.spinup_cycle) {
+        hg_recording = false;
+        const double t0 = hg.total();
+        static const bool sdiag = getenv("HG_DIAG") != NULL;
+        hgtr::State pre = hg;
+        if (hgtr::spinup_jump(md->hg, hg, hg_rec, hg_rec_nsl0)) {
+          hg.spun = 1;
+          if (sdiag) {   // replay the recorded cycle once from the pre-jump and the post-jump state
+            for (int w = 0; w < 2; w++) {
+              hgtr::State t = (w == 0) ? pre : hg; t.m.clear();
+              const double tt0 = t.total();
+              for (const hgtr::Rec & r : hg_rec) { hgtr::step(md->hg, t, r.a, r.b, r.f); }
+              fprintf(stderr, "HGSPIN %s nrec %d nsl %d total %.6g -> %.6g up %.4g dep %.4g ev %.4g ex %.4g fire %.4g uclo %.4g ucga %.4g\n",
+                      w == 0 ? "pre" : "post", (int)hg_rec.size(), hg.nsl, tt0, t.total(), t.m.uptake, t.m.dep, t.m.evasion, t.m.export_, t.m.fire, t.m.unexpl_closs, t.m.unexpl_cgain);
+              for (int l = 0; l < std::min(hg.nsl, 8); l++) {
+                fprintf(stderr, "HGSPIN   l%d C(a0) %.6g Hgpre %.6g Hgpost %.6g Hg(post+1cycle) %.6g\n", l, hg_rec[0].a.soil[l], pre.soil[l], hg.soil[l], (w == 1) ? t.soil[l] : -1.0);
+              }
+            }
+          }
+          BOOST_LOG_SEV(glg, info) << "Hg spin-up: " << md->hg.spinup_years << " yr jump, total Hg " << t0 << " -> " << hg.total() << " ug/m2";
+        } else if (++hg.spin_tries >= 10) {
+          hg.spun = 2;
+          BOOST_LOG_SEV(glg, warn) << "Hg spin-up: soil layer count never repeated over a cycle; spin-up skipped";
+        }
+        hg_rec.clear(); hg_rec.shrink_to_fit();
+      }
+    }
+    if (hg.spun == 0 && !hg_recording) { hg_recording = true; hg_rec_years = 0; hg_rec_nsl0 = hg.nsl; hg_rec.clear(); }
   }
   hg.m.clear(); hg.mehg_prod_m = 0.0;
   if (currmind == 0) { hg.y.clear(); hg.mehg_prod_y = 0.0; }

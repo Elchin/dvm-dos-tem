@@ -588,11 +588,13 @@ void RestartData::read_px_hg_vars(const std::string& fname, const int rowidx, co
   if (nc_inq_varid(ncid, "hg_state", &v) == NC_NOERR) {
     temutil::nc( nc_inq_vardimid(ncid, v, d) );
     temutil::nc( nc_inq_dimlen(ncid, d[2], &len) );
-    if (len == (size_t)HG_NSTATE) {
+    // layout v2 (HG_NSTATE values) or v1 (T1: 2 fewer, no spin-up fields; the rest zero-filled)
+    if (len == (size_t)HG_NSTATE || len == (size_t)(HG_NSTATE - 2)) {
+      for (int i = 0; i < HG_NSTATE; i++) { hg_state[i] = 0.0; }
       size_t s3[3] = {(size_t)rowidx, (size_t)colidx, 0};
-      size_t c3[3] = {1, 1, (size_t)HG_NSTATE};
+      size_t c3[3] = {1, 1, len};
       temutil::nc( nc_get_vara_double(ncid, v, s3, c3, &hg_state[0]) );
-      has_hg_state = (hg_state[0] == 1.0);
+      has_hg_state = (len == (size_t)HG_NSTATE) ? (hg_state[0] == 2.0) : (hg_state[0] == 1.0);
     }
   }
   temutil::nc( nc_close(ncid) );
