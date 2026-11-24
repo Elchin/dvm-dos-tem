@@ -234,6 +234,8 @@ struct Params {
   double gs_m        = 4.0;   // hg_gs_m: Medlyn 1 + g1 / sqrt(D) (g1 2.2-4.5 kPa^0.5 CLM5 arctic grass / boreal shrub,
                               // D 0.5-1 kPa): stomatal conductance g_sw = 1.6 m A / c_a (Yuan et al. 2023 Environ Int 174:107904)
   double gs_eff      = 1.0;   // hg_gs_eff: calibration factor of the stomatal Hg(0) uptake (hg_t2_foliar = 2; decision D3)
+  int    gs_ingpp    = 1;     // hg_gs_ingpp: 1 the stomatal uptake follows the PFT's N-unlimited GPP (INGPP; dvmdostem's canopy
+                              // conductance is not N-limited, its N limitation scales GPP afterwards), 0 the N-limited GPP
   bool   dep_comp    = false; // the deposition file has components (hg2_wet / hg2_dry / hg0_soil columns)
   std::vector<double> dep_w, dep_d2, dep_d0, dep_s0;   // components per row (ug/m2/yr)
 };
@@ -346,7 +348,7 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_t2", &p.t2, 0, 1}, {"hg_t2_foliar", &p.t2_foliar, 0, 2}, {"hg_t2_snow", &p.t2_snow, 0, 1},
             {"hg_t2_wetprec", &p.t2_wetprec, 0, 1}, {"hg_t2_photored", &p.t2_photored, 0, 1},
             {"hg_t2_diss", &p.t2_diss, 0, 1}, {"hg_snow_sublim_loss", &p.snow_sublim_loss, 0, 1},
-            {"hg_t2_evasion", &p.t2_evasion, 0, 1}, {"hg_t2_meltroute", &p.t2_meltroute, 0, 1}};
+            {"hg_t2_evasion", &p.t2_evasion, 0, 1}, {"hg_t2_meltroute", &p.t2_meltroute, 0, 1}, {"hg_gs_ingpp", &p.gs_ingpp, 0, 1}};
   for (const std::string& key : ms.getMemberNames()) {
     if (key.rfind("hg_", 0) != 0) { continue; }
     bool known = false;
@@ -427,7 +429,7 @@ struct Flux {
   int    nd = 0;
   double dq_in[31] = {}, dq_over[31] = {};
   double d_drain[31][MAX_SOI_LAY] = {}, d_liq[31][MAX_SOI_LAY] = {}, d_ice[31][MAX_SOI_LAY] = {};
-  // T2 phase 3: BGC step: GPP by PFT (g C/m2/month), air T (C), CO2 (ppm), layer T (C); transport step: daily melt (mm/day)
+  // T2 phase 3: BGC step: GPP by PFT (g C/m2/month; INGPP with hg_gs_ingpp = 1), air T (C), CO2 (ppm), layer T (C); transport step: daily melt (mm/day)
   double gpp[NUM_PFT] = {}; double ta = 0.0, co2 = 0.0; double ts[MAX_SOI_LAY] = {};
   double d_melt[31] = {};
 };

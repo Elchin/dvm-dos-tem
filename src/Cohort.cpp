@@ -688,7 +688,7 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
           f.sw = edall->m_a2l.nirr; f.cosz = hgtr::cosz24(this->lat, hgtr::mid_doy(currmind)); f.ndays = hgtr::days_in(currmind);
           if (md->hg.t2_foliar == 2 || md->hg.t2_evasion == 1) {   // T2 phase 3: GPP by PFT, air T, CO2, layer T
             for (int ip = 0; ip < NUM_PFT; ip++) {
-              if (cd.m_veg.vegcov[ip] > 0.) { double g = 0.0; for (int j = 0; j < NUM_PFT_PART; j++) { const double x = bd[ip].m_a2v.gpp[j]; if (std::isfinite(x) && x > 0.0) g += x; } f.gpp[ip] = g; }
+              if (cd.m_veg.vegcov[ip] > 0.) { double g = 0.0; for (int j = 0; j < NUM_PFT_PART; j++) { const double x = (md->hg.gs_ingpp == 1) ? bd[ip].m_a2v.ingpp[j] : bd[ip].m_a2v.gpp[j]; if (std::isfinite(x) && x > 0.0) g += x; } f.gpp[ip] = g; }
             }
             f.ta = std::isfinite(edall->m_atms.ta) ? edall->m_atms.ta : 0.0; f.co2 = std::isfinite(edall->m_atms.co2) ? edall->m_atms.co2 : 0.0;
             for (int il = 0; il < std::min(cd.m_soil.numsl, MAX_SOI_LAY); il++) { f.ts[il] = std::isfinite(edall->m_sois.ts[il]) ? edall->m_sois.ts[il] : 0.0; }

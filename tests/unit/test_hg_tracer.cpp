@@ -800,7 +800,7 @@ TEST_CASE("hg_t2_diss spin-up jump == explicit repetition (dissolved pool in the
 TEST_CASE("hg_t2 phase 3 parse: defaults off, ranges, dependencies") {
   hgtr::Params p = t2params();
   CHECK(p.t2_evasion == 0); CHECK(p.t2_meltroute == 0); CHECK(p.t2_foliar == 1);
-  CHECK(p.fd == 0.053); CHECK(p.ev_z == 0.05); CHECK(p.v_ground == 8.5e-5); CHECK(p.gem == 1.3); CHECK(p.gs_m == 4.0); CHECK(p.gs_eff == 1.0);
+  CHECK(p.fd == 0.053); CHECK(p.ev_z == 0.05); CHECK(p.v_ground == 8.5e-5); CHECK(p.gem == 1.3); CHECK(p.gs_m == 4.0); CHECK(p.gs_eff == 1.0); CHECK(p.gs_ingpp == 1);
   Json::Value a = ms0(); a["hg_tracer"] = 1; a["hg_t2_evasion"] = 1; CHECK(hgtr::parse(a, p) != "");          // needs hg_t2
   Json::Value b = ms0(); b["hg_tracer"] = 1; b["hg_t2"] = 1; b["hg_dep_file"] = T2DEP; b["hg_t2_meltroute"] = 1;
   CHECK(hgtr::parse(b, p) != "");                                                                          // needs hg_t2_diss
