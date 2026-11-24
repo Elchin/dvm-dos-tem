@@ -249,3 +249,11 @@ Done on local feat/hg-t2: e3f1c3c2, 4c0d6914, 98aa09ee (+ docs). Three switches,
 The D8 sensitivity is done; the stem/root ratios stay as they were. Toolik uptake (3.99 stomatal) and net Hg(0) (6.0) match
 Obrist 2017. Organic Hg:C and export are now above target at all sites, which is the main phase-5 item.
 Checks: WORK_NOTES_hg_t2.md section 3.
+
+## 16. Phase 4 status (2026-11-24)
+Done on local feat/hg-t2: a94f93bb (+ docs). Three items, all default off, hg_t2 = 1 only:
+- hg_fire_ash: the burned soil Hg share kept in ash, on the new top layer.
+- hg_t2_rts: RTS particulate export, including the Hg of the respired C share.
+- hg_wash / hg_wash_pref: wash-off of the month's intercepted dry Hg(II).
+Tested in a Toolik case with an explicit 1926 fire and a 1956 RTS. Ash retention adds a fire-year export pulse; the RTS change
+is +9 % in the slump year. Wash-off is 0.02-0.16 ug/m2/yr at the sites. Checks: WORK_NOTES_hg_t2.md section 4.
