@@ -1,11 +1,12 @@
 {
- "_comment": "Hg T2 calibrated set (phase 5b, 2026-11-24). Since binT2p5c these are the built-in values of hg_t2 = 1 (hg_t2_preset 1, include/HgTracer.h t2_preset_); this file lists them as an explicit model_settings overlay. T1 / Hg-off paths (hg_t2 = 0) unchanged. See docs_src/WORK_NOTES_hg_t2.md section 6.",
- "_uncertainty": "near-optimal 5-95 % (emulator, 5 free parameters with net Hg(0) / winter solved exactly): t2_log_kd_org 3.04-3.46, t2_dlog_kd_hum -0.21-0.84 (not significantly != 0), f_conn 0.35-0.98 (correlated 0.94 with Kd; off), fd 0.058-0.103, ev_z 0.31-0.49 (best at the 0.5 m bound); v_ground / v_snow follow from the Obrist 2017 net 6.5 +- 0.7 and 37 % winter share (net +-0.7 -> v_ground, v_snow about +-17 %)",
+ "_comment": "Hg T2 calibrated set (phase 5c, 2026-11-24). Since binT2p5e these are the built-in values of hg_t2 = 1 (hg_t2_preset 1, include/HgTracer.h t2_preset_); this file lists them as an explicit model_settings overlay. T1 / Hg-off paths (hg_t2 = 0) unchanged. See docs_src/WORK_NOTES_hg_t2.md section 8.",
+ "_uncertainty": "phase 5c local fit (Gauss-Newton / Broyden on site runs): all 12 target bands met (cost 0.008); binding pair HPC Ro (0.291, band >= 0.29) vs HPC Rm (1.689, band <= 1.69), both moved by fd; ev_z not constrained (ev_z 0.3 alternative V8b: cost 0.014, HPC Rm 1.71); t2_dlog_kd_hum has no effect on the targets (kept); z_deep only needs to be below the active layer (0.5 m mixes back, 1.5 m does not)",
  "model_settings": {
   "hg_tracer": 1, "hg_mehg": 1, "hg_t2": 1,
   "hg_t2_diss": 1, "hg_t2_evasion": 1, "hg_t2_foliar": 2, "hg_t2_meltroute": 1, "hg_fire_ash": 0.1, "hg_t2_rts": 1, "hg_wash": 0.5,
-  "hg_t2_log_kd_org": 3.453, "hg_t2_kdsplit": 1, "hg_t2_dlog_kd_hum": 0.242, "hg_t2_xpath": 0,
-  "hg_t2_snowsink": 1, "hg_v_ground": 4.88e-5, "hg_v_snow": 1.283e-4, "hg_fd": 0.083, "hg_ev_z": 0.50, "hg_snow_kred": 0.090,
+  "hg_t2_log_kd_org": 3.377, "hg_t2_kdsplit": 1, "hg_t2_dlog_kd_hum": 0.242, "hg_t2_xpath": 1, "hg_f_conn": 0.53582,
+  "hg_t2_deeproute": 1, "hg_f_deep": 1.0, "hg_z_deep": 1.5,
+  "hg_t2_snowsink": 1, "hg_v_ground": 4.3731e-5, "hg_v_snow": 1.3038e-4, "hg_fd": 0.068765, "hg_ev_z": 0.50, "hg_snow_kred": 0.090,
   "hg_t2_r_stem": 0.0044, "hg_t2_r_root": 0.0067, "hg_t2_k_meth_proxy": 71.0, "hg_k_meth_ch4": 3250.0
  }
 }
