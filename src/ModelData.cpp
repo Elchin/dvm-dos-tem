@@ -456,6 +456,14 @@ ModelData::ModelData(Json::Value controldata):force_cmt(-1) {
       exit(EXIT_FAILURE);
     }
   }
+  // Hg tracer (absent / hg_tracer 0 = off, default; diagnostic only). See include/HgTracer.h.
+  {
+    std::string err = hgtr::parse(controldata["model_settings"], hg);
+    if (!err.empty()) {
+      std::cerr << "FATAL: " << err << std::endl;
+      exit(EXIT_FAILURE);
+    }
+  }
   // v5q-layern-fix: layer_n_remap_fix (0 = legacy, default). Refs: see Ground.h.
   {
     Json::Value lf = controldata["model_settings"].get("layer_n_remap_fix", 0);

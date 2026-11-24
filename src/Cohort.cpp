@@ -125,6 +125,9 @@ Cohort::Cohort(int y, int x, ModelData* modeldatapointer):
                         this->cd.cell_slope, this->cd.cell_aspect, this->cd.cell_elevation, y, x,
                         this->lat, md);//FW_MOD
 
+  // Hg tracer: the optional hg_state restart variable is read only when model_settings.hg_tracer = 1
+  this->restartdata.read_hg_state = (modeldatapointer->hg.tracer == 1);
+
   // RTS (thermokarst): the explicit thermokarst input is read only when model_settings.thermokarst = 1
   if (modeldatapointer->thermokarst == 1) {
     BOOST_LOG_SEV(glg, debug) << "Setup the thermokarst information.";
@@ -615,6 +618,12 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
   const bool ds_on = (md->daily_c_split == 1) && md->get_envmodule() && md->get_bgcmodule();
   if (ds_on) { ds_begin_month(); }
   if (md->thermokarst == 1) { tk_set_month_flags(); }  // RTS (thermokarst only)
+  // Hg tracer (hg_tracer = 1 only): C snapshot at the start of the month; every later C-moving
+  // sub-step is bracketed by hg_track (reads C only).
+  const bool hg_on = (md->hg.tracer == 1);
+  hgtr::Snap hg_a;
+  const hgtr::Flux hg_nof;
+  if (hg_on) { hg_month_begin(currmind, hg_a); }
   static const bool nbal_diag = (md->thermokarst == 1) && getenv("NBAL_DIAG") != NULL;  // RTS diagnostic
   const double nbal_n0 = nbal_diag ? nbal_total(this) : 0.0;
   if(md->get_envmodule()) {
@@ -628,6 +637,7 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
     // RTS (thermokarst only): this year's ALD, used as the "previous-year" ALD of the RTS step
     // (rts-regrow EnvData::prev_year_ald, set in grnd_endOfMonth at month 11)
     if (md->thermokarst == 1 && currmind == 11) { tk_prev_ald = edall->y_soid.ald; }
+    if (hg_on) { hg_track(hg_a, hg_nof, "env"); }
     
     BOOST_LOG_SEV(glg, debug) << "RIGHT AFTER updateMonthlyEnv() yr:"
                               << yrcnt << " m:" << currmind << " "
@@ -641,12 +651,33 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
   const double enth_wl = (md->thermal_solver == 1) ? soilenv.columnWaterE() : 0.0;
   updateMonthly_DIMveg(currmind, md->get_dynamic_lai_module());
   updateMonthly_DIMgrd(currmind, md->get_dslmodule());
+  if (hg_on) { hg_track(hg_a, hg_nof, "dim"); }
 
   if(md->get_bgcmodule()) {
     BOOST_LOG_SEV(glg, debug) << "Run the BGC processes to get the C/N fluxes.";
     BOOST_LOG_SEV(glg, debug) << "RIGHT BEFORE updateMonthly_Bgc()" << ground.layer_report_string("depth CN");
     updateMonthly_Bgc(currmind, dinmcurr);
     if (ds_on) { ds_snapshot_soil(ds_bgc_numsl, ds_bgc_z, ds_bgc_dz, ds_bgc_type); }
+    if (hg_on) {   // Hg tracer: this month's NPP, RH (+ CH4 production) and woody-debris RH
+      hgtr::Flux f;
+      for (int ip = 0; ip < NUM_PFT; ip++) {
+        if (cd.m_veg.vegcov[ip] > 0.) {
+          for (int j = 0; j < NUM_PFT_PART; j++) { f.npp[ip][j] = bd[ip].m_a2v.npp[j]; }
+        }
+      }
+      for (int il = 0; il < std::min(cd.m_soil.numsl, MAX_SOI_LAY); il++) {
+        f.decomp[il] = bdall->m_soi2a.rhrawc[il] + bdall->m_soi2a.rhsoma[il]
+                     + bdall->m_soi2a.rhsompr[il] + bdall->m_soi2a.rhsomcr[il];
+        if (cd.ch4_on) {   // CH4 production is taken from the SOM pools (Soil_Bgc::deltac)
+          f.decomp[il] += bdall->m_soi2soi.ch4_rawc[il] + bdall->m_soi2soi.ch4_soma[il]
+                        + bdall->m_soi2soi.ch4_sompr[il] + bdall->m_soi2soi.ch4_somcr[il];
+        }
+      }
+      f.decomp_wd = bdall->m_soi2a.rhwdeb;
+      f.dep_soil = md->hg.dep_soil / 12.0;
+      hg_track(hg_a, f, "bgc");
+      if (md->hg.mehg == 1) { hg_mehg_month(f); }
+    }
     BOOST_LOG_SEV(glg, debug) << "RIGHT AFTER updateMonthly_Bgc()" << ground.layer_report_string("depth CN");
 
   }
@@ -660,6 +691,13 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
     const double enth_hf = (md->thermal_solver == 1) ? soilenv.columnEnthalpyE() : 0.0;
     updateMonthly_Dsb(yrcnt, currmind, stage);
     if (md->thermal_solver == 1) { soilenv.enth_bk_fire += soilenv.columnEnthalpyE() - enth_hf; }
+    if (hg_on) {   // Hg tracer: fire emission (veg + standing dead + soil + woody debris C)
+      hgtr::Flux f;
+      const FirData & fm = year_fd[currmind];
+      const double fv = fm.fire_v2a.orgc, fs = fm.fire_soi2a.orgc;
+      f.burn = (std::isfinite(fv) && fv > 0.0 ? fv : 0.0) + (std::isfinite(fs) && fs > 0.0 ? fs : 0.0);
+      hg_track(hg_a, f, "fire");
+    }
   }
 
   // RTS / thermokarst (model_settings.thermokarst = 1 only), after fire, in tr-run and sc-run only
@@ -670,6 +708,14 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
     const double enth_ht = (md->thermal_solver == 1) ? soilenv.columnEnthalpyE() : 0.0;
     updateMonthly_Thermokarst(yrcnt, currmind, stage);
     if (md->thermal_solver == 1) { soilenv.enth_bk_fire += soilenv.columnEnthalpyE() - enth_ht; }
+    if (hg_on) {   // Hg tracer: RTS lateral export and respiration
+      hgtr::Flux f;
+      const ThermokarstData & t = year_tkdata[currmind];
+      auto pos = [](double v) { return (std::isfinite(v) && v > 0.0) ? v : 0.0; };
+      f.lateral = pos(t.thermokarst_soi2lat.orgc) + pos(t.thermokarst_soi2lat.vegc);
+      f.pot_decomp = pos(t.thermokarst_soi2a.orgc) + pos(t.thermokarst_v2a.orgc);
+      hg_track(hg_a, f, "rts");
+    }
   } else {
     // RTS not run this month (thermokarst = 0, or not a tr/sc stage): DRAINTYPE output reports the
     // cohort's drainage class instead of the -1 placeholder (output only; nothing reads it back)
@@ -684,6 +730,7 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
   // otherwise the model enters the next month's integration with
   // old values.
   this->bdall->soil_updatePools(currmind);
+  if (hg_on) { hg_track(hg_a, hg_nof, "end"); hg_prev = hg_a; hg_have_prev = true; }
   if (nbal_diag) {
     const ThermokarstData & t = year_tkdata[currmind];
     // plant N uptake not taken from any soil layer (non-vascular uptake is a
@@ -2188,6 +2235,12 @@ void Cohort::set_state_from_restartdata() {
   }
   set_fire_state_from_restartdata();   // fire-balance fixes (no-op when both switches are 0)
   set_tk_state_from_restartdata();     // RTS (no-op when thermokarst = 0)
+  // Hg tracer (hg_tracer = 1 only): state from the optional hg_state variable, else initialized from
+  // C x RHgC at the start of the next month (hg_month_begin)
+  hg = hgtr::State(); hg_have_prev = false;
+  if (md->hg.tracer == 1 && restartdata.has_hg_state) {
+    hgtr::unpack(hg, restartdata.hg_state, cd.m_soil.numsl);
+  }
 
   //  FIX: how to handle ground?? and snwstate_dim?? Looks like it is
   //  used for both m_snow and d_snow and y_snow??? which to update???
@@ -2223,6 +2276,10 @@ void Cohort::set_restartdata_from_state() {
   if (md->fire_c_bookkeep_fix == 1 || md->fire_n_redep_fix == 1) {   // fire-balance fixes: fire state
     restartdata.write_fire_state = true;
     restartdata.mthsdist = cd.mthsdist;
+  }
+  if (md->hg.tracer == 1 && hg.init) {   // Hg tracer state (written only when hg_tracer = 1)
+    restartdata.write_hg_state = true;
+    hgtr::pack(hg, restartdata.hg_state);
   }
   if (md->thermokarst == 1) {   // RTS state (written only when thermokarst = 1)
     restartdata.write_tk_state = true;
@@ -3011,4 +3068,80 @@ void Cohort::tk_rg_unpack(const double * s) {
   for (int m = 0; m < 12; m++) { tk_rh_nyr[m] = (int)std::lround(s[k++]); }
   for (int m = 0; m < 12; m++) { tk_rh_next[m] = (int)std::lround(s[k++]); }
   assert(k == RestartData::TK_RG_NSTATE);
+}
+
+
+// ---- Hg tracer (model_settings.hg_tracer = 1 only). See include/HgTracer.h.
+/** C snapshot (g C/m2): live veg parts and standing dead of the PFTs with cover, woody debris, soil layers. */
+void Cohort::hg_snap(hgtr::Snap & s) const {
+  s = hgtr::Snap();
+  for (int ip = 0; ip < NUM_PFT; ip++) {
+    if (cd.m_veg.vegcov[ip] > 0.) {
+      for (int j = 0; j < NUM_PFT_PART; j++) { s.veg[ip][j] = bd[ip].m_vegs.c[j]; }
+      s.dead[ip] = bd[ip].m_vegs.deadc;
+    }
+  }
+  s.wd = bdall->m_sois.wdebrisc;
+  s.nsl = std::min(cd.m_soil.numsl, MAX_SOI_LAY);
+  for (int il = 0; il < s.nsl; il++) {
+    s.soil[il] = bdall->m_sois.rawc[il] + bdall->m_sois.soma[il] + bdall->m_sois.sompr[il] + bdall->m_sois.somcr[il];
+    s.dz[il] = cd.m_soil.dz[il];
+    s.type[il] = cd.m_soil.type[il];
+  }
+}
+
+/** One tracer step from snapshot a to now; a becomes the new snapshot. HG_DIAG (env) prints the step. */
+void Cohort::hg_track(hgtr::Snap & a, const hgtr::Flux & f, const char * label) {
+  hgtr::Snap b; hg_snap(b);
+  const hgtr::Acc m0 = hg.m;
+  hgtr::step(md->hg, hg, a, b, f);
+  static const bool diag = getenv("HG_DIAG") != NULL;
+  if (diag) {
+    const double ul = hg.m.unexpl_closs - m0.unexpl_closs, ug = hg.m.unexpl_cgain - m0.unexpl_cgain;
+    fprintf(stderr, "HG %s %d %d nsl %d->%d unexplC_loss %.6g unexplC_gain %.6g Hgtot %.9g balerr %.3g\n", label,
+            cd.year, cd.month, a.nsl, b.nsl, ul, ug, hg.total(), hg.balance_error());
+  }
+  a = b;
+}
+
+/** Start of the month: initialize from C x RHgC if needed, apply the gap since last month, clear accumulators. */
+void Cohort::hg_month_begin(const int currmind, hgtr::Snap & a) {
+  hg_snap(a);
+  if (!hg.init) {
+    hgtr::initialize(md->hg, hg, a);
+    hg_have_prev = false;
+  } else if (hg_have_prev) {
+    const hgtr::Flux none;
+    const hgtr::Acc m0 = hg.m;
+    hgtr::step(md->hg, hg, hg_prev, a, none);
+    hg.m = m0;   // the gap belongs to the previous month's totals (cum keeps it)
+  }
+  hg.m.clear(); hg.mehg_prod_m = 0.0;
+  if (currmind == 0) { hg.y.clear(); hg.mehg_prod_y = 0.0; }
+}
+
+/** MeHg index for this month (hg_mehg = 1). Driver: CH4 production / layer C where the CH4 module is on
+ *  (cd.ch4_on, hg_mehg_driver 0), else saturated fraction (water table) x RH / layer C. */
+void Cohort::hg_mehg_month(const hgtr::Flux & fbgc) {
+  const int nsl = std::min(cd.m_soil.numsl, MAX_SOI_LAY);
+  const bool ch4drv = cd.ch4_on && md->hg.mehg_driver == 0;
+  double aturn[MAX_SOI_LAY] = {}, ts[MAX_SOI_LAY] = {};
+  const double wt = edall->m_sois.watertab;
+  for (int il = 0; il < nsl; il++) {
+    const double c = bdall->m_sois.rawc[il] + bdall->m_sois.soma[il] + bdall->m_sois.sompr[il] + bdall->m_sois.somcr[il];
+    ts[il] = edall->m_sois.ts[il];
+    if (!(c > 1.0e-9)) { continue; }
+    if (ch4drv) {
+      aturn[il] = (bdall->m_soi2soi.ch4_rawc[il] + bdall->m_soi2soi.ch4_soma[il]
+                 + bdall->m_soi2soi.ch4_sompr[il] + bdall->m_soi2soi.ch4_somcr[il]) / c;
+    } else {
+      const double dz = cd.m_soil.dz[il];
+      double sat = 0.0;
+      if (std::isfinite(wt) && dz > 0.0) { sat = fmax(0.0, fmin(1.0, ((cd.m_soil.z[il] + dz) - wt) / dz)); }
+      const double rh = bdall->m_soi2a.rhrawc[il] + bdall->m_soi2a.rhsoma[il] + bdall->m_soi2a.rhsompr[il] + bdall->m_soi2a.rhsomcr[il];
+      aturn[il] = sat * fmax(0.0, rh) / c;
+    }
+  }
+  (void)fbgc;
+  hgtr::mehg_month(md->hg, hg, aturn, ts, nsl, ch4drv);
 }

@@ -276,6 +276,7 @@ void RestartData::reinitValue() {
   d2m_ald_prevyr = MISSING_D;   // v5q-d2m-gate
   write_fire_state = false; has_fire_state = false; mthsdist = MISSING_I;   // fire-balance fixes
   write_tk_state = false; has_tk_state = false;   // RTS (thermokarst)
+  write_hg_state = false; has_hg_state = false;   // Hg tracer
   tk_drainage_type = MISSING_I; tk_init = MISSING_I; tk_exinit = MISSING_I; tk_subsidence = MISSING_D;
   for (int il = 0; il < MAX_SOI_LAY; il++) { tk_exice[il] = MISSING_D; }
   has_tk_rg_state = false;
@@ -443,6 +444,7 @@ void RestartData::update_from_ncfile(const std::string& fname, const int rowidx,
   read_px_bnf_vars(fname, rowidx, colidx);    // restart-state-carry (optional BNF memory)
   read_px_fire_vars(fname, rowidx, colidx);   // fire-balance fixes (optional fire state)
   if (read_tk_state) { read_px_tk_vars(fname, rowidx, colidx); }   // RTS (thermokarst = 1 only)
+  if (read_hg_state) { read_px_hg_vars(fname, rowidx, colidx); }   // Hg tracer (hg_tracer = 1 only)
 
   BOOST_LOG_SEV(glg, debug) << "Done reading data from file into RestartData.";
 }
@@ -480,6 +482,7 @@ void RestartData::write_pixel_to_ncfile(const std::string& fname, const int rowi
   write_px_bnf_vars(fname, rowidx, colidx);      // restart-state-carry
   if (write_fire_state) { write_px_fire_vars(fname, rowidx, colidx); }      // fire-balance fixes
   if (write_tk_state) { write_px_tk_vars(fname, rowidx, colidx); }          // RTS (thermokarst = 1 only)
+  if (write_hg_state) { write_px_hg_vars(fname, rowidx, colidx); }          // Hg tracer (hg_tracer = 1 only)
 
   BOOST_LOG_SEV(glg, debug) << "Done writing RestartData.";
 
@@ -572,6 +575,51 @@ void RestartData::write_px_fire_vars(const std::string& fname, const int rowidx,
   temutil::nc( nc_put_var1_int(ncid, vm, s2, &mthsdist) );
   temutil::nc( nc_put_vara_double(ncid, vc, s3, c3, &deadc0[0]) );
   temutil::nc( nc_put_vara_double(ncid, vn, s3, c3, &deadn0[0]) );
+  temutil::nc( nc_close(ncid) );
+#endif
+}
+
+/** Hg tracer (hg_tracer = 1 only): optional hg_state (Y,X,hgstate). has_hg_state = present with the
+ *  expected length and a valid layout version in this pixel. */
+void RestartData::read_px_hg_vars(const std::string& fname, const int rowidx, const int colidx) {
+  has_hg_state = false;
+  int ncid, v, d[3]; size_t len = 0;
+  temutil::nc( nc_open(fname.c_str(), NC_NOWRITE, &ncid), fname );
+  if (nc_inq_varid(ncid, "hg_state", &v) == NC_NOERR) {
+    temutil::nc( nc_inq_vardimid(ncid, v, d) );
+    temutil::nc( nc_inq_dimlen(ncid, d[2], &len) );
+    if (len == (size_t)HG_NSTATE) {
+      size_t s3[3] = {(size_t)rowidx, (size_t)colidx, 0};
+      size_t c3[3] = {1, 1, (size_t)HG_NSTATE};
+      temutil::nc( nc_get_vara_double(ncid, v, s3, c3, &hg_state[0]) );
+      has_hg_state = (hg_state[0] == 1.0);
+    }
+  }
+  temutil::nc( nc_close(ncid) );
+}
+
+/** Hg tracer (hg_tracer = 1 only): define hg_state if needed and write this pixel (serial builds). */
+void RestartData::write_px_hg_vars(const std::string& fname, const int rowidx, const int colidx) {
+#ifdef WITHMPI
+  BOOST_LOG_SEV(glg, warn) << "Hg tracer state (hg_state) not written to the restart in MPI builds.";
+#else
+  int ncid, v;
+  temutil::nc( nc_open(fname.c_str(), NC_WRITE, &ncid), fname );
+  if (nc_inq_varid(ncid, "hg_state", &v) != NC_NOERR) {
+    int dv; temutil::nc( nc_inq_varid(ncid, "DZsoil", &dv) );   // (Y,X,soillayer)
+    int d3[3]; temutil::nc( nc_inq_vardimid(ncid, dv, d3) );
+    temutil::nc( nc_redef(ncid) );
+    int dh;
+    if (nc_inq_dimid(ncid, "hgstate", &dh) != NC_NOERR) { temutil::nc( nc_def_dim(ncid, "hgstate", HG_NSTATE, &dh) ); }
+    int d3h[3] = {d3[0], d3[1], dh};
+    temutil::nc( nc_def_var(ncid, "hg_state", NC_DOUBLE, 3, d3h, &v) );
+    temutil::nc( nc_put_att_double(ncid, v, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
+    int ver = 1; temutil::nc( nc_put_att_int(ncid, v, "layout_version", NC_INT, 1, &ver) );
+    temutil::nc( nc_enddef(ncid) );
+  }
+  size_t s3[3] = {(size_t)rowidx, (size_t)colidx, 0};
+  size_t c3[3] = {1, 1, (size_t)HG_NSTATE};
+  temutil::nc( nc_put_vara_double(ncid, v, s3, c3, &hg_state[0]) );
   temutil::nc( nc_close(ncid) );
 #endif
 }

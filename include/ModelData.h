@@ -1,6 +1,7 @@
 #ifndef MODELDATA_H_
 #define MODELDATA_H_
 #include "MossDyn.h"
+#include "HgTracer.h"
 #include "Bnf.h"
 #include "RTSMethane.h"
 #include "RTSFloor.h"
@@ -350,6 +351,8 @@ public:
   // model_settings.moss_dyn (+ moss_dmax, moss_min_thick, moss_t_half, moss_bulkden, moss_cfrac):
   // dynamic live-moss thickness; mode 0 (default) = legacy static 0.01 m. See include/MossDyn.h.
   mossdyn::Params moss;
+  // Hg tracer + MeHg index (model_settings.hg_*; hg_tracer 0 = off, default). See include/HgTracer.h.
+  hgtr::Params hg;
   // v5q-layern-fix: model_settings.layer_n_remap_fix (0 = legacy, default, bit-identical;
   // 1 = layer organic N (orgn) and inorganic N (avln) follow the C pools through the
   // dynamic-soil-layer split/combine/remap, so per-layer C:N stays aligned and column N is

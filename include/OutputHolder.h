@@ -13,6 +13,10 @@
 
 #include "temconst.h"
 #include "layerconst.h"
+#include <map>
+#include <string>
+#include <vector>
+#include <array>
 
 class OutputHolder{
 public:
@@ -59,6 +63,9 @@ public:
   std::vector<double> ch4pool_for_output;
   std::vector<double> deadc_for_output;
   std::vector<double> deepc_for_output;
+  // Hg tracer outputs (model_settings.hg_tracer = 1 only), by variable name
+  std::map<std::string, std::vector<double>> hg_scalar_for_output;
+  std::map<std::string, std::vector<std::array<double, MAX_SOI_LAY>>> hg_layer_for_output;
   std::vector<double> deepdz_for_output;
   std::vector<float> driving_rainfall_for_output;
   std::vector<float> driving_snowfall_for_output;

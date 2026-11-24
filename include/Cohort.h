@@ -33,6 +33,7 @@
 // headers for run
 #include "ModelData.h"
 #include "DailyCSplit.h"
+#include "HgTracer.h"
 
 class Cohort {
 public :
@@ -153,6 +154,15 @@ public :
   // RTS regrow / floor-RH restart state (layout version 1; see the private tk_rg_* members)
   void tk_rg_pack(double * s) const;
   void tk_rg_unpack(const double * s);
+
+  // ---- Hg tracer (model_settings.hg_tracer = 1 only; diagnostic, reads C, never writes it). See HgTracer.h.
+  hgtr::State hg;
+  hgtr::Snap hg_prev;           // C at the end of the previous month (gap step)
+  bool hg_have_prev = false;
+  void hg_snap(hgtr::Snap & s) const;
+  void hg_track(hgtr::Snap & a, const hgtr::Flux & f, const char * label);
+  void hg_month_begin(const int currmind, hgtr::Snap & a);
+  void hg_mehg_month(const hgtr::Flux & fbgc);
 
 private:
   // v5p daily_c_split: soil layer structure of the Env loop and of the Bgc step

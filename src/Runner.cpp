@@ -2754,6 +2754,56 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
   }//end DEEPC
   map_itr = netcdf_outputs.end();
 
+  // Hg tracer + MeHg index (model_settings.hg_tracer = 1 only; see include/HgTracer.h). Pools in ug/m2
+  // (end-of-month state, December state for yearly files), fluxes in ug/m2 per month / year.
+  if (md.hg.tracer == 1) {
+    #pragma omp critical(outputHG)
+    {
+      const hgtr::State & h = cohort.hg;
+      auto scalar = [&](const char * name, double mval, double yval) {
+        std::map<std::string, OutputSpec>::iterator it = netcdf_outputs.find(name);
+        if (it == netcdf_outputs.end()) { return; }
+        OutputSpec sp = it->second;
+        std::vector<double> & buf = outhold.hg_scalar_for_output[name];
+        if (sp.monthly) {
+          buf.push_back(mval);
+          if (output_this_timestep) { output_nc_3dim(&sp, file_stage_suffix, &buf[0], 1, month_start_idx, months_to_output); buf.clear(); }
+        } else if (sp.yearly) {
+          buf.push_back(yval);
+          if (output_this_timestep) { output_nc_3dim(&sp, file_stage_suffix, &buf[0], 1, year_start_idx, years_to_output); buf.clear(); }
+        }
+      };
+      auto layered = [&](const char * name, const double * arr) {
+        std::map<std::string, OutputSpec>::iterator it = netcdf_outputs.find(name);
+        if (it == netcdf_outputs.end()) { return; }
+        OutputSpec sp = it->second;
+        if (!sp.layer) {
+          double s = 0.0; for (int i = 0; i < MAX_SOI_LAY; i++) { s += arr[i]; }
+          scalar(name, s, s); return;
+        }
+        std::array<double, MAX_SOI_LAY> a;
+        for (int i = 0; i < MAX_SOI_LAY; i++) { a[i] = arr[i]; }
+        std::vector<std::array<double, MAX_SOI_LAY>> & buf = outhold.hg_layer_for_output[name];
+        buf.push_back(a);
+        if (sp.monthly) {
+          if (output_this_timestep) { output_nc_4dim(&sp, file_stage_suffix, &buf[0][0], MAX_SOI_LAY, month_start_idx, months_to_output); buf.clear(); }
+        } else if (sp.yearly) {
+          if (output_this_timestep) { output_nc_4dim(&sp, file_stage_suffix, &buf[0][0], MAX_SOI_LAY, year_start_idx, years_to_output); buf.clear(); }
+        } else { buf.clear(); }
+      };
+      layered("HGSOIL", h.soil);
+      layered("MEHGSOIL", h.mehg);
+      scalar("HGVEG", h.vegtot(), h.vegtot());
+      scalar("HGDEAD", h.deadtot(), h.deadtot());
+      scalar("HG_UPTAKE", h.m.uptake + h.m.dep, h.y.uptake + h.y.dep);
+      scalar("HG_EVASION", h.m.evasion, h.y.evasion);
+      scalar("HG_EXPORT", h.m.export_, h.y.export_);
+      scalar("HG_FIRE", h.m.fire, h.y.fire);
+      scalar("MEHGPROD", h.mehg_prod_m, h.mehg_prod_y);
+      scalar("HG_BALERR", h.balance_error(), h.balance_error());
+    }
+  }
+
 
   map_itr = netcdf_outputs.find("DEEPDZ");
   if(map_itr != netcdf_outputs.end()){

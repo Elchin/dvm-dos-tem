@@ -10,6 +10,7 @@
 #include "errorcode.h"
 #include "cohortconst.h"
 #include "layerconst.h"
+#include "HgTracer.h"
 
 class RestartData {
 public :
@@ -101,6 +102,15 @@ public :
                                   + 60 + 60 + 2 + 10 * 12 + 12 + 12;
   bool has_tk_rg_state = false;
   double tk_rg_state[TK_RG_NSTATE];
+  // Hg tracer (model_settings.hg_tracer = 1 only): hg_state (Y,X,hgstate) double, layout hgtr::pack
+  // (version 1). Optional: absent -> the tracer is initialized from C x RHgC.
+  static const int HG_NSTATE = hgtr::NSTATE;
+  bool read_hg_state = false;   // set by Cohort when hg_tracer = 1 (not reset by reinitValue)
+  bool write_hg_state = false;
+  bool has_hg_state = false;
+  double hg_state[HG_NSTATE];
+  void read_px_hg_vars(const std::string& fname, const int rowidx, const int colidx);
+  void write_px_hg_vars(const std::string& fname, const int rowidx, const int colidx);
   // RTS CH4 scheme (b) pool (thermokarst_ch4 with thermokarst_ch4_scheme = 2 only; write_tk_ch4pool
   // set by Cohort). NetCDF: tk_ch4pool (Y,X,soillayer) double; optional on read (missing => 0).
   bool write_tk_ch4pool = false;

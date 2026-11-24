@@ -1,0 +1,169 @@
+// Hg tracer + MeHg index (model_settings.hg_tracer / hg_mehg; include/HgTracer.h).
+// Refs: Schaefer et al. 2020 doi:10.1038/s41467-020-18398-5 (16% evasion, 1.5% export of decay-released Hg);
+//       Thompson et al. 2025 doi:10.1021/acs.est.5c04510 (%MeHg targets). See docs_src/WORK_NOTES_hg_tracer.md.
+#include "doctest.h"
+#include "HgTracer.h"
+#include <json/json.h>
+#include <cmath>
+#include <random>
+
+namespace {
+Json::Value ms0() { Json::Value m(Json::objectValue); return m; }
+
+hgtr::Snap column(int n, double c0 = 1000.0) {
+  hgtr::Snap s; s.nsl = n;
+  for (int l = 0; l < n; l++) { s.soil[l] = c0 + 100.0 * l; s.dz[l] = (l < 3) ? 0.05 : 0.1; s.type[l] = (l < 3) ? (l == 0 ? 1 : 2) : 3; }
+  s.veg[0][0] = 50; s.veg[0][1] = 200; s.veg[0][2] = 80; s.veg[3][0] = 10; s.dead[0] = 30; s.wd = 20;
+  return s;
+}
+double tot(const hgtr::State& s) { return s.total(); }
+}
+
+TEST_CASE("hg_tracer parse: absent = off, defaults, errors") {
+  hgtr::Params p;
+  CHECK(hgtr::parse(ms0(), p) == "");
+  CHECK(p.tracer == 0); CHECK(p.mehg == 0);
+  CHECK(p.f_evade == doctest::Approx(0.16)); CHECK(p.f_export == doctest::Approx(0.015));
+  CHECK(p.r_org == doctest::Approx(0.35)); CHECK(p.r_min == doctest::Approx(1.47));
+  Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_r_min"] = 1.6; m["other_switch"] = 3;
+  CHECK(hgtr::parse(m, p) == ""); CHECK(p.tracer == 1); CHECK(p.r_min == doctest::Approx(1.6));
+  Json::Value b = ms0(); b["hg_tracer"] = 2; CHECK(hgtr::parse(b, p) != "");
+  Json::Value c = ms0(); c["hg_trcer"] = 1; CHECK(hgtr::parse(c, p) != "");          // typo guard
+  Json::Value d = ms0(); d["hg_mehg"] = 1; CHECK(hgtr::parse(d, p) != "");           // needs the tracer
+  Json::Value e = ms0(); e["hg_tracer"] = 1; e["hg_f_evade"] = 0.9; e["hg_f_export"] = 0.2; CHECK(hgtr::parse(e, p) != "");
+  Json::Value f = ms0(); f["hg_tracer"] = true; CHECK(hgtr::parse(f, p) != "");     // bool is not an int here
+}
+
+TEST_CASE("hg_tracer initialize: organic / mineral ratios by layer type, tissue ratios") {
+  hgtr::Params p; hgtr::State s; hgtr::Snap c = column(6);
+  hgtr::initialize(p, s, c);
+  CHECK(s.init);
+  CHECK(s.soil[0] == doctest::Approx(c.soil[0] * p.r_org));
+  CHECK(s.soil[2] == doctest::Approx(c.soil[2] * p.r_org));
+  CHECK(s.soil[4] == doctest::Approx(c.soil[4] * p.r_min));
+  CHECK(s.soil[6] == 0.0);
+  CHECK(s.veg[0][1] == doctest::Approx(200 * p.r_stem));
+  CHECK(s.balance_error() == 0.0);
+}
+
+TEST_CASE("hg_tracer fixed-geometry BGC step: uptake, decay partition, litter transfer, exact balance") {
+  hgtr::Params p; hgtr::State s; hgtr::Snap a = column(6); hgtr::initialize(p, s, a);
+  const double h0 = tot(s), hsoil1 = s.soil[1];
+  hgtr::Snap b = a; hgtr::Flux f;
+  f.npp[0][0] = 12.0; f.npp[0][2] = 5.0; f.npp[3][0] = -1.0;   // negative NPP: C loss without Hg
+  b.veg[0][0] = a.veg[0][0] + 12.0 - 8.0;                        // 8 g leaf litter
+  b.veg[0][2] = a.veg[0][2] + 5.0 - 3.0;                         // 3 g root litter
+  b.veg[3][0] = a.veg[3][0] - 1.0;
+  f.decomp[1] = 20.0; f.decomp_wd = 2.0;
+  b.soil[0] += 8.0; b.soil[1] += 3.0 - 20.0; b.wd -= 2.0;
+  hgtr::step(p, s, a, b, f);
+  const double up = 12.0 * p.r_leaf + 5.0 * p.r_root;
+  CHECK(s.m.uptake == doctest::Approx(up));
+  const double rel = 20.0 * hsoil1 / a.soil[1] + 2.0 * p.r_leaf;
+  CHECK(s.m.evasion == doctest::Approx(rel * 0.16));
+  CHECK(s.m.export_ == doctest::Approx(rel * 0.015));
+  CHECK(std::fabs(tot(s) - (h0 + up - s.m.evasion - s.m.export_)) < 1e-10);
+  CHECK(std::fabs(s.balance_error()) < 1e-10);
+  CHECK(s.m.unexpl_closs == doctest::Approx(0.0)); CHECK(s.m.unexpl_cgain == doctest::Approx(0.0));
+  // negative NPP left the Hg in the PFT 3 leaves (no donor)
+  CHECK(s.veg[3][0] == doctest::Approx(10 * p.r_leaf));
+}
+
+TEST_CASE("hg_tracer geometry change: split / combine keep Hg with C (uniform ratio) and conserve") {
+  hgtr::Params p; hgtr::State s; hgtr::Snap a = column(5);
+  for (int l = 0; l < 5; l++) { a.type[l] = 3; }
+  hgtr::initialize(p, s, a);
+  const double h0 = tot(s);
+  hgtr::Snap b = a; b.nsl = 6;   // split layer 1 into two halves
+  b.soil[1] = a.soil[1] / 2; b.dz[1] = a.dz[1] / 2;
+  b.soil[2] = a.soil[1] / 2; b.dz[2] = a.dz[1] / 2;
+  for (int l = 2; l < 5; l++) { b.soil[l + 1] = a.soil[l]; b.dz[l + 1] = a.dz[l]; }
+  hgtr::step(p, s, a, b, hgtr::Flux());
+  for (int l = 0; l < 6; l++) { CHECK(s.soil[l] == doctest::Approx(b.soil[l] * p.r_min)); }
+  CHECK(std::fabs(tot(s) - h0) < 1e-10);
+  hgtr::Snap c = b; c.nsl = 4;   // combine 0+1+2
+  c.soil[0] = b.soil[0] + b.soil[1] + b.soil[2]; c.dz[0] = b.dz[0] + b.dz[1] + b.dz[2];
+  for (int l = 3; l < 6; l++) { c.soil[l - 2] = b.soil[l]; c.dz[l - 2] = b.dz[l]; }
+  for (int l = 4; l < MAX_SOI_LAY; l++) { c.soil[l] = 0; c.dz[l] = 0; }
+  hgtr::step(p, s, b, c, hgtr::Flux());
+  CHECK(s.nsl == 4);
+  for (int l = 0; l < 4; l++) { CHECK(s.soil[l] == doctest::Approx(c.soil[l] * p.r_min)); }
+  for (int l = 4; l < MAX_SOI_LAY; l++) { CHECK(s.soil[l] == 0.0); }
+  CHECK(std::fabs(tot(s) - h0) < 1e-10);
+}
+
+TEST_CASE("hg_tracer fire: burned top layers and veg emit their Hg, killed veg -> standing dead") {
+  hgtr::Params p; hgtr::State s; hgtr::Snap a = column(6); hgtr::initialize(p, s, a);
+  const double h0 = tot(s), htop = s.soil[0];
+  hgtr::Snap b = a; hgtr::Flux f;
+  // whole top layer burned and removed, veg PFT 0: leaves burned, stem -> standing dead
+  b.nsl = 5; for (int l = 0; l < 5; l++) { b.soil[l] = a.soil[l + 1]; b.dz[l] = a.dz[l + 1]; b.type[l] = a.type[l + 1]; }
+  b.soil[5] = 0; b.dz[5] = 0;
+  b.veg[0][0] = 0; b.veg[0][1] = 0; b.dead[0] = a.dead[0] + 200.0;
+  f.burn = a.soil[0] + 50.0;
+  hgtr::step(p, s, a, b, f);
+  CHECK(std::fabs(tot(s) - (h0 - s.m.fire)) < 1e-10);
+  CHECK(std::fabs(s.balance_error()) < 1e-10);
+  // the pot holds the top layer, leaves and stems; fire takes its C share of the pot
+  const double pot = htop + 50 * p.r_leaf + 200 * p.r_stem, potc = a.soil[0] + 250.0;
+  CHECK(s.m.fire == doctest::Approx(pot * f.burn / potc));
+  for (int l = 0; l < 5; l++) { CHECK(s.soil[l] == doctest::Approx(b.soil[l] * (b.type[l] >= 3 ? p.r_min : p.r_org))); }
+}
+
+TEST_CASE("hg_tracer random steps (geometry changes, sinks, unexplained C): balance to roundoff") {
+  std::mt19937 rng(42); std::uniform_real_distribution<double> U(0.0, 1.0);
+  hgtr::Params p; p.dep_soil = 12.0; hgtr::State s; hgtr::Snap a = column(8, 3000.0); hgtr::initialize(p, s, a);
+  for (int it = 0; it < 3000; it++) {
+    hgtr::Snap b = a; hgtr::Flux f;
+    for (int i = 0; i < NUM_PFT; i++) for (int j = 0; j < NUM_PFT_PART; j++) {
+      if (a.veg[i][j] <= 0) continue;
+      f.npp[i][j] = 10 * U(rng) - 1; b.veg[i][j] = std::fmax(0.0, a.veg[i][j] + f.npp[i][j] - 8 * U(rng));
+    }
+    b.dead[0] = std::fmax(0.0, a.dead[0] + 3 * U(rng) - 2); b.wd = std::fmax(0.0, a.wd + U(rng) - 0.5);
+    f.dep_soil = (U(rng) < 0.5) ? 1.0 : 0.0;
+    const int kind = int(U(rng) * 3);
+    if (kind == 0) {   // fixed geometry with decay
+      for (int l = 0; l < a.nsl; l++) { f.decomp[l] = 5 * U(rng); b.soil[l] = std::fmax(0.0, a.soil[l] - f.decomp[l] + 4 * U(rng)); }
+    } else {           // random re-division with net change and sinks
+      int n = 3 + int(U(rng) * 15); b.nsl = n;
+      double c0 = 0; for (int l = 0; l < a.nsl; l++) c0 += a.soil[l];
+      double c1 = c0 * (0.97 + 0.05 * U(rng));
+      double w[MAX_SOI_LAY], ws = 0; for (int l = 0; l < n; l++) { w[l] = 0.2 + U(rng); ws += w[l]; }
+      for (int l = 0; l < MAX_SOI_LAY; l++) { b.soil[l] = (l < n) ? c1 * w[l] / ws : 0; b.dz[l] = (l < n) ? 0.05 + 0.1 * U(rng) : 0; b.type[l] = (l < 2) ? 1 : 3; }
+      if (kind == 2) { f.burn = std::fmax(0.0, c0 - c1) * U(rng); f.lateral = 3 * U(rng); f.pot_decomp = 2 * U(rng); }
+    }
+    hgtr::step(p, s, a, b, f);
+    a = b;
+    if (it % 12 == 11) { s.m.clear(); }
+  }
+  CHECK(std::fabs(s.balance_error()) < 1e-8 * std::fmax(1.0, s.total()));
+  for (int l = 0; l < MAX_SOI_LAY; l++) { CHECK(s.soil[l] >= 0.0); }
+  CHECK(s.cum.fire > 0.0); CHECK(s.cum.dep > 0.0);
+}
+
+TEST_CASE("hg_tracer restart pack / unpack round trip") {
+  hgtr::Params p; hgtr::State s; hgtr::Snap a = column(7); hgtr::initialize(p, s, a);
+  s.mehg[2] = 0.5; s.cum.evasion = 3.0; s.cum.uptake = 4.0;
+  double v[hgtr::NSTATE]; hgtr::pack(s, v);
+  hgtr::State t; CHECK(hgtr::unpack(t, v, 7));
+  CHECK(t.total() == s.total()); CHECK(t.mehg[2] == 0.5); CHECK(t.balance_error() == s.balance_error());
+  v[0] = -9999.0; hgtr::State u; CHECK_FALSE(hgtr::unpack(u, v, 7)); CHECK_FALSE(u.init);
+}
+
+TEST_CASE("hg_mehg: steady state %MeHg = k_meth A / k_demeth at t_ref, capped by Hg, no change to Hg") {
+  hgtr::Params p; p.tracer = 1; p.mehg = 1; p.k_meth_ch4 = 30.0; p.k_meth_proxy = 0.6; // explicit, independent of calibrated defaults
+  hgtr::State s; hgtr::Snap a = column(4); hgtr::initialize(p, s, a);
+  const double h = s.total();
+  double A[MAX_SOI_LAY] = {}, T[MAX_SOI_LAY];
+  for (int l = 0; l < MAX_SOI_LAY; l++) { A[l] = 1.0e-3 * (l + 1); T[l] = p.t_ref; }
+  for (int m = 0; m < 60; m++) { hgtr::mehg_month(p, s, A, T, 4, true); }
+  for (int l = 0; l < 4; l++) { CHECK(s.mehg[l] / s.soil[l] == doctest::Approx(p.k_meth_ch4 * A[l] / p.k_demeth).epsilon(1e-6)); }
+  CHECK(s.total() == h);
+  // colder: demethylation slower by q10, production unchanged (q10_meth = 1) -> higher fraction
+  for (int l = 0; l < MAX_SOI_LAY; l++) { T[l] = p.t_ref - 10.0; }
+  for (int m = 0; m < 200; m++) { hgtr::mehg_month(p, s, A, T, 4, false); }
+  CHECK(s.mehg[0] / s.soil[0] == doctest::Approx(p.k_meth_proxy * A[0] / (p.k_demeth / 2.0)).epsilon(1e-6));
+  for (int l = 0; l < MAX_SOI_LAY; l++) { A[l] = 1e3; }
+  hgtr::mehg_month(p, s, A, T, 4, true);
+  for (int l = 0; l < 4; l++) { CHECK(s.mehg[l] <= s.soil[l]); }
+}
