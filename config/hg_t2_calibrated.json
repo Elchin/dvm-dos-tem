@@ -1,0 +1,16 @@
+{
+ "_comment": "Hg T2 phase-5a calibrated preset (model_settings overlay; no parameters/ edits). Joint refit 2026-11-24: 64-member LHS ensemble (E5_, seed 11) on TVC (D4 C-spun restart), HPC and the Toolik proxy; quadratic emulator + band-distance cost; verified in P5V/P5V2. Defaults in include/HgTracer.h are NOT changed (r_stem, r_root, k_meth_proxy are shared with T1). See docs_src/WORK_NOTES_hg_t2.md section 5.",
+ "_uncertainty_5_95": {
+  "hg_t2_log_kd_org": [3.36, 3.55], "hg_v_ground": [8.2e-05, 1.25e-04], "hg_fd": [0.087, 0.146], "hg_ev_z": [0.104, 0.2],
+  "hg_r_stem": [0.0045, 0.015], "hg_r_root": [0.0069, 0.045], "hg_snow_kred": [0.0067, 0.12],
+  "_note": "near-optimal emulator set (cost <= best + 7.04); hg_ev_z best at the 0.2 range bound; hg_snow_kred not identifiable (kept at its 0.090 default); hg_k_meth_proxy scaled linearly to the Thompson 2025 classes"
+ },
+ "model_settings": {
+  "hg_tracer": 1, "hg_mehg": 1, "hg_t2": 1,
+  "hg_t2_diss": 1, "hg_t2_evasion": 1, "hg_t2_foliar": 2, "hg_t2_meltroute": 1,
+  "hg_fire_ash": 0.1, "hg_t2_rts": 1, "hg_wash": 0.5,
+  "hg_t2_log_kd_org": 3.46, "hg_v_ground": 1.1e-4, "hg_fd": 0.10, "hg_ev_z": 0.20, "hg_snow_kred": 0.090,
+  "hg_r_stem": 0.0044, "hg_r_root": 0.0067,
+  "hg_k_meth_proxy": 71.0, "hg_k_meth_ch4": 3250.0
+ }
+}
