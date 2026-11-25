@@ -314,6 +314,8 @@ struct Params {
   double t2_mehg_mobfac = 1.0;  // hg_t2_mehg_mobfac: MeHg mobile-share factor (1 = same partitioning as Hg(II))
   // phase M2 item h: thaw-release evasion fraction f_thaw_evade x exp(-(z_mid - zpf) / hg_t2_thaw_evz) (0 = off, constant)
   double t2_thaw_evz = 0.0;     // hg_t2_thaw_evz (m)
+  // phase M2 item 2 (timing): 1 = the month's MeHg update runs after the month's dissolved transport (start-of-month stock moved)
+  int    t2_mehg_lag = 0;       // hg_t2_mehg_lag
   bool   dep_comp    = false; // the deposition file has components (hg2_wet / hg2_dry / hg0_soil columns)
   std::vector<double> dep_w, dep_d2, dep_d0, dep_s0;   // components per row (ug/m2/yr)
 };
@@ -472,7 +474,7 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_t2_xpath", &p.t2_xpath, 0, 1}, {"hg_t2_snowsink", &p.t2_snowsink, 0, 1}, {"hg_t2_deeproute", &p.t2_deeproute, 0, 1},
             {"hg_t2_deepspread", &p.t2_deepspread, 0, 1}, {"hg_t2_thawrel", &p.t2_thawrel, 0, 1}, {"hg_t2_thaw_ref_year", &p.thaw_ref_year, -100000, 100000},
             {"hg_t2_mehg_subst", &p.t2_mehg_subst, 0, 2}, {"hg_t2_mehg_frz", &p.t2_mehg_frz, 0, 2},
-            {"hg_t2_mehg_transport", &p.t2_mehg_transport, 0, 1}};
+            {"hg_t2_mehg_transport", &p.t2_mehg_transport, 0, 1}, {"hg_t2_mehg_lag", &p.t2_mehg_lag, 0, 1}};
   for (const std::string& key : ms.getMemberNames()) {
     if (key.rfind("hg_", 0) != 0) { continue; }
     bool known = false;
@@ -537,6 +539,7 @@ inline std::string parse(const Json::Value& ms, Params& p) {
   if (p.t2_thawrel == 1 && !(p.t2 == 1 && p.t2_diss == 1 && p.transport == 1)) { return "model_settings.hg_t2_thawrel = 1 needs hg_t2 = 1, hg_t2_diss = 1 and hg_transport = 1"; }
   if (p.t2_mehg_subst > 0 && !(p.mehg == 1 && p.t2 == 1 && p.t2_diss == 1)) { return "model_settings.hg_t2_mehg_subst > 0 needs hg_mehg = 1, hg_t2 = 1 and hg_t2_diss = 1"; }
   if (p.t2_mehg_transport == 1 && !(p.mehg == 1 && p.t2 == 1 && p.t2_diss == 1 && p.transport == 1)) { return "model_settings.hg_t2_mehg_transport = 1 needs hg_mehg = 1, hg_t2 = 1, hg_t2_diss = 1 and hg_transport = 1"; }
+  if (p.t2_mehg_lag == 1 && !(p.mehg == 1 && p.t2 == 1 && p.transport == 1)) { return "model_settings.hg_t2_mehg_lag = 1 needs hg_mehg = 1, hg_t2 = 1 and hg_transport = 1"; }
   if (p.t2_thaw_evz > 0.0 && p.t2_thawrel != 1) { return "model_settings.hg_t2_thaw_evz > 0 needs hg_t2_thawrel = 1"; }
   if (p.t2_mehg_frz > 0 && !(p.mehg == 1 && p.t2 == 1)) { return "model_settings.hg_t2_mehg_frz > 0 needs hg_mehg = 1 and hg_t2 = 1"; }
   if (p.f_thaw_evade + p.f_thaw_export > 1.0) { return "model_settings.hg_f_thaw_evade + hg_f_thaw_export must be <= 1"; }

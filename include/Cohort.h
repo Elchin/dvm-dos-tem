@@ -164,6 +164,8 @@ public :
   void hg_track(hgtr::Snap & a, const hgtr::Flux & f, const char * label);
   void hg_month_begin(const int currmind, hgtr::Snap & a);
   void hg_mehg_month(const hgtr::Flux & fbgc);
+  // phase M2 (hg_t2_mehg_lag = 1): the month's MeHg drivers, applied after the end-of-month transport step
+  double hg_mlag_a[MAX_SOI_LAY] = {}, hg_mlag_t[MAX_SOI_LAY] = {}; int hg_mlag_nsl = 0; bool hg_mlag_ch4 = false, hg_mlag_pend = false;
   // T1b: Hg spin-up recording (hg_spinup = 1) and calendar year of the deposition series
   std::vector<hgtr::Rec> hg_rec;
   bool hg_recording = false;

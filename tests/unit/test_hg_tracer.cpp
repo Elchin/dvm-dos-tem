@@ -1537,3 +1537,14 @@ TEST_CASE("hg_t2_thaw_evz: thaw evasion fraction f_thaw_evade x exp(-(z_mid - zp
   CHECK(s1.total() > s0.total());   // less evaded -> more retained
   std::remove(T2DEP);
 }
+
+TEST_CASE("hg_t2_mehg_lag parse: default 0, range 0-1, needs hg_mehg, hg_t2 and hg_transport") {
+  hgtr::Params p = t2params(); CHECK(p.t2_mehg_lag == 0);
+  Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_t2"] = 1; m["hg_dep_file"] = T2DEP; m["hg_mehg"] = 1;
+  hgtr::Params r;
+  Json::Value a = m; a["hg_t2_mehg_lag"] = 1; REQUIRE(hgtr::parse(a, r) == ""); CHECK(r.t2_mehg_lag == 1);
+  Json::Value b = m; b["hg_t2_mehg_lag"] = 2; CHECK(hgtr::parse(b, r) != "");
+  Json::Value c = m; c["hg_t2_mehg_lag"] = 1; c["hg_mehg"] = 0; CHECK(hgtr::parse(c, r) != "");
+  Json::Value d = m; d["hg_t2_mehg_lag"] = 1; d["hg_transport"] = 0; CHECK(hgtr::parse(d, r) != "");
+  std::remove(T2DEP);
+}

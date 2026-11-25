@@ -777,6 +777,9 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
     hgtr::thaw_track(md->hg, hg, hg_a, ft);
     hg_do_step(hg_a, hg_a, ft);
   }
+  if (hg_mlag_pend) {   // phase M2 (hg_t2_mehg_lag = 1): the month's MeHg update after the transport
+    hg_mlag_pend = false; hgtr::mehg_month(md->hg, hg, hg_mlag_a, hg_mlag_t, hg_mlag_nsl, hg_mlag_ch4);
+  }
   if (nbal_diag) {
     const ThermokarstData & t = year_tkdata[currmind];
     // plant N uptake not taken from any soil layer (non-vascular uptake is a
@@ -3254,5 +3257,9 @@ void Cohort::hg_mehg_month(const hgtr::Flux & fbgc) {
     }
   }
   (void)fbgc;
+  if (md->hg.t2_mehg_lag == 1) {   // phase M2: deferred to after the month's transport (Cohort::updateMonthly, "end")
+    for (int il = 0; il < MAX_SOI_LAY; il++) { hg_mlag_a[il] = aturn[il]; hg_mlag_t[il] = ts[il]; }
+    hg_mlag_nsl = nsl; hg_mlag_ch4 = ch4drv; hg_mlag_pend = true; return;
+  }
   hgtr::mehg_month(md->hg, hg, aturn, ts, nsl, ch4drv);
 }
