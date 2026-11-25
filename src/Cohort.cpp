@@ -3227,8 +3227,8 @@ void Cohort::hg_month_begin(const int currmind, hgtr::Snap & a) {
       hg_rec_ys.assign(1, 0); hg_rec_yn.assign(1, hg.nsl);
     }
   }
-  hg.m.clear(); hg.mehg_prod_m = 0.0; hg.mehg_hsub_m = 0.0; hg.mehg_kdp_m = 0.0; hg.mehg_exp_m = 0.0;
-  if (currmind == 0) { hg.y.clear(); hg.mehg_prod_y = 0.0; hg.mehg_hsub_y = 0.0; hg.mehg_kdp_y = 0.0; hg.mehg_exp_y = 0.0; }
+  hg.m.clear(); hg.mehg_prod_m = 0.0; hg.mehg_hsub_m = 0.0; hg.mehg_kdp_m = 0.0; hg.mehg_exp_m = 0.0; hg.mehg_tbal_m = 0.0;
+  if (currmind == 0) { hg.y.clear(); hg.mehg_prod_y = 0.0; hg.mehg_hsub_y = 0.0; hg.mehg_kdp_y = 0.0; hg.mehg_exp_y = 0.0; hg.mehg_tbal_y = 0.0; }
 }
 
 /** MeHg index for this month (hg_mehg = 1). Driver: CH4 production / layer C where the CH4 module is on

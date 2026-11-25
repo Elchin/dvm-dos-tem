@@ -1478,3 +1478,62 @@ TEST_CASE("hg_t2_mehg_frz: factor algebra; off bit-identical; cutoff stops produ
   CHECK(sp == doctest::Approx(s.mehg_prod_m).epsilon(1e-14)); CHECK(s1p == doctest::Approx(s1.mehg_prod_m).epsilon(1e-14));
   CHECK(s.mehg_prodl[0] > 0.0); CHECK(s1.total() == s0.total());   // index never changes Hg
 }
+
+// ---- Phase M2 items 2 and h (WORK_NOTES_hg_t2.md section 14): MeHg transport, depth-attenuated thaw evasion
+TEST_CASE("hg_t2_mehg_transport / mobfac / hg_t2_thaw_evz parse: defaults off, dependencies") {
+  hgtr::Params p = t2params(); CHECK(p.t2_mehg_transport == 0); CHECK(p.t2_mehg_mobfac == 1.0); CHECK(p.t2_thaw_evz == 0.0);
+  Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_t2"] = 1; m["hg_dep_file"] = T2DEP; m["hg_mehg"] = 1;
+  hgtr::Params r;
+  Json::Value a = m; a["hg_t2_mehg_transport"] = 1; a["hg_t2_mehg_mobfac"] = 3.0; a["hg_t2_thaw_evz"] = 0.1;
+  REQUIRE(hgtr::parse(a, r) == ""); CHECK(r.t2_mehg_transport == 1); CHECK(r.t2_mehg_mobfac == 3.0); CHECK(r.t2_thaw_evz == 0.1);   // preset: thawrel 1
+  Json::Value b = m; b["hg_t2_mehg_transport"] = 2; CHECK(hgtr::parse(b, r) != "");
+  Json::Value c = m; c["hg_t2_mehg_transport"] = 1; c["hg_mehg"] = 0; CHECK(hgtr::parse(c, r) != "");
+  Json::Value d = m; d["hg_t2_mehg_transport"] = 1; d["hg_t2_diss"] = 0; CHECK(hgtr::parse(d, r) != "");
+  Json::Value e = m; e["hg_t2_thaw_evz"] = 0.1; e["hg_t2_thawrel"] = 0; CHECK(hgtr::parse(e, r) != "");
+  Json::Value g = m; g["hg_t2_thaw_evz"] = -1.0; CHECK(hgtr::parse(g, r) != "");
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_mehg_transport: Hg pools identical to off; MeHg conserved (start - end = removal + clamp); no flow == off; export <= M1 diagnostic") {
+  hgtr::Params p = t2dparams(); p.d_cryo = 0; p.d_bio = 0; p.mehg = 1;
+  hgtr::Snap a = column(6); hgtr::Flux f = dflux(6, 10, 2.0, 1.0, 1.0, 20.0, 5);
+  hgtr::State s; hgtr::initialize(p, s, a);
+  for (int l = 0; l < 6; l++) { s.diss[l] = 0.01 * s.soil[l]; s.soil[l] -= s.diss[l]; s.mehg[l] = 0.01 * (l + 1) * (s.soil[l] + s.diss[l]); }
+  hgtr::Params q = p; q.t2_mehg_transport = 1; hgtr::Params q3 = q; q3.t2_mehg_mobfac = 3.0; hgtr::Params p0m = p; p0m.t2_mehg_mobfac = 7.0;
+  hgtr::State s0 = s, s1 = s, s3 = s, sm = s;
+  hgtr::step(p, s0, a, a, f); hgtr::step(q, s1, a, a, f); hgtr::step(q3, s3, a, a, f); hgtr::step(p0m, sm, a, a, f);
+  for (int l = 0; l < MAX_SOI_LAY; l++) {
+    CHECK(s1.soil[l] == s0.soil[l]); CHECK(s1.diss[l] == s0.diss[l]); CHECK(s3.diss[l] == s0.diss[l]);
+    CHECK(sm.mehg[l] == s0.mehg[l]);   // mobfac ignored when off
+  }
+  CHECK(s1.m.export_ == s0.m.export_); CHECK(s1.balance_error() == s0.balance_error());
+  CHECK(s0.mehg_tbal_m == 0.0); CHECK(sm.mehg_exp_m == s0.mehg_exp_m);
+  CHECK(s1.mehg_exp_m > 0.0); CHECK(s1.mehg_exp_m <= s0.mehg_exp_m * (1.0 + 1e-12));
+  CHECK(std::fabs(s1.mehg_tbal_m) < 1e-12 * s.mehgtot()); CHECK(std::fabs(s3.mehg_tbal_m) < 1e-12 * s.mehgtot());
+  CHECK(s3.mehg_exp_m > s1.mehg_exp_m);   // more mobile MeHg -> more export
+  CHECK(s1.mehgtot() < s0.mehgtot());
+  for (int l = 0; l < MAX_SOI_LAY; l++) { CHECK(s1.mehg[l] >= 0.0); CHECK(s1.mehg[l] <= s1.soil[l] + s1.diss[l]); }
+  hgtr::Flux g = dflux(6, 10, 0.0, 0.0, 0.0, 20.0, 5); hgtr::State t0 = s, t1 = s; hgtr::step(p, t0, a, a, g); hgtr::step(q, t1, a, a, g);
+  for (int l = 0; l < MAX_SOI_LAY; l++) { CHECK(t1.mehg[l] == t0.mehg[l]); }
+  CHECK(t1.mehg_exp_m == 0.0);
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_thaw_evz: thaw evasion fraction f_thaw_evade x exp(-(z_mid - zpf) / evz); 0 == constant (bit-identical); release conserved") {
+  hgtr::Params p = t2dparams(); p.t2_evasion = 1; p.t2_thawrel = 1;
+  CHECK(hgtr::thaw_fev(p, 3.0, 0.2) == p.f_thaw_evade);
+  hgtr::Params q = p; q.t2_thaw_evz = 0.1;
+  CHECK(hgtr::thaw_fev(q, 0.3, 0.25) == doctest::Approx(0.16 * std::exp(-0.5)).epsilon(1e-14)); CHECK(hgtr::thaw_fev(q, 0.2, 0.25) == 0.16);
+  hgtr::Snap a = column(6);
+  hgtr::Flux f = t2flux(1.0, 0.0, 0.0, 0.0, 0.0, 0.2);
+  for (int l = 0; l < 6; l++) { f.decomp[l] = 5.0; f.ts[l] = 2.0; }
+  hgtr::Snap b = a; for (int l = 0; l < 6; l++) { b.soil[l] = a.soil[l] - 5.0; }
+  auto run = [&](const hgtr::Params& x) { hgtr::State s; hgtr::initialize(x, s, a); s.zpf = 0.25; s.h_init = s.total(); hgtr::step(x, s, a, b, f); return s; };
+  hgtr::State s0 = run(p), s1 = run(q);
+  double z = 0.0, w = 0.0; for (int l = 0; l < 6; l++) { const double d = a.dz[l]; if (z >= 0.25) { w += 5.0 * p.r_min * std::exp(-std::fmax(0.0, z + 0.5 * d - 0.25) / 0.1); } z += d; }
+  CHECK(s1.m.thawev == doctest::Approx(0.16 * w).epsilon(1e-12)); CHECK(s1.m.thawev < s0.m.thawev);
+  CHECK(s1.m.thawex == doctest::Approx(s0.m.thawex).epsilon(1e-14));
+  CHECK(std::fabs(s1.balance_error()) < 1e-13 * s1.total());
+  CHECK(s1.total() > s0.total());   // less evaded -> more retained
+  std::remove(T2DEP);
+}

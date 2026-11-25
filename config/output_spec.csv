@@ -216,4 +216,5 @@ MEHGPRODL,MeHg index: MeHg production of the month by layer (phase M2),ug/m2/tim
 HG_KMEFF,MeHg index: effective methylation rate on layer Hg of producing layers (phase M1),1/d,,,invalid,invalid,invalid,invalid,double,
 HG_KDEFF,MeHg index: production-weighted demethylation rate (phase M1),1/d,,,invalid,invalid,invalid,invalid,double,
 HG_MEHGEXP,MeHg index: MeHg export diagnostic (MeHg share x dissolved Hg export; index unchanged; phase M1),ug/m2/time,,,invalid,invalid,invalid,invalid,double,
+HG_MEHGBAL,MeHg index: transport-step MeHg balance error (phase M2; 0 unless hg_t2_mehg_transport = 1),ug/m2/time,,,invalid,invalid,invalid,invalid,double,
 HG_BALERR,Hg tracer: cumulative Hg balance residual since initialization (roundoff),ug/m2,,,invalid,invalid,invalid,invalid,double,
