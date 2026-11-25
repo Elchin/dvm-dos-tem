@@ -304,6 +304,10 @@ struct Params {
   int    thaw_ref_year = 2024; // hg_t2_thaw_ref_year: last calendar year that updates the permafrost reference depth
   int    t2_mehg_subst = 0;   // hg_t2_mehg_subst (phase M1): MeHg-index substrate 0 layer Hg (sorbed + dissolved), 1 dissolved
                               //   Hg (State::diss), 2 Kd-equilibrium dissolved share of the month (monthly liq) x layer Hg
+  // phase M2 item 1 (WORK_NOTES_hg_t2 section 14): methylation freeze factor on the layer's monthly T (demethylation unchanged)
+  int    t2_mehg_frz = 0;     // hg_t2_mehg_frz: 0 off; 1 cutoff (no methylation at T <= t0); 2 linear, clamp((T - t0) / dt, 0, 1)
+  double t2_mehg_frz_t0 = 0.0; // hg_t2_mehg_frz_t0 (C)
+  double t2_mehg_frz_dt = 1.0; // hg_t2_mehg_frz_dt (C; mode 2)
   bool   dep_comp    = false; // the deposition file has components (hg2_wet / hg2_dry / hg0_soil columns)
   std::vector<double> dep_w, dep_d2, dep_d0, dep_s0;   // components per row (ug/m2/yr)
 };
@@ -447,7 +451,8 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_t2_dlog_kd_hum", &p.t2_dlog_kd_hum, -3, 3}, {"hg_f_conn", &p.f_conn, 0, 1}, {"hg_v_snow", &p.v_snow, 0, 1},
             {"hg_f_deep", &p.f_deep, 0, 1}, {"hg_z_deep", &p.z_deep, 0, 100},
             {"hg_t2_r_stem", &p.t2_r_stem, 0, 1e3}, {"hg_t2_r_root", &p.t2_r_root, 0, 1e3}, {"hg_t2_k_meth_proxy", &p.t2_k_meth_proxy, 0, 1e9},
-            {"hg_t2_k_meth_ch4", &p.t2_k_meth_ch4, 0, 1e9}, {"hg_f_thaw_evade", &p.f_thaw_evade, 0, 1}, {"hg_f_thaw_export", &p.f_thaw_export, 0, 1}};
+            {"hg_t2_k_meth_ch4", &p.t2_k_meth_ch4, 0, 1e9}, {"hg_f_thaw_evade", &p.f_thaw_evade, 0, 1}, {"hg_f_thaw_export", &p.f_thaw_export, 0, 1},
+            {"hg_t2_mehg_frz_t0", &p.t2_mehg_frz_t0, -20, 20}, {"hg_t2_mehg_frz_dt", &p.t2_mehg_frz_dt, 1e-3, 20}};
   struct I { const char* k; int* v; int lo, hi; };
   I is[] = {{"hg_tracer", &p.tracer, 0, 1}, {"hg_mehg", &p.mehg, 0, 1}, {"hg_mehg_driver", &p.mehg_driver, 0, 1},
             {"hg_spinup", &p.spinup, 0, 1}, {"hg_transport", &p.transport, 0, 1}, {"hg_spinup_cycle", &p.spinup_cycle, 1, 50}, {"hg_spinup_closure", &p.spinup_closure, 0, 2}, {"hg_tr_year0", &p.tr_year0, -100000, 100000},
@@ -459,7 +464,7 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_t2_rts", &p.t2_rts, 0, 1}, {"hg_t2_preset", &p.t2_preset, 0, 1}, {"hg_t2_kdsplit", &p.t2_kdsplit, 0, 1},
             {"hg_t2_xpath", &p.t2_xpath, 0, 1}, {"hg_t2_snowsink", &p.t2_snowsink, 0, 1}, {"hg_t2_deeproute", &p.t2_deeproute, 0, 1},
             {"hg_t2_deepspread", &p.t2_deepspread, 0, 1}, {"hg_t2_thawrel", &p.t2_thawrel, 0, 1}, {"hg_t2_thaw_ref_year", &p.thaw_ref_year, -100000, 100000},
-            {"hg_t2_mehg_subst", &p.t2_mehg_subst, 0, 2}};
+            {"hg_t2_mehg_subst", &p.t2_mehg_subst, 0, 2}, {"hg_t2_mehg_frz", &p.t2_mehg_frz, 0, 2}};
   for (const std::string& key : ms.getMemberNames()) {
     if (key.rfind("hg_", 0) != 0) { continue; }
     bool known = false;
@@ -523,6 +528,7 @@ inline std::string parse(const Json::Value& ms, Params& p) {
   if (p.t2_deepspread == 1 && !(p.t2 == 1 && p.t2_deeproute == 1)) { return "model_settings.hg_t2_deepspread = 1 needs hg_t2 = 1 and hg_t2_deeproute = 1"; }
   if (p.t2_thawrel == 1 && !(p.t2 == 1 && p.t2_diss == 1 && p.transport == 1)) { return "model_settings.hg_t2_thawrel = 1 needs hg_t2 = 1, hg_t2_diss = 1 and hg_transport = 1"; }
   if (p.t2_mehg_subst > 0 && !(p.mehg == 1 && p.t2 == 1 && p.t2_diss == 1)) { return "model_settings.hg_t2_mehg_subst > 0 needs hg_mehg = 1, hg_t2 = 1 and hg_t2_diss = 1"; }
+  if (p.t2_mehg_frz > 0 && !(p.mehg == 1 && p.t2 == 1)) { return "model_settings.hg_t2_mehg_frz > 0 needs hg_mehg = 1 and hg_t2 = 1"; }
   if (p.f_thaw_evade + p.f_thaw_export > 1.0) { return "model_settings.hg_f_thaw_evade + hg_f_thaw_export must be <= 1"; }
   if (p.t2_snowsink == 1 && !(p.t2 == 1 && p.t2_evasion == 1)) { return "model_settings.hg_t2_snowsink = 1 needs hg_t2 = 1 and hg_t2_evasion = 1"; }
   if (p.t2 == 1 && !p.dep_comp) { return "model_settings.hg_t2 = 1 needs an hg_dep_file with hg2_wet / hg2_dry / hg0_soil columns"; }
@@ -617,6 +623,7 @@ struct State {
   // production x k_demeth (both per month), MeHg export diagnostic (ug/m2), Kd-equilibrium dissolved share (hg_t2_mehg_subst 2)
   double mehg_hsub_m = 0.0, mehg_hsub_y = 0.0, mehg_kdp_m = 0.0, mehg_kdp_y = 0.0, mehg_exp_m = 0.0, mehg_exp_y = 0.0;
   double phieq[MAX_SOI_LAY] = {};
+  double mehg_prodl[MAX_SOI_LAY] = {};   // phase M2: MeHg production of the month by layer (ug/m2; diagnostic, not in the restart)
   int spun = 0;           // spin-up: 0 not done, 1 done, 2 gave up (geometry never repeated)
   int spin_tries = 0;
   double zmax = -1.0;     // T2 phase 6b: maximum thaw depth so far (m; -1 unset)
@@ -1408,17 +1415,26 @@ inline double rec_c_drift(const std::vector<Rec>& rec) {
 // k_m,eff = sum P / sum Hg (1/month; 1/d = / 30.44) and the production-weighted k_demeth = sum P kd / sum P.
 inline double mehg_kmeff_d(double prod, double hsub) { return (hsub > 0.0) ? prod / hsub / 30.44 : 0.0; }
 inline double mehg_kdeff_d(double kdp, double prod) { return (prod > 0.0) ? kdp / prod / 30.44 : 0.0; }
+// Phase M2 item 1: methylation freeze factor of a layer at monthly T t (1 when hg_t2_mehg_frz = 0).
+inline double mehg_frz_factor(const Params& p, double t) {
+  if (p.t2_mehg_frz == 1) { return (t <= p.t2_mehg_frz_t0) ? 0.0 : 1.0; }
+  if (p.t2_mehg_frz == 2) { return std::fmin(1.0, std::fmax(0.0, (t - p.t2_mehg_frz_t0) / p.t2_mehg_frz_dt)); }
+  return 1.0;
+}
 inline void mehg_month(const Params& p, State& s, const double* a_turn, const double* ts, int nsl, bool ch4_driver) {
   const double km = ch4_driver ? p.k_meth_ch4 : p.k_meth_proxy;
   double prod = 0.0, hsub = 0.0, kdp = 0.0;
   for (int l = 0; l < MAX_SOI_LAY; l++) {
     const double hl = s.soil[l] + s.diss[l];   // T2: layer Hg = sorbed + dissolved (diss = 0 without hg_t2_diss)
+    s.mehg_prodl[l] = 0.0;
     if (l >= nsl || !(hl > 0.0)) { s.mehg[l] = 0.0; continue; }
     const double t = std::isfinite(ts[l]) ? ts[l] : p.t_ref;
     // phase M1 (hg_t2_mehg_subst): substrate = layer Hg (0), dissolved Hg (1) or Kd-equilibrium dissolved share x Hg (2)
     const double hs = (p.t2_mehg_subst == 1) ? std::fmin(hl, std::fmax(0.0, s.diss[l]))
                     : (p.t2_mehg_subst == 2) ? hl * std::fmin(1.0, std::fmax(0.0, s.phieq[l])) : hl;
-    const double pr = km * hs * std::fmax(0.0, a_turn[l]) * std::pow(p.q10_meth, (t - p.t_ref) / 10.0);
+    double pr = km * hs * std::fmax(0.0, a_turn[l]) * std::pow(p.q10_meth, (t - p.t_ref) / 10.0);
+    if (p.t2_mehg_frz > 0) { pr *= mehg_frz_factor(p, t); }   // phase M2 item 1
+    s.mehg_prodl[l] = pr;
     const double kd = p.k_demeth * std::pow(p.q10_demeth, (t - p.t_ref) / 10.0);
     const double meq = pr / kd;
     s.mehg[l] = meq + (s.mehg[l] - meq) * std::exp(-kd);

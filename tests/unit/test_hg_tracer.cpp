@@ -1434,3 +1434,47 @@ TEST_CASE("HG_MEHGEXP diagnostic: MeHg share x dissolved export, zero without fl
   for (int l = 0; l < MAX_SOI_LAY; l++) { CHECK(s4.soil[l] == s1.soil[l]); CHECK(s4.diss[l] == s1.diss[l]); }
   std::remove(T2DEP);
 }
+
+// ---- Phase M2 item 1 (WORK_NOTES_hg_t2.md section 14): frozen-layer methylation freeze factor, MEHGPRODL
+TEST_CASE("hg_t2_mehg_frz parse: default 0 (t0 0, dt 1), range 0-2, needs hg_mehg and hg_t2") {
+  hgtr::Params p = t2params(); CHECK(p.t2_mehg_frz == 0); CHECK(p.t2_mehg_frz_t0 == 0.0); CHECK(p.t2_mehg_frz_dt == 1.0);
+  Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_t2"] = 1; m["hg_dep_file"] = T2DEP; m["hg_mehg"] = 1;
+  hgtr::Params r;
+  Json::Value a = m; a["hg_t2_mehg_frz"] = 2; a["hg_t2_mehg_frz_t0"] = -1.0; a["hg_t2_mehg_frz_dt"] = 2.0;
+  REQUIRE(hgtr::parse(a, r) == ""); CHECK(r.t2_mehg_frz == 2); CHECK(r.t2_mehg_frz_t0 == -1.0); CHECK(r.t2_mehg_frz_dt == 2.0);
+  Json::Value b = m; b["hg_t2_mehg_frz"] = 3; CHECK(hgtr::parse(b, r) != "");
+  Json::Value c = m; c["hg_t2_mehg_frz"] = 1; c["hg_mehg"] = 0; CHECK(hgtr::parse(c, r) != "");
+  Json::Value d = ms0(); d["hg_tracer"] = 1; d["hg_mehg"] = 1; d["hg_t2_mehg_frz"] = 1; CHECK(hgtr::parse(d, r) != "");
+  Json::Value e = m; e["hg_t2_mehg_frz_dt"] = 0.0; CHECK(hgtr::parse(e, r) != "");
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_mehg_frz: factor algebra; off bit-identical; cutoff stops production at T <= t0 (MeHg decays); MEHGPRODL sums to MEHGPROD") {
+  hgtr::Params p; p.tracer = 1; p.mehg = 1; p.k_meth_proxy = 0.6;
+  hgtr::Params q1 = p; q1.t2_mehg_frz = 1; hgtr::Params q2 = p; q2.t2_mehg_frz = 2; q2.t2_mehg_frz_t0 = -1.0; q2.t2_mehg_frz_dt = 2.0;
+  CHECK(hgtr::mehg_frz_factor(p, -30.0) == 1.0);
+  CHECK(hgtr::mehg_frz_factor(q1, 0.0) == 0.0); CHECK(hgtr::mehg_frz_factor(q1, 1e-9) == 1.0); CHECK(hgtr::mehg_frz_factor(q1, -5.0) == 0.0);
+  CHECK(hgtr::mehg_frz_factor(q2, -1.0) == 0.0); CHECK(hgtr::mehg_frz_factor(q2, 0.0) == doctest::Approx(0.5)); CHECK(hgtr::mehg_frz_factor(q2, 1.0) == 1.0);
+  CHECK(hgtr::mehg_frz_factor(q2, -3.0) == 0.0); CHECK(hgtr::mehg_frz_factor(q2, 5.0) == 1.0);
+  hgtr::Snap a = column(4); hgtr::State s0; hgtr::initialize(p, s0, a);
+  for (int l = 0; l < 4; l++) { s0.mehg[l] = 0.002 * s0.soil[l]; }
+  double A[MAX_SOI_LAY] = {}, T[MAX_SOI_LAY] = {};
+  for (int l = 0; l < MAX_SOI_LAY; l++) { A[l] = 1.0e-3 * (l + 1); }
+  T[0] = -4.0; T[1] = 0.0; T[2] = 0.5; T[3] = 6.0;
+  hgtr::State s = s0, s1 = s0, s2 = s0; hgtr::Params p0 = p; p0.t2_mehg_frz_t0 = 3.0; p0.t2_mehg_frz_dt = 7.0;   // mode 0 ignores t0 / dt
+  hgtr::mehg_month(p, s, A, T, 4, false); hgtr::State sx = s0; hgtr::mehg_month(p0, sx, A, T, 4, false);
+  for (int l = 0; l < MAX_SOI_LAY; l++) { CHECK(sx.mehg[l] == s.mehg[l]); CHECK(sx.mehg_prodl[l] == s.mehg_prodl[l]); }
+  CHECK(sx.mehg_prod_m == s.mehg_prod_m);
+  hgtr::mehg_month(q1, s1, A, T, 4, false); hgtr::mehg_month(q2, s2, A, T, 4, false);
+  for (int l = 0; l < 4; l++) {
+    const double kd = p.k_demeth * std::pow(p.q10_demeth, (T[l] - p.t_ref) / 10.0);
+    const double f2 = std::fmin(1.0, std::fmax(0.0, (T[l] + 1.0) / 2.0));
+    CHECK(s1.mehg_prodl[l] == doctest::Approx(((T[l] > 0.0) ? 1.0 : 0.0) * s.mehg_prodl[l]).epsilon(1e-14));
+    CHECK(s2.mehg_prodl[l] == doctest::Approx(f2 * s.mehg_prodl[l]).epsilon(1e-14));
+    if (T[l] <= 0.0) { CHECK(s1.mehg[l] == doctest::Approx(s0.mehg[l] * std::exp(-kd)).epsilon(1e-12)); }   // pure decay
+    else { CHECK(s1.mehg[l] == s.mehg[l]); }
+  }
+  double sp = 0, s1p = 0; for (int l = 0; l < MAX_SOI_LAY; l++) { sp += s.mehg_prodl[l]; s1p += s1.mehg_prodl[l]; }
+  CHECK(sp == doctest::Approx(s.mehg_prod_m).epsilon(1e-14)); CHECK(s1p == doctest::Approx(s1.mehg_prod_m).epsilon(1e-14));
+  CHECK(s.mehg_prodl[0] > 0.0); CHECK(s1.total() == s0.total());   // index never changes Hg
+}

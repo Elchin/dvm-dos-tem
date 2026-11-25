@@ -2795,6 +2795,7 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
         layered("HGSOIL", ht); }
       layered("HGDISS", h.diss);
       layered("MEHGSOIL", h.mehg);
+      layered("MEHGPRODL", h.mehg_prodl);   // phase M2: MeHg production of the month by layer
       scalar("HGVEG", h.vegtot(), h.vegtot());
       scalar("HGDEAD", h.deadtot(), h.deadtot());
       scalar("HG_UPTAKE", h.m.uptake, h.y.uptake);
