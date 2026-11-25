@@ -1404,7 +1404,8 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
     if (md->hg.tracer == 1 && md->hg.t2 == 1 && md->hg.t2_diss == 1 && id >= 0 && id < 31) {   // T2 phase 2: Hg-only copy
       for (int il = 0; il < std::min(cd.m_soil.numsl, MAX_SOI_LAY); il++) { hg_dliq[id][il] = edall->d_sois.liq[il]; hg_dice[id][il] = edall->d_sois.ice[il]; }
       for (int il = std::min(cd.m_soil.numsl, MAX_SOI_LAY); il < MAX_SOI_LAY; il++) { hg_dliq[id][il] = 0.0; hg_dice[id][il] = 0.0; }
-      if (md->hg.t2_mehg_frzd == 1) {   // phase M3: daily layer T for the daily freeze factor (Hg-only copy)
+      if (md->hg.t2_mehg_frzd == 1 || md->hg.t2_mehg_satd == 1) {   // phase M3/M4: daily layer T (and water table) for the daily factors (Hg-only copy)
+        hg_dwt[id] = edall->d_sois.watertab;
         for (int il = 0; il < MAX_SOI_LAY; il++) { hg_dts[id][il] = (il < std::min(cd.m_soil.numsl, MAX_SOI_LAY) && std::isfinite(edall->d_sois.ts[il])) ? edall->d_sois.ts[il] : 0.0; }
         hg_dnd = id + 1;
       }
@@ -3266,6 +3267,22 @@ void Cohort::hg_mehg_month(const hgtr::Flux & fbgc) {
     for (int il = 0; il < MAX_SOI_LAY; il++) {
       double dts[31] = {}; for (int id = 0; id < std::min(hg_dnd, 31); id++) { dts[id] = hg_dts[id][il]; }
       ffz[il] = hgtr::mehg_frz_daily(md->hg, dts, std::min(hg_dnd, 31));
+    }
+  }
+  if (md->hg.t2_mehg_satd == 1 && !ch4drv) {   // phase M4 A: proxy saturation from the daily water table x daily thaw state
+    const int nd = std::min(hg_dnd, 31);
+    for (int il = 0; il < nsl; il++) {
+      const double c = bdall->m_sois.rawc[il] + bdall->m_sois.soma[il] + bdall->m_sois.sompr[il] + bdall->m_sois.somcr[il];
+      if (!(c > 1.0e-9)) { aturn[il] = 0.0; continue; }
+      double g[31] = {};
+      for (int id = 0; id < nd; id++) {
+        g[id] = (md->hg.t2_mehg_frzd == 1) ? hgtr::mehg_frz_factor(md->hg, hg_dts[id][il])
+              : ((hg_dice[id][il] > 0.5 && hg_dice[id][il] > hg_dliq[id][il]) ? 0.0 : 1.0);
+      }
+      const double sd = hgtr::sat_daily(cd.m_soil.z[il], cd.m_soil.dz[il], hg_dwt, g, nd);
+      const double rh = bdall->m_soi2a.rhrawc[il] + bdall->m_soi2a.rhsoma[il] + bdall->m_soi2a.rhsompr[il] + bdall->m_soi2a.rhsomcr[il];
+      aturn[il] = sd * fmax(0.0, rh) / c;
+      if (md->hg.t2_mehg_frzd == 1) { ffz[il] = 1.0; }   // the daily freeze factor is already inside sd
     }
   }
   const double * ffp = (md->hg.t2_mehg_frzd == 1) ? ffz : nullptr;

@@ -1587,3 +1587,46 @@ TEST_CASE("mehg_month with ffrz: frzd 0 ignores ffrz (bit-identical); frzd 1 use
     CHECK(s3.mehg_prodl[l] == s0.mehg_prodl[l]);
   }
 }
+
+// ---- phase M4: hg_t2_mehg_satd (A), hg_t2_mehg_zrun (B), hg_t2_mehg_frzmob (C) ----
+TEST_CASE("M4 parse: satd 0-1 needs hg_mehg/hg_t2/hg_t2_diss; zrun and frzmob need hg_t2_mehg_transport; defaults off") {
+  hgtr::Params p = t2params(); CHECK(p.t2_mehg_satd == 0); CHECK(p.t2_mehg_zrun == 0.0); CHECK(p.t2_mehg_frzmob == 1.0);
+  Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_t2"] = 1; m["hg_dep_file"] = T2DEP; m["hg_mehg"] = 1; hgtr::Params r;
+  Json::Value a = m; a["hg_t2_mehg_satd"] = 1; REQUIRE(hgtr::parse(a, r) == ""); CHECK(r.t2_mehg_satd == 1);
+  Json::Value b = m; b["hg_t2_mehg_satd"] = 2; CHECK(hgtr::parse(b, r) != "");
+  Json::Value c = m; c["hg_t2_mehg_satd"] = 1; c["hg_t2_diss"] = 0; CHECK(hgtr::parse(c, r) != "");
+  Json::Value d = m; d["hg_t2_mehg_zrun"] = 0.025; CHECK(hgtr::parse(d, r) != "");   // needs transport
+  d["hg_t2_mehg_transport"] = 1; REQUIRE(hgtr::parse(d, r) == ""); CHECK(r.t2_mehg_zrun == 0.025);
+  Json::Value e = m; e["hg_t2_mehg_frzmob"] = 0.5; CHECK(hgtr::parse(e, r) != "");
+  e["hg_t2_mehg_transport"] = 1; REQUIRE(hgtr::parse(e, r) == ""); CHECK(r.t2_mehg_frzmob == 0.5);
+  Json::Value g = e; g["hg_t2_mehg_frzmob"] = 1.5; CHECK(hgtr::parse(g, r) != "");
+  std::remove(T2DEP);
+}
+TEST_CASE("sat_daily: constant wt gives the monthly clamp; frozen days give 0; half the days thawed gives half") {
+  double wt[30], g1[30], g0[30], gh[30];
+  for (int d = 0; d < 30; d++) { wt[d] = 0.05; g1[d] = 1.0; g0[d] = 0.0; gh[d] = (d < 15) ? 0.0 : 1.0; }
+  const double z = 0.03, dz = 0.04, ref = std::fmax(0.0, std::fmin(1.0, ((z + dz) - 0.05) / dz));
+  CHECK(hgtr::sat_daily(z, dz, wt, g1, 30) == doctest::Approx(ref));
+  CHECK(hgtr::sat_daily(z, dz, wt, g0, 30) == 0.0);
+  CHECK(hgtr::sat_daily(z, dz, wt, gh, 30) == doctest::Approx(0.5 * ref));
+  double wv[30]; for (int d = 0; d < 30; d++) { wv[d] = (d < 15) ? 0.0 : 0.2; }   // 15 days at the surface, 15 below the layer
+  CHECK(hgtr::sat_daily(z, dz, wv, g1, 30) == doctest::Approx(0.5));
+  CHECK(hgtr::sat_daily(z, dz, wv, g1, 0) == 0.0);
+}
+TEST_CASE("M4 B/C transport: zrun = hg_z_runoff == off; shallower zrun and frzmob < 1 lower MeHg export only; Hg pools identical; MeHg conserved") {
+  hgtr::Params p = t2dparams(); p.d_cryo = 0; p.d_bio = 0; p.mehg = 1; p.t2_mehg_transport = 1;
+  hgtr::Snap a = column(6); hgtr::Flux f = dflux(6, 10, 2.0, 1.0, 1.0, 20.0, 5);
+  hgtr::State s; hgtr::initialize(p, s, a);
+  for (int l = 0; l < 6; l++) { s.diss[l] = 0.01 * s.soil[l]; s.soil[l] -= s.diss[l]; s.mehg[l] = 0.01 * (l + 1) * (s.soil[l] + s.diss[l]); }
+  hgtr::Params bz = p; bz.t2_mehg_zrun = p.z_runoff; hgtr::Params bs = p; bs.t2_mehg_zrun = 1.0e-6;
+  hgtr::State s0 = s, s1 = s, s2 = s; hgtr::step(p, s0, a, a, f); hgtr::step(bz, s1, a, a, f); hgtr::step(bs, s2, a, a, f);
+  for (int l = 0; l < MAX_SOI_LAY; l++) { CHECK(s1.mehg[l] == s0.mehg[l]); CHECK(s2.soil[l] == s0.soil[l]); CHECK(s2.diss[l] == s0.diss[l]); }
+  CHECK(s1.mehg_exp_m == s0.mehg_exp_m); CHECK(s2.mehg_exp_m <= s0.mehg_exp_m); CHECK(std::fabs(s2.mehg_tbal_m) < 1e-12 * s.mehgtot());
+  // C: layer 3 frozen on every day -> the thawed zone is layers 0-2, layer 2 lies on frozen ground
+  hgtr::Flux g = f; for (int d = 0; d < 31; d++) { g.d_ice[d][3] = 100.0; g.d_liq[d][3] = 0.0; }
+  hgtr::Params c1 = p; c1.t2_mehg_frzmob = 1.0; hgtr::Params c5 = p; c5.t2_mehg_frzmob = 0.5;
+  hgtr::State t0 = s, t1 = s, t5 = s; hgtr::step(p, t0, a, a, g); hgtr::step(c1, t1, a, a, g); hgtr::step(c5, t5, a, a, g);
+  for (int l = 0; l < MAX_SOI_LAY; l++) { CHECK(t1.mehg[l] == t0.mehg[l]); CHECK(t5.soil[l] == t0.soil[l]); CHECK(t5.diss[l] == t0.diss[l]); }
+  CHECK(t5.mehg_exp_m <= t0.mehg_exp_m); CHECK(t5.mehg[2] >= t0.mehg[2]); CHECK(std::fabs(t5.mehg_tbal_m) < 1e-12 * s.mehgtot());
+  std::remove(T2DEP);
+}

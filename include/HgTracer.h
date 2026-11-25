@@ -318,6 +318,10 @@ struct Params {
   int    t2_mehg_lag = 0;       // hg_t2_mehg_lag
   // phase M3: 1 = freeze factor from the month's daily layer T (mean of the daily factors) instead of the monthly T
   int    t2_mehg_frzd = 0;      // hg_t2_mehg_frzd
+  // phase M4 (hydrological controls on the snowmelt flush)
+  int    t2_mehg_satd = 0;      // hg_t2_mehg_satd: A, proxy saturation from the daily water table x daily thaw state
+  double t2_mehg_zrun = 0.0;    // hg_t2_mehg_zrun (m): B, MeHg overland zone depth (0 = off, MeHg uses hg_z_runoff)
+  double t2_mehg_frzmob = 1.0;  // hg_t2_mehg_frzmob: C, MeHg mobile-share factor in the thawed layer on a frozen layer (1 = off)
   bool   dep_comp    = false; // the deposition file has components (hg2_wet / hg2_dry / hg0_soil columns)
   std::vector<double> dep_w, dep_d2, dep_d0, dep_s0;   // components per row (ug/m2/yr)
 };
@@ -463,7 +467,7 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_t2_r_stem", &p.t2_r_stem, 0, 1e3}, {"hg_t2_r_root", &p.t2_r_root, 0, 1e3}, {"hg_t2_k_meth_proxy", &p.t2_k_meth_proxy, 0, 1e9},
             {"hg_t2_k_meth_ch4", &p.t2_k_meth_ch4, 0, 1e9}, {"hg_f_thaw_evade", &p.f_thaw_evade, 0, 1}, {"hg_f_thaw_export", &p.f_thaw_export, 0, 1},
             {"hg_t2_mehg_frz_t0", &p.t2_mehg_frz_t0, -20, 20}, {"hg_t2_mehg_frz_dt", &p.t2_mehg_frz_dt, 1e-3, 20},
-            {"hg_t2_mehg_mobfac", &p.t2_mehg_mobfac, 0, 100}, {"hg_t2_thaw_evz", &p.t2_thaw_evz, 0, 100}};
+            {"hg_t2_mehg_mobfac", &p.t2_mehg_mobfac, 0, 100}, {"hg_t2_mehg_zrun", &p.t2_mehg_zrun, 0, 1}, {"hg_t2_mehg_frzmob", &p.t2_mehg_frzmob, 0, 1}, {"hg_t2_thaw_evz", &p.t2_thaw_evz, 0, 100}};
   struct I { const char* k; int* v; int lo, hi; };
   I is[] = {{"hg_tracer", &p.tracer, 0, 1}, {"hg_mehg", &p.mehg, 0, 1}, {"hg_mehg_driver", &p.mehg_driver, 0, 1},
             {"hg_spinup", &p.spinup, 0, 1}, {"hg_transport", &p.transport, 0, 1}, {"hg_spinup_cycle", &p.spinup_cycle, 1, 50}, {"hg_spinup_closure", &p.spinup_closure, 0, 2}, {"hg_tr_year0", &p.tr_year0, -100000, 100000},
@@ -477,7 +481,7 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_t2_deepspread", &p.t2_deepspread, 0, 1}, {"hg_t2_thawrel", &p.t2_thawrel, 0, 1}, {"hg_t2_thaw_ref_year", &p.thaw_ref_year, -100000, 100000},
             {"hg_t2_mehg_subst", &p.t2_mehg_subst, 0, 2}, {"hg_t2_mehg_frz", &p.t2_mehg_frz, 0, 2},
             {"hg_t2_mehg_transport", &p.t2_mehg_transport, 0, 1}, {"hg_t2_mehg_lag", &p.t2_mehg_lag, 0, 1},
-            {"hg_t2_mehg_frzd", &p.t2_mehg_frzd, 0, 1}};
+            {"hg_t2_mehg_frzd", &p.t2_mehg_frzd, 0, 1}, {"hg_t2_mehg_satd", &p.t2_mehg_satd, 0, 1}};
   for (const std::string& key : ms.getMemberNames()) {
     if (key.rfind("hg_", 0) != 0) { continue; }
     bool known = false;
@@ -542,6 +546,8 @@ inline std::string parse(const Json::Value& ms, Params& p) {
   if (p.t2_thawrel == 1 && !(p.t2 == 1 && p.t2_diss == 1 && p.transport == 1)) { return "model_settings.hg_t2_thawrel = 1 needs hg_t2 = 1, hg_t2_diss = 1 and hg_transport = 1"; }
   if (p.t2_mehg_subst > 0 && !(p.mehg == 1 && p.t2 == 1 && p.t2_diss == 1)) { return "model_settings.hg_t2_mehg_subst > 0 needs hg_mehg = 1, hg_t2 = 1 and hg_t2_diss = 1"; }
   if (p.t2_mehg_transport == 1 && !(p.mehg == 1 && p.t2 == 1 && p.t2_diss == 1 && p.transport == 1)) { return "model_settings.hg_t2_mehg_transport = 1 needs hg_mehg = 1, hg_t2 = 1, hg_t2_diss = 1 and hg_transport = 1"; }
+  if (p.t2_mehg_satd == 1 && !(p.mehg == 1 && p.t2 == 1 && p.t2_diss == 1)) { return "model_settings.hg_t2_mehg_satd = 1 needs hg_mehg = 1, hg_t2 = 1 and hg_t2_diss = 1"; }
+  if ((p.t2_mehg_zrun > 0.0 || p.t2_mehg_frzmob < 1.0) && p.t2_mehg_transport != 1) { return "model_settings.hg_t2_mehg_zrun > 0 / hg_t2_mehg_frzmob < 1 need hg_t2_mehg_transport = 1"; }
   if (p.t2_mehg_frzd == 1 && !(p.t2_mehg_frz > 0 && p.t2_diss == 1)) { return "model_settings.hg_t2_mehg_frzd = 1 needs hg_t2_mehg_frz > 0 and hg_t2_diss = 1"; }
   if (p.t2_mehg_lag == 1 && !(p.mehg == 1 && p.t2 == 1 && p.transport == 1)) { return "model_settings.hg_t2_mehg_lag = 1 needs hg_mehg = 1, hg_t2 = 1 and hg_transport = 1"; }
   if (p.t2_thaw_evz > 0.0 && p.t2_thawrel != 1) { return "model_settings.hg_t2_thaw_evz > 0 needs hg_t2_thawrel = 1"; }
@@ -873,11 +879,15 @@ inline void diss_transport_(const Params& p, State& s, const Snap& b, const Flux
     }
     double mov[MAX_SOI_LAY] = {}, mot[MAX_SOI_LAY] = {}, mla[MAX_SOI_LAY] = {};   // phase M2: MeHg with the same transfers
     if (mt) {
+      // phase M4 C: the thawed layer lying directly on a frozen layer today (perched snowmelt state)
+      const bool perch = (p.t2_mehg_frzmob < 1.0) && (tb + 1 < nb) && (f.d_ice[d][tb + 1] > 0.5 && f.d_ice[d][tb + 1] > f.d_liq[d][tb + 1]);
       for (int l = 0; l <= tb; l++) {
         const double d0 = s.diss[l], h0 = s.soil[l] + s.diss[l], m0 = std::fmax(0.0, s.mehg[l]);
         if (d0 > 0.0 && h0 > 0.0 && m0 > 0.0) {
-          const double fm = m0 * std::fmin(1.0, p.t2_mehg_mobfac * d0 / h0) / d0;   // mobile MeHg per unit dissolved Hg
+          const double mf = (perch && l == tb) ? p.t2_mehg_mobfac * p.t2_mehg_frzmob : p.t2_mehg_mobfac;
+          const double fm = m0 * std::fmin(1.0, mf * d0 / h0) / d0;   // mobile MeHg per unit dissolved Hg
           mov[l] = fm * ov[l]; mot[l] = fm * out[l]; mla[l] = fm * lat[l];
+          if (p.t2_mehg_zrun > 0.0 && l > 0 && !(ztop[l] < p.t2_mehg_zrun)) { mov[l] = 0.0; }   // phase M4 B: MeHg overland zone
         }
       }
     }
@@ -1472,6 +1482,14 @@ inline double mehg_frz_factor(const Params& p, double t) {
   if (p.t2_mehg_frz == 1) { return (t <= p.t2_mehg_frz_t0) ? 0.0 : 1.0; }
   if (p.t2_mehg_frz == 2) { return std::fmin(1.0, std::fmax(0.0, (t - p.t2_mehg_frz_t0) / p.t2_mehg_frz_dt)); }
   return 1.0;
+}
+// Phase M4 A: month mean of the daily saturation of a layer (top z, thickness dz) from the daily water table wt[d] (m), each
+// day weighted by g[d] (daily freeze factor or thawed indicator, 0-1).
+inline double sat_daily(double z, double dz, const double* wt, const double* g, int nd) {
+  if (nd <= 0 || !(dz > 0.0)) { return 0.0; }
+  double s = 0.0;
+  for (int d = 0; d < nd; d++) { if (std::isfinite(wt[d])) { s += std::fmax(0.0, std::fmin(1.0, ((z + dz) - wt[d]) / dz)) * std::fmax(0.0, std::fmin(1.0, g[d])); } }
+  return s / nd;
 }
 // Phase M3: month mean of the daily freeze factors of a layer (hg_t2_mehg_frzd = 1); dts = the month's daily layer T.
 inline double mehg_frz_daily(const Params& p, const double* dts, int nd) {
