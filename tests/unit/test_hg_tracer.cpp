@@ -1630,3 +1630,43 @@ TEST_CASE("M4 B/C transport: zrun = hg_z_runoff == off; shallower zrun and frzmo
   CHECK(t5.mehg_exp_m <= t0.mehg_exp_m); CHECK(t5.mehg[2] >= t0.mehg[2]); CHECK(std::fabs(t5.mehg_tbal_m) < 1e-12 * s.mehgtot());
   std::remove(T2DEP);
 }
+
+// ---- phase M5: hg_t2_mehg_preset (MeHg-on preset = M4V1)
+static void m5_same(const hgtr::Params& a, const hgtr::Params& b) {
+  CHECK(a.t2_mehg_lag == b.t2_mehg_lag); CHECK(a.t2_mehg_transport == b.t2_mehg_transport); CHECK(a.t2_mehg_frz == b.t2_mehg_frz);
+  CHECK(a.t2_mehg_frzd == b.t2_mehg_frzd); CHECK(a.t2_mehg_satd == b.t2_mehg_satd); CHECK(a.t2_mehg_frz_t0 == b.t2_mehg_frz_t0);
+  CHECK(a.t2_mehg_frz_dt == b.t2_mehg_frz_dt); CHECK(a.t2_mehg_mobfac == b.t2_mehg_mobfac); CHECK(a.t2_mehg_zrun == b.t2_mehg_zrun);
+  CHECK(a.t2_mehg_frzmob == b.t2_mehg_frzmob); CHECK(a.t2_mehg_subst == b.t2_mehg_subst); CHECK(a.t2_thaw_evz == b.t2_thaw_evz);
+  CHECK(a.t2_k_meth_proxy == b.t2_k_meth_proxy); CHECK(a.t2_k_meth_ch4 == b.t2_k_meth_ch4);
+  CHECK(a.k_meth_proxy == b.k_meth_proxy); CHECK(a.k_meth_ch4 == b.k_meth_ch4); CHECK(a.mehg == b.mehg); CHECK(a.mehg_driver == b.mehg_driver);
+  CHECK(a.q10_meth == b.q10_meth); CHECK(a.k_demeth == b.k_demeth); CHECK(a.t2_diss == b.t2_diss); CHECK(a.t2_xpath == b.t2_xpath);
+  CHECK(a.t2_deeproute == b.t2_deeproute); CHECK(a.t2_thawrel == b.t2_thawrel); CHECK(a.f_conn == b.f_conn); CHECK(a.ev_z == b.ev_z);
+  CHECK(a.transport == b.transport); CHECK(a.t2_log_kd_org == b.t2_log_kd_org);
+}
+TEST_CASE("M5 parse: hg_t2_mehg_preset default off (unchanged), 1 == explicit M4V1, explicit wins, prerequisites follow, dependencies") {
+  hgtr::Params p0 = t2params(); CHECK(p0.t2_mehg_preset == 0);   // writes T2DEP
+  Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_t2"] = 1; m["hg_dep_file"] = T2DEP; m["hg_mehg"] = 1;
+  hgtr::Params off, off0, pre, ex, r;
+  REQUIRE(hgtr::parse(m, off) == ""); CHECK(off.t2_mehg_preset == 0);
+  CHECK(off.t2_mehg_lag == 0); CHECK(off.t2_mehg_transport == 0); CHECK(off.t2_mehg_frz == 0); CHECK(off.t2_mehg_frzd == 0); CHECK(off.t2_mehg_satd == 0);
+  CHECK(off.k_meth_proxy == 71.0); CHECK(off.k_meth_ch4 == 3250.0);   // hg_t2 preset values untouched
+  Json::Value z = m; z["hg_t2_mehg_preset"] = 0; REQUIRE(hgtr::parse(z, off0) == ""); m5_same(off0, off);   // 0 == absent
+  Json::Value a = m; a["hg_t2_mehg_preset"] = 1; REQUIRE(hgtr::parse(a, pre) == ""); CHECK(pre.t2_mehg_preset == 1);
+  Json::Value e = m; e["hg_t2_mehg_lag"] = 1; e["hg_t2_mehg_transport"] = 1; e["hg_t2_mehg_frz"] = 1; e["hg_t2_mehg_frzd"] = 1;
+  e["hg_t2_mehg_satd"] = 1; e["hg_t2_k_meth_proxy"] = 99.9; e["hg_t2_k_meth_ch4"] = 6079;   // the M4V1 model_settings
+  REQUIRE(hgtr::parse(e, ex) == ""); m5_same(pre, ex);
+  CHECK(pre.k_meth_proxy == 99.9); CHECK(pre.k_meth_ch4 == 6079.0);
+  { hgtr::Params q; hgtr::t2_mehg_preset_(q); CHECK(q.t2_mehg_satd == 1); CHECK(q.t2_k_meth_proxy == 99.9); }
+  Json::Value w = a; w["hg_t2_mehg_satd"] = 0; w["hg_t2_k_meth_proxy"] = 50.0; REQUIRE(hgtr::parse(w, r) == "");   // explicit wins
+  CHECK(r.t2_mehg_satd == 0); CHECK(r.k_meth_proxy == 50.0); CHECK(r.t2_mehg_frzd == 1); CHECK(r.k_meth_ch4 == 6079.0);
+  Json::Value f = a; f["hg_t2_mehg_frz"] = 0; REQUIRE(hgtr::parse(f, r) == ""); CHECK(r.t2_mehg_frzd == 0); CHECK(r.t2_mehg_satd == 1);   // frzd follows frz
+  Json::Value d = a; d["hg_t2_diss"] = 0; REQUIRE(hgtr::parse(d, r) == "");   // transport, frzd, satd follow hg_t2_diss
+  CHECK(r.t2_mehg_transport == 0); CHECK(r.t2_mehg_frzd == 0); CHECK(r.t2_mehg_satd == 0); CHECK(r.t2_mehg_lag == 1); CHECK(r.t2_mehg_frz == 1);
+  Json::Value d2 = d; d2["hg_t2_mehg_satd"] = 1; CHECK(hgtr::parse(d2, r) != "");   // given explicitly: the dependency error stands
+  Json::Value n = a; n["hg_t2_preset"] = 0; REQUIRE(hgtr::parse(n, r) == "");   // hg_t2 preset off: t2_diss 0, the diss-dependent options off
+  CHECK(r.t2_mehg_transport == 0); CHECK(r.t2_mehg_satd == 0); CHECK(r.t2_mehg_frzd == 0); CHECK(r.k_meth_proxy == 99.9);
+  Json::Value b = a; b["hg_mehg"] = 0; CHECK(hgtr::parse(b, r) != "");   // needs hg_mehg
+  Json::Value c = ms0(); c["hg_tracer"] = 1; c["hg_mehg"] = 1; c["hg_t2_mehg_preset"] = 1; CHECK(hgtr::parse(c, r) != "");   // needs hg_t2
+  Json::Value g = a; g["hg_t2_mehg_preset"] = 2; CHECK(hgtr::parse(g, r) != "");
+  std::remove(T2DEP);
+}

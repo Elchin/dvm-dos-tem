@@ -156,6 +156,9 @@
 //     (hg_t2 = 0) never read these. T2-only copies hg_t2_r_stem, hg_t2_r_root, hg_t2_k_meth_proxy replace hg_r_stem,
 //     hg_r_root, hg_k_meth_proxy when hg_t2 = 1 (giving the T1 names with hg_t2 = 1 is an error); phase 5d adds
 //     hg_t2_k_meth_ch4 (replaces hg_k_meth_ch4, default the same 3250).
+//   hg_t2_mehg_preset (phase M5, default 0 = off; needs hg_mehg = 1 and hg_t2 = 1): 1 = the absent MeHg settings take the
+//     phase-M4 calibrated MeHg-on values (Params::t2_mehg_preset_, run M4V1; WORK_NOTES_hg_t2 sections 16-17), applied after
+//     the hg_t2 preset; explicit settings still win, and preset options whose prerequisite was switched off follow it.
 //   All new coefficients come from water, snow, geometry and type only: the step stays affine and exactly conservative.
 // T2 phase 5c (docs_src/HG_T2_design.md section 20, WORK_NOTES_hg_t2 section 8), needs hg_t2_xpath = 1:
 //   hg_t2_deeproute = 1: the share hg_f_deep of the Hg retained on the flow path (1 - hg_f_conn of the organic-layer
@@ -322,6 +325,8 @@ struct Params {
   int    t2_mehg_satd = 0;      // hg_t2_mehg_satd: A, proxy saturation from the daily water table x daily thaw state
   double t2_mehg_zrun = 0.0;    // hg_t2_mehg_zrun (m): B, MeHg overland zone depth (0 = off, MeHg uses hg_z_runoff)
   double t2_mehg_frzmob = 1.0;  // hg_t2_mehg_frzmob: C, MeHg mobile-share factor in the thawed layer on a frozen layer (1 = off)
+  // phase M5: MeHg-on preset (M4V1 values, t2_mehg_preset_); 0 off (default)
+  int    t2_mehg_preset = 0;    // hg_t2_mehg_preset
   bool   dep_comp    = false; // the deposition file has components (hg2_wet / hg2_dry / hg0_soil columns)
   std::vector<double> dep_w, dep_d2, dep_d0, dep_s0;   // components per row (ug/m2/yr)
 };
@@ -353,6 +358,15 @@ inline void t2_preset_(Params& p) {
   // phase 6c (WORK_NOTES_hg_t2 section 12): SOC-weighted deep spread of the routed Hg and the thaw release (Schaefer 2020
   // fractions) on; present-climate targets unchanged (< 0.1 %), deep Hg:C hotspot removed, warming release of deep Hg
   p.t2_deepspread = 1; p.t2_thawrel = 1;
+}
+
+// Phase M5: MeHg-on preset = run M4V1 (WORK_NOTES_hg_t2 sections 16-17; passes every primary MeHg criterion): MeHg update
+// after the month's transport, MeHg transport, daily freeze cutoff (T <= 0 C), proxy saturation from the daily water
+// table, k recalibrated. Applied with hg_t2_mehg_preset = 1 (and hg_mehg = hg_t2 = 1) after t2_preset_, before the
+// explicit model_settings. Never used with hg_t2_mehg_preset absent or 0.
+inline void t2_mehg_preset_(Params& p) {
+  p.t2_mehg_lag = 1; p.t2_mehg_transport = 1; p.t2_mehg_frz = 1; p.t2_mehg_frzd = 1; p.t2_mehg_satd = 1;
+  p.t2_k_meth_proxy = 99.9; p.t2_k_meth_ch4 = 6079.0;
 }
 
 // Deposition CSV: '#' comments; header with columns year, [month], and either dep or any of hg2_wet,
@@ -446,6 +460,8 @@ inline std::string parse(const Json::Value& ms, Params& p) {
   const auto num1 = [&](const char* k) { return ms.isMember(k) && num_(ms[k]) && ms[k].asDouble() == 1.0; };
   const bool pre = num1("hg_t2") && (!ms.isMember("hg_t2_preset") || num1("hg_t2_preset"));
   if (pre) { t2_preset_(p); }
+  const bool mpre = num1("hg_t2_mehg_preset");   // phase M5: MeHg-on preset (default off), after the hg_t2 preset
+  if (mpre) { t2_mehg_preset_(p); }
   struct D { const char* k; double* v; double lo, hi; };
   D ds[] = {{"hg_r_org", &p.r_org, 0, 1e3}, {"hg_r_min", &p.r_min, 0, 1e3}, {"hg_r_leaf", &p.r_leaf, 0, 1e3},
             {"hg_r_stem", &p.r_stem, 0, 1e3}, {"hg_r_root", &p.r_root, 0, 1e3}, {"hg_f_evade", &p.f_evade, 0, 1},
@@ -481,7 +497,8 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_t2_deepspread", &p.t2_deepspread, 0, 1}, {"hg_t2_thawrel", &p.t2_thawrel, 0, 1}, {"hg_t2_thaw_ref_year", &p.thaw_ref_year, -100000, 100000},
             {"hg_t2_mehg_subst", &p.t2_mehg_subst, 0, 2}, {"hg_t2_mehg_frz", &p.t2_mehg_frz, 0, 2},
             {"hg_t2_mehg_transport", &p.t2_mehg_transport, 0, 1}, {"hg_t2_mehg_lag", &p.t2_mehg_lag, 0, 1},
-            {"hg_t2_mehg_frzd", &p.t2_mehg_frzd, 0, 1}, {"hg_t2_mehg_satd", &p.t2_mehg_satd, 0, 1}};
+            {"hg_t2_mehg_frzd", &p.t2_mehg_frzd, 0, 1}, {"hg_t2_mehg_satd", &p.t2_mehg_satd, 0, 1},
+            {"hg_t2_mehg_preset", &p.t2_mehg_preset, 0, 1}};
   for (const std::string& key : ms.getMemberNames()) {
     if (key.rfind("hg_", 0) != 0) { continue; }
     bool known = false;
@@ -521,6 +538,13 @@ inline std::string parse(const Json::Value& ms, Params& p) {
     if (p.t2_evasion != 1 && !set("hg_t2_snowsink")) { p.t2_snowsink = 0; }
     if (p.t2_foliar < 1 && !set("hg_wash")) { p.wash = 0.0; }
   }
+  if (mpre) {   // phase M5: MeHg preset options whose prerequisite was switched off explicitly follow it (unless given too)
+    const auto set = [&](const char* k) { return ms.isMember(k); };
+    if (!(p.t2_diss == 1 && p.transport == 1) && !set("hg_t2_mehg_transport")) { p.t2_mehg_transport = 0; }
+    if (p.transport != 1 && !set("hg_t2_mehg_lag")) { p.t2_mehg_lag = 0; }
+    if (!(p.t2_mehg_frz > 0 && p.t2_diss == 1) && !set("hg_t2_mehg_frzd")) { p.t2_mehg_frzd = 0; }
+    if (p.t2_diss != 1 && !set("hg_t2_mehg_satd")) { p.t2_mehg_satd = 0; }
+  }
   if (p.t2 == 1) {   // T2-only copies of the parameters shared with T1 (the T1 path, hg_t2 = 0, keeps the T1 values)
     for (const char* k : {"hg_r_stem", "hg_r_root", "hg_k_meth_proxy", "hg_k_meth_ch4"}) {
       if (ms.isMember(k)) { return std::string("model_settings.") + k + " is a T1 setting; with hg_t2 = 1 use hg_t2_" + (k + 3); }
@@ -544,6 +568,7 @@ inline std::string parse(const Json::Value& ms, Params& p) {
   if (p.t2_deeproute == 1 && !(p.t2 == 1 && p.t2_xpath == 1)) { return "model_settings.hg_t2_deeproute = 1 needs hg_t2 = 1 and hg_t2_xpath = 1"; }
   if (p.t2_deepspread == 1 && !(p.t2 == 1 && p.t2_deeproute == 1)) { return "model_settings.hg_t2_deepspread = 1 needs hg_t2 = 1 and hg_t2_deeproute = 1"; }
   if (p.t2_thawrel == 1 && !(p.t2 == 1 && p.t2_diss == 1 && p.transport == 1)) { return "model_settings.hg_t2_thawrel = 1 needs hg_t2 = 1, hg_t2_diss = 1 and hg_transport = 1"; }
+  if (p.t2_mehg_preset == 1 && !(p.mehg == 1 && p.t2 == 1)) { return "model_settings.hg_t2_mehg_preset = 1 needs hg_mehg = 1 and hg_t2 = 1"; }
   if (p.t2_mehg_subst > 0 && !(p.mehg == 1 && p.t2 == 1 && p.t2_diss == 1)) { return "model_settings.hg_t2_mehg_subst > 0 needs hg_mehg = 1, hg_t2 = 1 and hg_t2_diss = 1"; }
   if (p.t2_mehg_transport == 1 && !(p.mehg == 1 && p.t2 == 1 && p.t2_diss == 1 && p.transport == 1)) { return "model_settings.hg_t2_mehg_transport = 1 needs hg_mehg = 1, hg_t2 = 1, hg_t2_diss = 1 and hg_transport = 1"; }
   if (p.t2_mehg_satd == 1 && !(p.mehg == 1 && p.t2 == 1 && p.t2_diss == 1)) { return "model_settings.hg_t2_mehg_satd = 1 needs hg_mehg = 1, hg_t2 = 1 and hg_t2_diss = 1"; }
