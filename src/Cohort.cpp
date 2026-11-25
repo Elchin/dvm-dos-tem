@@ -778,7 +778,7 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
     hg_do_step(hg_a, hg_a, ft);
   }
   if (hg_mlag_pend) {   // phase M2 (hg_t2_mehg_lag = 1): the month's MeHg update after the transport
-    hg_mlag_pend = false; hgtr::mehg_month(md->hg, hg, hg_mlag_a, hg_mlag_t, hg_mlag_nsl, hg_mlag_ch4);
+    hg_mlag_pend = false; hgtr::mehg_month(md->hg, hg, hg_mlag_a, hg_mlag_t, hg_mlag_nsl, hg_mlag_ch4, (md->hg.t2_mehg_frzd == 1) ? hg_mlag_f : nullptr);
   }
   if (nbal_diag) {
     const ThermokarstData & t = year_tkdata[currmind];
@@ -1404,6 +1404,10 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
     if (md->hg.tracer == 1 && md->hg.t2 == 1 && md->hg.t2_diss == 1 && id >= 0 && id < 31) {   // T2 phase 2: Hg-only copy
       for (int il = 0; il < std::min(cd.m_soil.numsl, MAX_SOI_LAY); il++) { hg_dliq[id][il] = edall->d_sois.liq[il]; hg_dice[id][il] = edall->d_sois.ice[il]; }
       for (int il = std::min(cd.m_soil.numsl, MAX_SOI_LAY); il < MAX_SOI_LAY; il++) { hg_dliq[id][il] = 0.0; hg_dice[id][il] = 0.0; }
+      if (md->hg.t2_mehg_frzd == 1) {   // phase M3: daily layer T for the daily freeze factor (Hg-only copy)
+        for (int il = 0; il < MAX_SOI_LAY; il++) { hg_dts[id][il] = (il < std::min(cd.m_soil.numsl, MAX_SOI_LAY) && std::isfinite(edall->d_sois.ts[il])) ? edall->d_sois.ts[il] : 0.0; }
+        hg_dnd = id + 1;
+      }
       hg_dmelt[id] = edall->d_snw2soi.melt;   // T2 phase 3 (hg_t2_meltroute): the day's snowmelt (mm)
     }
 
@@ -3257,9 +3261,17 @@ void Cohort::hg_mehg_month(const hgtr::Flux & fbgc) {
     }
   }
   (void)fbgc;
+  double ffz[MAX_SOI_LAY] = {};
+  if (md->hg.t2_mehg_frzd == 1) {   // phase M3: month mean of the daily freeze factors per layer
+    for (int il = 0; il < MAX_SOI_LAY; il++) {
+      double dts[31] = {}; for (int id = 0; id < std::min(hg_dnd, 31); id++) { dts[id] = hg_dts[id][il]; }
+      ffz[il] = hgtr::mehg_frz_daily(md->hg, dts, std::min(hg_dnd, 31));
+    }
+  }
+  const double * ffp = (md->hg.t2_mehg_frzd == 1) ? ffz : nullptr;
   if (md->hg.t2_mehg_lag == 1) {   // phase M2: deferred to after the month's transport (Cohort::updateMonthly, "end")
-    for (int il = 0; il < MAX_SOI_LAY; il++) { hg_mlag_a[il] = aturn[il]; hg_mlag_t[il] = ts[il]; }
+    for (int il = 0; il < MAX_SOI_LAY; il++) { hg_mlag_a[il] = aturn[il]; hg_mlag_t[il] = ts[il]; hg_mlag_f[il] = ffz[il]; }
     hg_mlag_nsl = nsl; hg_mlag_ch4 = ch4drv; hg_mlag_pend = true; return;
   }
-  hgtr::mehg_month(md->hg, hg, aturn, ts, nsl, ch4drv);
+  hgtr::mehg_month(md->hg, hg, aturn, ts, nsl, ch4drv, ffp);
 }

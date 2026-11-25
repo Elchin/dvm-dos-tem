@@ -316,6 +316,8 @@ struct Params {
   double t2_thaw_evz = 0.0;     // hg_t2_thaw_evz (m)
   // phase M2 item 2 (timing): 1 = the month's MeHg update runs after the month's dissolved transport (start-of-month stock moved)
   int    t2_mehg_lag = 0;       // hg_t2_mehg_lag
+  // phase M3: 1 = freeze factor from the month's daily layer T (mean of the daily factors) instead of the monthly T
+  int    t2_mehg_frzd = 0;      // hg_t2_mehg_frzd
   bool   dep_comp    = false; // the deposition file has components (hg2_wet / hg2_dry / hg0_soil columns)
   std::vector<double> dep_w, dep_d2, dep_d0, dep_s0;   // components per row (ug/m2/yr)
 };
@@ -474,7 +476,8 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_t2_xpath", &p.t2_xpath, 0, 1}, {"hg_t2_snowsink", &p.t2_snowsink, 0, 1}, {"hg_t2_deeproute", &p.t2_deeproute, 0, 1},
             {"hg_t2_deepspread", &p.t2_deepspread, 0, 1}, {"hg_t2_thawrel", &p.t2_thawrel, 0, 1}, {"hg_t2_thaw_ref_year", &p.thaw_ref_year, -100000, 100000},
             {"hg_t2_mehg_subst", &p.t2_mehg_subst, 0, 2}, {"hg_t2_mehg_frz", &p.t2_mehg_frz, 0, 2},
-            {"hg_t2_mehg_transport", &p.t2_mehg_transport, 0, 1}, {"hg_t2_mehg_lag", &p.t2_mehg_lag, 0, 1}};
+            {"hg_t2_mehg_transport", &p.t2_mehg_transport, 0, 1}, {"hg_t2_mehg_lag", &p.t2_mehg_lag, 0, 1},
+            {"hg_t2_mehg_frzd", &p.t2_mehg_frzd, 0, 1}};
   for (const std::string& key : ms.getMemberNames()) {
     if (key.rfind("hg_", 0) != 0) { continue; }
     bool known = false;
@@ -539,6 +542,7 @@ inline std::string parse(const Json::Value& ms, Params& p) {
   if (p.t2_thawrel == 1 && !(p.t2 == 1 && p.t2_diss == 1 && p.transport == 1)) { return "model_settings.hg_t2_thawrel = 1 needs hg_t2 = 1, hg_t2_diss = 1 and hg_transport = 1"; }
   if (p.t2_mehg_subst > 0 && !(p.mehg == 1 && p.t2 == 1 && p.t2_diss == 1)) { return "model_settings.hg_t2_mehg_subst > 0 needs hg_mehg = 1, hg_t2 = 1 and hg_t2_diss = 1"; }
   if (p.t2_mehg_transport == 1 && !(p.mehg == 1 && p.t2 == 1 && p.t2_diss == 1 && p.transport == 1)) { return "model_settings.hg_t2_mehg_transport = 1 needs hg_mehg = 1, hg_t2 = 1, hg_t2_diss = 1 and hg_transport = 1"; }
+  if (p.t2_mehg_frzd == 1 && !(p.t2_mehg_frz > 0 && p.t2_diss == 1)) { return "model_settings.hg_t2_mehg_frzd = 1 needs hg_t2_mehg_frz > 0 and hg_t2_diss = 1"; }
   if (p.t2_mehg_lag == 1 && !(p.mehg == 1 && p.t2 == 1 && p.transport == 1)) { return "model_settings.hg_t2_mehg_lag = 1 needs hg_mehg = 1, hg_t2 = 1 and hg_transport = 1"; }
   if (p.t2_thaw_evz > 0.0 && p.t2_thawrel != 1) { return "model_settings.hg_t2_thaw_evz > 0 needs hg_t2_thawrel = 1"; }
   if (p.t2_mehg_frz > 0 && !(p.mehg == 1 && p.t2 == 1)) { return "model_settings.hg_t2_mehg_frz > 0 needs hg_mehg = 1 and hg_t2 = 1"; }
@@ -1469,7 +1473,14 @@ inline double mehg_frz_factor(const Params& p, double t) {
   if (p.t2_mehg_frz == 2) { return std::fmin(1.0, std::fmax(0.0, (t - p.t2_mehg_frz_t0) / p.t2_mehg_frz_dt)); }
   return 1.0;
 }
-inline void mehg_month(const Params& p, State& s, const double* a_turn, const double* ts, int nsl, bool ch4_driver) {
+// Phase M3: month mean of the daily freeze factors of a layer (hg_t2_mehg_frzd = 1); dts = the month's daily layer T.
+inline double mehg_frz_daily(const Params& p, const double* dts, int nd) {
+  if (nd <= 0) { return 1.0; }
+  double f = 0.0; for (int d = 0; d < nd; d++) { f += mehg_frz_factor(p, dts[d]); }
+  return f / nd;
+}
+inline void mehg_month(const Params& p, State& s, const double* a_turn, const double* ts, int nsl, bool ch4_driver,
+                       const double* ffrz = nullptr) {
   const double km = ch4_driver ? p.k_meth_ch4 : p.k_meth_proxy;
   double prod = 0.0, hsub = 0.0, kdp = 0.0;
   for (int l = 0; l < MAX_SOI_LAY; l++) {
@@ -1481,7 +1492,7 @@ inline void mehg_month(const Params& p, State& s, const double* a_turn, const do
     const double hs = (p.t2_mehg_subst == 1) ? std::fmin(hl, std::fmax(0.0, s.diss[l]))
                     : (p.t2_mehg_subst == 2) ? hl * std::fmin(1.0, std::fmax(0.0, s.phieq[l])) : hl;
     double pr = km * hs * std::fmax(0.0, a_turn[l]) * std::pow(p.q10_meth, (t - p.t_ref) / 10.0);
-    if (p.t2_mehg_frz > 0) { pr *= mehg_frz_factor(p, t); }   // phase M2 item 1
+    if (p.t2_mehg_frz > 0) { pr *= (p.t2_mehg_frzd == 1 && ffrz != nullptr) ? ffrz[l] : mehg_frz_factor(p, t); }   // M2 item 1 / M3 daily
     s.mehg_prodl[l] = pr;
     const double kd = p.k_demeth * std::pow(p.q10_demeth, (t - p.t_ref) / 10.0);
     const double meq = pr / kd;

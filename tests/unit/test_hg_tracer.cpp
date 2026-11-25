@@ -1548,3 +1548,42 @@ TEST_CASE("hg_t2_mehg_lag parse: default 0, range 0-1, needs hg_mehg, hg_t2 and 
   Json::Value d = m; d["hg_t2_mehg_lag"] = 1; d["hg_transport"] = 0; CHECK(hgtr::parse(d, r) != "");
   std::remove(T2DEP);
 }
+
+// ---- phase M3: hg_t2_mehg_frzd (daily freeze factor) ----
+TEST_CASE("hg_t2_mehg_frzd parse: default 0, range 0-1, needs hg_t2_mehg_frz > 0 and hg_t2_diss") {
+  hgtr::Params p = t2params(); CHECK(p.t2_mehg_frzd == 0);
+  Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_t2"] = 1; m["hg_dep_file"] = T2DEP; m["hg_mehg"] = 1; hgtr::Params r;
+  Json::Value a = m; a["hg_t2_mehg_frz"] = 1; a["hg_t2_diss"] = 1; a["hg_t2_mehg_frzd"] = 1;
+  REQUIRE(hgtr::parse(a, r) == ""); CHECK(r.t2_mehg_frzd == 1);
+  Json::Value b = a; b["hg_t2_mehg_frzd"] = 2; CHECK(hgtr::parse(b, r) != "");
+  Json::Value c = a; c["hg_t2_mehg_frz"] = 0; CHECK(hgtr::parse(c, r) != "");
+  Json::Value d = a; d["hg_t2_diss"] = 0; CHECK(hgtr::parse(d, r) != "");
+  std::remove(T2DEP);
+}
+TEST_CASE("mehg_frz_daily: mean of the daily factors; all warm 1, all frozen 0, 10 of 30 days warm 1/3") {
+  hgtr::Params p = t2params(); p.mehg = 1; p.t2_mehg_frz = 1; p.t2_mehg_frz_t0 = 0.0;
+  double w[30], f[30], m[30];
+  for (int d = 0; d < 30; d++) { w[d] = 2.0; f[d] = -1.0; m[d] = (d >= 20) ? 0.5 : -0.5; }
+  CHECK(hgtr::mehg_frz_daily(p, w, 30) == 1.0); CHECK(hgtr::mehg_frz_daily(p, f, 30) == 0.0);
+  CHECK(hgtr::mehg_frz_daily(p, m, 30) == doctest::Approx(1.0 / 3.0));
+  CHECK(hgtr::mehg_frz_daily(p, m, 0) == 1.0);
+  p.t2_mehg_frz = 2; p.t2_mehg_frz_t0 = -1.0; p.t2_mehg_frz_dt = 1.0;   // ramp: -0.5 -> 0.5, 0.5 -> 1
+  CHECK(hgtr::mehg_frz_daily(p, m, 30) == doctest::Approx((20 * 0.5 + 10 * 1.0) / 30.0));
+}
+TEST_CASE("mehg_month with ffrz: frzd 0 ignores ffrz (bit-identical); frzd 1 uses ffrz instead of the monthly-T factor") {
+  hgtr::Params p = t2params(); p.mehg = 1; p.t2_mehg_frz = 1; p.t2_mehg_frz_t0 = 0.0;
+  const int nsl = 3; double a[MAX_SOI_LAY] = {}, ts[MAX_SOI_LAY] = {}, ff[MAX_SOI_LAY] = {};
+  for (int l = 0; l < nsl; l++) { a[l] = 1.0e-3; ts[l] = 0.3; ff[l] = 0.25; }
+  auto mk = [&]() { hgtr::State s; for (int l = 0; l < nsl; l++) { s.soil[l] = 100.0; s.mehg[l] = 0.2; } return s; };
+  hgtr::State s0 = mk(), s1 = mk(), s2 = mk(), s3 = mk();
+  hgtr::mehg_month(p, s0, a, ts, nsl, false);
+  hgtr::mehg_month(p, s1, a, ts, nsl, false, ff);   // frzd 0: ffrz ignored
+  for (int l = 0; l < nsl; l++) { CHECK(s1.mehg[l] == s0.mehg[l]); CHECK(s1.mehg_prodl[l] == s0.mehg_prodl[l]); }
+  p.t2_mehg_frzd = 1;
+  hgtr::mehg_month(p, s2, a, ts, nsl, false, ff);
+  hgtr::mehg_month(p, s3, a, ts, nsl, false);       // no daily factors passed: monthly-T factor
+  for (int l = 0; l < nsl; l++) {
+    CHECK(s2.mehg_prodl[l] == doctest::Approx(0.25 * s0.mehg_prodl[l]));
+    CHECK(s3.mehg_prodl[l] == s0.mehg_prodl[l]);
+  }
+}
