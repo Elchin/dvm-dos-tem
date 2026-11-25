@@ -1811,3 +1811,30 @@ bins/binM4 (md5 d54607f2). Scripts in src/m4/: patchM4.py, testsM4.cpp, runM4.sh
 
 ![fig31](figures_hg_t2/hg_t2_fig31_m4_satd_layers.png)
 ![fig32](figures_hg_t2/hg_t2_fig32_m4_tradeoff.png)
+
+## 17. Phase M5: named MeHg-on preset `hg_t2_mehg_preset` (= M4V1) (2026-11-25)
+Approved by Elchin: M4V1 (section 16) as a named, default-off MeHg-on preset. Base: feat/hg-t2 at f668372e. Code commit
+35421b85 (local, not pushed). Binary bins/binM5 (md5 c157518e). Scripts in src/m5/: patchM5.py, testsM5.cpp, runM5.sh,
+cmp_m5.py, ledgerM5.py. Results in an2/m5/. **M5 used 0.0438 of 0.05 core-h; ledger total 10.993.**
+
+- **Switch:** `hg_t2_mehg_preset` (integer 0-1, default 0 = off; needs hg_mehg = 1 and hg_t2 = 1). With 1, the absent
+  MeHg settings take the M4V1 values (Params::t2_mehg_preset_): hg_t2_mehg_lag 1, hg_t2_mehg_transport 1, hg_t2_mehg_frz 1
+  (cutoff at hg_t2_mehg_frz_t0 = 0 C), hg_t2_mehg_frzd 1, hg_t2_mehg_satd 1, hg_t2_k_meth_proxy 99.9, hg_t2_k_meth_ch4 6079.
+- **Same mechanism as hg_t2_preset:** applied in parse after the hg_t2 preset and before the explicit model_settings, so
+  explicit settings win. Preset options whose prerequisite was switched off explicitly follow it, unless they are given too:
+  hg_t2_mehg_transport follows hg_t2_diss and hg_transport, hg_t2_mehg_lag follows hg_transport, hg_t2_mehg_frzd follows
+  hg_t2_mehg_frz and hg_t2_diss, hg_t2_mehg_satd follows hg_t2_diss. hg_t2_preset, its values and all defaults are unchanged.
+  B and C (hg_t2_mehg_zrun, hg_t2_mehg_frzmob) are not part of the preset (off).
+- **Unit test** (1 new case, 98 assertions): absent == 0 == the previous parse (all MeHg options off, k 71 / 3250);
+  preset 1 gives the same Params as the explicit M4V1 settings; explicit values win; frz 0 / hg_t2_diss 0 / hg_t2_preset 0
+  switch the dependent options off; explicit satd with hg_t2_diss 0, preset without hg_mehg or hg_t2, and preset 2 are
+  errors. Unit tests 559/559.
+- **Model identity (binM5, minimal case subsets, reference outputs reused):**
+  - M5Q1 (hg_mehg 1, hg_t2 1, hg_t2_mehg_preset 1) vs M4V1 (explicit settings, binM4): 0 diffs in every variable of TVC
+    spin000 + main, HPC spin000 + main, Toolik CH4-driver sp + tr (the fen; it uses k_ch4, TVC / HPC use k_proxy).
+  - M5Q0 (preset absent) vs M4P (binM4, all off): 0 diffs in every variable of TVC spin000 + main. The parse is the only
+    code change and the unit test shows the off Params are unchanged.
+- **Usage:** add `"hg_t2_mehg_preset": 1` to model_settings next to `"hg_tracer": 1, "hg_mehg": 1, "hg_t2": 1` (README).
+  Results and caveats as section 16 (M4V1; Toolik proxy-driver export 1.6 ng/m2, just below 2).
+
+![fig32](figures_hg_t2/hg_t2_fig32_m4_tradeoff.png)

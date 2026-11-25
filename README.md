@@ -120,3 +120,17 @@ information about the testing and CI, see the [Testing and Deployment](https://u
 > system. There is still info scattered across this README, the wiki, a Google
 > Doc and the Sphinx system but we are working on consolidating the info into 
 > primarily the Sphinx system (the User Guide).
+
+## Mercury (Hg) tracer: MeHg-on preset
+
+The Hg tracer is configured with `hg_*` keys in `model_settings` (see `include/HgTracer.h` and
+`docs_src/WORK_NOTES_hg_t2.md`). `"hg_t2": 1` uses the calibrated T2 settings (`hg_t2_preset`, default 1). For the
+calibrated MeHg-on configuration (run M4V1, WORK_NOTES_hg_t2 sections 16-17), also add `"hg_t2_mehg_preset": 1`:
+
+```json
+"model_settings": { "hg_tracer": 1, "hg_mehg": 1, "hg_t2": 1, "hg_t2_mehg_preset": 1, "hg_dep_file": "config/hg_deposition_toolik_obrist2017.csv" }
+```
+
+It sets hg_t2_mehg_lag 1, hg_t2_mehg_transport 1, hg_t2_mehg_frz 1, hg_t2_mehg_frzd 1, hg_t2_mehg_satd 1,
+hg_t2_k_meth_proxy 99.9 and hg_t2_k_meth_ch4 6079. Any of these given explicitly wins. The default (0 or absent) leaves
+the MeHg options off. Trade-offs: `docs_src/figures_hg_t2/hg_t2_fig32_m4_tradeoff.png`.
