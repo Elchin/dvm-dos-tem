@@ -1286,12 +1286,30 @@ push.
 
 ### Open items
 
-1. Rerun the Hg-off and all-on regression identities with binT2p6c (about 0.2 core-h). They hold by construction, because the
-   preset applies only with hg_t2 = 1.
+1. ~~Rerun the Hg-off and all-on regression identities with binT2p6c.~~ Done in phase 6c-reg (below): all pass.
 2. The thaw-evasion fraction 0.16 is not depth-attenuated. For release at 1.3–2.7 m it is an upper bound; an ALD-bounded
    attenuation (6a note) would lower the 17 µg/m²/yr net Hg(0) source.
 3. Toolik ch4 (fen %MeHg) was not rerun with the preset; the spreading-only Toolik proxy %MeHg changed by -0.4 %.
 4. zpf depends on the run history: restarts without hg_thaw give no thaw release until the next year up to the reference year.
 5. HPC Ro/Rm about 1 % out of band, as in 5d (no refit).
+
+### Regression rerun on binT2p6c (phase 6c-reg, 2026-11-24)
+
+Approved by Elchin ("Yes"), with a budget of 0.2 core-h (LEDGER section "PHASE 6c-reg"). The chain is src/p6c/runP6creg.sh. All
+checks pass:
+
+| Check | Runs | Result |
+|---|---|---|
+| hg_t2 = 0 vs T1 (VF4), Toolik | P6T0 (hg_mehg 1, binT2p6c) | **PASS**. The only difference is the restart hg_state length (117 vs 94), plus the T2 output-file set. This is the same as the accepted T5d result in 5d; every shared variable is identical. |
+| hg_t2 = 0 vs 5a (P5T1), Toolik | P6T0 | **PASS**: 0 differing variables (sp 71 + tr 306). |
+| Hg off, 2 cases (hg_t1/cs/sub_off) | P6R1, binM vs binT2p6c | **PASS** |
+| All on (cs/sub_t2j: hg_t2 preset only, now including deepspread + thawrel) | P6R2, binM vs binT2p6c | **PASS**: C/N/water/energy identical (cmp_on6b; the B-only restart variables hg_state and hg_thaw are allowed). 4 stages, 0 diffs. Max Hg balance error 1.2e-9 µg. |
+| Hg off, 8 cases (regress/cs/prod) | P6R3, binT2p6c B runs | **PASS**: A == B bit-identical in all 8 cases, run_status OK. |
+
+**How P6R3 was run.** To stay inside the budget, P6R3 reran only the B side. The A side is the binM reference runs of
+out/P6I3_prod/A (6b), linked read-only. It is the same binM md5 (e9fe5eff), the same case set and the same machine and runtime.
+No restart was reused as input. The full A+B run costs 0.135 core-h.
+
+Cost: P6T0 0.010, P6R1 0.033, P6R2 0.034, P6R3 0.067, for 0.145 of 0.2 core-h. The ledger total is 9.0080.
 
 ![fig22](figures_hg_t2/hg_t2_fig22_6c_warming.png)
