@@ -1370,3 +1370,67 @@ TEST_CASE("hg_t2 phase 6b all on (deep spread + thaw release), random steps with
   CHECK(s.zmax >= s.zpf); CHECK(s.zpf > 0.0); CHECK(s.cum.export_ > 0.0); CHECK(thaw > 0.0);
   std::remove(T2DEP);
 }
+
+// ---- Phase M1 (MeHg literature items, docs_src/WORK_NOTES_hg_t2.md section 13): substrate switch, rate and export diagnostics
+TEST_CASE("hg_t2_mehg_subst parse: default 0, range 0-2, needs hg_mehg, hg_t2 and hg_t2_diss; hg_q10_* usable with hg_t2") {
+  hgtr::Params p = t2params(); CHECK(p.t2_mehg_subst == 0);   // writes T2DEP
+  Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_t2"] = 1; m["hg_dep_file"] = T2DEP; m["hg_mehg"] = 1;
+  hgtr::Params r; REQUIRE(hgtr::parse(m, r) == ""); CHECK(r.t2_mehg_subst == 0); CHECK(r.q10_meth == 1.0); CHECK(r.q10_demeth == 2.0);
+  Json::Value a = m; a["hg_t2_mehg_subst"] = 2; a["hg_q10_meth"] = 3.0; a["hg_q10_demeth"] = 1.0;
+  REQUIRE(hgtr::parse(a, r) == ""); CHECK(r.t2_mehg_subst == 2); CHECK(r.q10_meth == 3.0); CHECK(r.q10_demeth == 1.0);
+  Json::Value b = m; b["hg_t2_mehg_subst"] = 3; CHECK(hgtr::parse(b, r) != "");
+  Json::Value c = m; c["hg_t2_mehg_subst"] = 1; c["hg_mehg"] = 0; CHECK(hgtr::parse(c, r) != "");   // needs the index
+  Json::Value d = m; d["hg_t2_mehg_subst"] = 1; d["hg_t2_diss"] = 0; CHECK(hgtr::parse(d, r) != "");   // needs the dissolved pool
+  Json::Value e = ms0(); e["hg_tracer"] = 1; e["hg_mehg"] = 1; e["hg_t2_mehg_subst"] = 1; CHECK(hgtr::parse(e, r) != "");   // needs hg_t2
+  std::remove(T2DEP);
+}
+
+TEST_CASE("hg_t2_mehg_subst: substrate = layer Hg (0, unchanged), dissolved Hg (1), Kd-equilibrium share (2); rate diagnostics") {
+  hgtr::Params p; p.tracer = 1; p.mehg = 1; p.k_meth_proxy = 0.6; p.k_meth_ch4 = 30.0;
+  hgtr::Snap a = column(4); hgtr::State s0; hgtr::initialize(p, s0, a);
+  for (int l = 0; l < 4; l++) { s0.diss[l] = 0.1 * (l + 1) * s0.soil[l]; s0.phieq[l] = 0.05 * (l + 1); }
+  double A[MAX_SOI_LAY] = {}, T[MAX_SOI_LAY];
+  for (int l = 0; l < MAX_SOI_LAY; l++) { A[l] = 1.0e-3 * (l + 1); T[l] = p.t_ref; }
+  for (int k = 0; k < 3; k++) {
+    hgtr::Params q = p; q.t2_mehg_subst = k; hgtr::State s = s0;
+    for (int m = 0; m < 60; m++) { hgtr::mehg_month(q, s, A, T, 4, true); }
+    for (int l = 0; l < 4; l++) {
+      const double hl = s.soil[l] + s.diss[l], hs = (k == 0) ? hl : (k == 1) ? s.diss[l] : hl * s.phieq[l];
+      CHECK(s.mehg[l] == doctest::Approx(q.k_meth_ch4 * A[l] * hs / q.k_demeth).epsilon(1e-6));
+    }
+    CHECK(s.total() == s0.total());   // the index never changes Hg
+    // one month from zeroed counters: k_m,eff = sum P / sum Hg / 30.44, kd_eff = k_demeth / 30.44 at t_ref
+    s.mehg_prod_m = 0; s.mehg_hsub_m = 0; s.mehg_kdp_m = 0; hgtr::mehg_month(q, s, A, T, 4, true);
+    double P = 0, Hs = 0; for (int l = 0; l < 4; l++) { const double hl = s.soil[l] + s.diss[l]; const double hs = (k == 0) ? hl : (k == 1) ? s.diss[l] : hl * s.phieq[l]; P += q.k_meth_ch4 * A[l] * hs; Hs += hl; }
+    CHECK(s.mehg_prod_m == doctest::Approx(P).epsilon(1e-12));
+    CHECK(hgtr::mehg_kmeff_d(s.mehg_prod_m, s.mehg_hsub_m) == doctest::Approx(P / Hs / 30.44).epsilon(1e-12));
+    CHECK(hgtr::mehg_kdeff_d(s.mehg_kdp_m, s.mehg_prod_m) == doctest::Approx(q.k_demeth / 30.44).epsilon(1e-12));
+  }
+  CHECK(hgtr::mehg_kmeff_d(1.0, 0.0) == 0.0); CHECK(hgtr::mehg_kdeff_d(1.0, 0.0) == 0.0);
+  // q10 swap (Q10_meth 3, Q10_demeth 1) at t_ref - 10: production / 3, demethylation unchanged
+  hgtr::Params q = p; q.q10_meth = 3.0; q.q10_demeth = 1.0; hgtr::State s = s0;
+  for (int l = 0; l < MAX_SOI_LAY; l++) { T[l] = p.t_ref - 10.0; }
+  for (int m = 0; m < 60; m++) { hgtr::mehg_month(q, s, A, T, 4, false); }
+  CHECK(s.mehg[1] == doctest::Approx(q.k_meth_proxy * A[1] * (s.soil[1] + s.diss[1]) / 3.0 / q.k_demeth).epsilon(1e-6));
+}
+
+TEST_CASE("HG_MEHGEXP diagnostic: MeHg share x dissolved export, zero without flow or index; Hg pools and the index unchanged") {
+  hgtr::Params p = t2dparams(); p.d_cryo = 0; p.d_bio = 0; p.mehg = 1;
+  hgtr::Snap a = column(6); hgtr::Flux f = dflux(6, 10, 2.0, 1.0, 1.0, 20.0, 5);
+  hgtr::State s; hgtr::initialize(p, s, a);
+  for (int l = 0; l < 6; l++) { s.diss[l] = 0.01 * s.soil[l]; s.soil[l] -= s.diss[l]; s.mehg[l] = 0.01 * (s.soil[l] + s.diss[l]); }
+  hgtr::State s1 = s, s2 = s; hgtr::Params p0 = p; p0.mehg = 0;
+  hgtr::step(p, s1, a, a, f); hgtr::step(p0, s2, a, a, f);
+  for (int l = 0; l < MAX_SOI_LAY; l++) { CHECK(s1.soil[l] == s2.soil[l]); CHECK(s1.diss[l] == s2.diss[l]); }
+  CHECK(s1.m.export_ == s2.m.export_); CHECK(s1.m.export_ > 0.0);
+  CHECK(s2.mehg_exp_m == 0.0);   // index off: no diagnostic
+  CHECK(s1.mehg_exp_m >= 0.01 * s1.m.export_ * (1.0 - 1e-9)); CHECK(s1.mehg_exp_m <= 0.0105 * s1.m.export_);   // share 1 % (grows as Hg leaves)
+  CHECK(s1.mehg_exp_y == s1.mehg_exp_m);
+  hgtr::State s3 = s; hgtr::Flux g = dflux(6, 10, 0.0, 0.0, 0.0, 20.0, 5); hgtr::step(p, s3, a, a, g);
+  CHECK(s3.mehg_exp_m == 0.0);
+  // subst 2: monthly Kd-equilibrium share in [0, 1], unset (0) with subst 0
+  hgtr::State s4 = s; hgtr::Params p2 = p; p2.t2_mehg_subst = 2; hgtr::step(p2, s4, a, a, f);
+  for (int l = 0; l < 6; l++) { CHECK(s4.phieq[l] > 0.0); CHECK(s4.phieq[l] <= 1.0); CHECK(s1.phieq[l] == 0.0); }
+  for (int l = 0; l < MAX_SOI_LAY; l++) { CHECK(s4.soil[l] == s1.soil[l]); CHECK(s4.diss[l] == s1.diss[l]); }
+  std::remove(T2DEP);
+}

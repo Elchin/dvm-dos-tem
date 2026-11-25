@@ -302,6 +302,8 @@ struct Params {
   double f_thaw_evade = 0.16;  // hg_f_thaw_evade: re-emitted fraction (Schaefer et al. 2020)
   double f_thaw_export = 0.015; // hg_f_thaw_export: exported fraction (Schaefer et al. 2020)
   int    thaw_ref_year = 2024; // hg_t2_thaw_ref_year: last calendar year that updates the permafrost reference depth
+  int    t2_mehg_subst = 0;   // hg_t2_mehg_subst (phase M1): MeHg-index substrate 0 layer Hg (sorbed + dissolved), 1 dissolved
+                              //   Hg (State::diss), 2 Kd-equilibrium dissolved share of the month (monthly liq) x layer Hg
   bool   dep_comp    = false; // the deposition file has components (hg2_wet / hg2_dry / hg0_soil columns)
   std::vector<double> dep_w, dep_d2, dep_d0, dep_s0;   // components per row (ug/m2/yr)
 };
@@ -456,7 +458,8 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_t2_evasion", &p.t2_evasion, 0, 1}, {"hg_t2_meltroute", &p.t2_meltroute, 0, 1}, {"hg_gs_ingpp", &p.gs_ingpp, 0, 1},
             {"hg_t2_rts", &p.t2_rts, 0, 1}, {"hg_t2_preset", &p.t2_preset, 0, 1}, {"hg_t2_kdsplit", &p.t2_kdsplit, 0, 1},
             {"hg_t2_xpath", &p.t2_xpath, 0, 1}, {"hg_t2_snowsink", &p.t2_snowsink, 0, 1}, {"hg_t2_deeproute", &p.t2_deeproute, 0, 1},
-            {"hg_t2_deepspread", &p.t2_deepspread, 0, 1}, {"hg_t2_thawrel", &p.t2_thawrel, 0, 1}, {"hg_t2_thaw_ref_year", &p.thaw_ref_year, -100000, 100000}};
+            {"hg_t2_deepspread", &p.t2_deepspread, 0, 1}, {"hg_t2_thawrel", &p.t2_thawrel, 0, 1}, {"hg_t2_thaw_ref_year", &p.thaw_ref_year, -100000, 100000},
+            {"hg_t2_mehg_subst", &p.t2_mehg_subst, 0, 2}};
   for (const std::string& key : ms.getMemberNames()) {
     if (key.rfind("hg_", 0) != 0) { continue; }
     bool known = false;
@@ -519,6 +522,7 @@ inline std::string parse(const Json::Value& ms, Params& p) {
   if (p.t2_deeproute == 1 && !(p.t2 == 1 && p.t2_xpath == 1)) { return "model_settings.hg_t2_deeproute = 1 needs hg_t2 = 1 and hg_t2_xpath = 1"; }
   if (p.t2_deepspread == 1 && !(p.t2 == 1 && p.t2_deeproute == 1)) { return "model_settings.hg_t2_deepspread = 1 needs hg_t2 = 1 and hg_t2_deeproute = 1"; }
   if (p.t2_thawrel == 1 && !(p.t2 == 1 && p.t2_diss == 1 && p.transport == 1)) { return "model_settings.hg_t2_thawrel = 1 needs hg_t2 = 1, hg_t2_diss = 1 and hg_transport = 1"; }
+  if (p.t2_mehg_subst > 0 && !(p.mehg == 1 && p.t2 == 1 && p.t2_diss == 1)) { return "model_settings.hg_t2_mehg_subst > 0 needs hg_mehg = 1, hg_t2 = 1 and hg_t2_diss = 1"; }
   if (p.f_thaw_evade + p.f_thaw_export > 1.0) { return "model_settings.hg_f_thaw_evade + hg_f_thaw_export must be <= 1"; }
   if (p.t2_snowsink == 1 && !(p.t2 == 1 && p.t2_evasion == 1)) { return "model_settings.hg_t2_snowsink = 1 needs hg_t2 = 1 and hg_t2_evasion = 1"; }
   if (p.t2 == 1 && !p.dep_comp) { return "model_settings.hg_t2 = 1 needs an hg_dep_file with hg2_wet / hg2_dry / hg0_soil columns"; }
@@ -609,6 +613,10 @@ struct State {
   Acc cum;                // since initialization (conservation diagnostic)
   double h_init = 0.0;    // total Hg at initialization
   double mehg_prod_m = 0.0, mehg_prod_y = 0.0;   // MeHg gross production (ug/m2) month / year
+  // phase M1 diagnostics (not in the restart; no effect on any pool): substrate Hg of the producing layers, sum of
+  // production x k_demeth (both per month), MeHg export diagnostic (ug/m2), Kd-equilibrium dissolved share (hg_t2_mehg_subst 2)
+  double mehg_hsub_m = 0.0, mehg_hsub_y = 0.0, mehg_kdp_m = 0.0, mehg_kdp_y = 0.0, mehg_exp_m = 0.0, mehg_exp_y = 0.0;
+  double phieq[MAX_SOI_LAY] = {};
   int spun = 0;           // spin-up: 0 not done, 1 done, 2 gave up (geometry never repeated)
   int spin_tries = 0;
   double zmax = -1.0;     // T2 phase 6b: maximum thaw depth so far (m; -1 unset)
@@ -745,6 +753,13 @@ inline void diss_transport_(const Params& p, State& s, const Snap& b, const Flux
                 : (is_moss(b.type[l]) ? std::fmax(0.0, b.dz[l]) * p.rho_moss : std::fmax(0.0, b.soil[l]) * 2.0e-3);
       ztop[l] = z; z += std::fmax(0.0, b.dz[l]);
     } }
+  if (p.t2_mehg_subst == 2) {   // phase M1: Kd-equilibrium dissolved share of the month (monthly mean liquid water)
+    for (int l = 0; l < MAX_SOI_LAY; l++) { s.phieq[l] = 0.0; }
+    for (int l = 0; l < nb; l++) {
+      const double liq = std::fmax(0.0, f.liq[l]);
+      const double den = liq + (is_mineral(b.type[l]) ? kdm : ((b.type[l] == 2) ? kdh : kdo)) * M[l];
+      s.phieq[l] = (den > 0.0) ? liq / den : 0.0;
+    } }
   // phase 5c (hg_t2_deeproute): receiving layer ld of the share fdp of the flow-path retention (layer containing hg_z_deep,
   // at least lm, at most the deepest layer); the rest of the retention stays with lm as in phase 5b
   int ld = lm; double fdp = 0.0;
@@ -821,12 +836,15 @@ inline void diss_transport_(const Params& p, State& s, const Snap& b, const Flux
       ov[l] = fr * s.diss[l]; out[l] = fv * s.diss[l]; lat[l] = fl * s.diss[l];
     }
     for (int l = 0; l <= tb; l++) {
+      const double h0 = s.soil[l] + s.diss[l];   // phase M1: MeHg share of the layer Hg before the day's removal
+      const double rme = (p.mehg == 1 && h0 > 0.0) ? std::fmin(1.0, std::fmax(0.0, s.mehg[l]) / h0) : 0.0;
       s.diss[l] -= ov[l] + out[l] + lat[l];
       if (fcx < 1.0 && l < lm) {   // phase 5b: organic-layer export, the share 1 - f_conn retained on the flow path
         const double ro = ov[l] * (1.0 - fcx), rl = lat[l] * (1.0 - fcx);
         ov[l] -= ro; lat[l] -= rl; retain(ro + rl);
       }
       acc.export_ += ov[l] + lat[l]; acc.runoff += ov[l]; acc.drain += lat[l];
+      { const double xm = rme * (ov[l] + lat[l]); s.mehg_exp_m += xm; s.mehg_exp_y += xm; }   // diagnostic only (index unchanged)
       if (l < tb) { s.diss[l + 1] += out[l]; if (!is_mineral(b.type[l]) && is_mineral(b.type[l + 1])) { acc.down += out[l]; } }
     }
   }
@@ -1386,21 +1404,30 @@ inline double rec_c_drift(const std::vector<Rec>& rec) {
 }
 
 // MeHg index for one month. a_turn[l]: anaerobic C turnover fraction of the month (-); ts[l]: layer T (C).
+// Phase M1 diagnostics: effective first-order methylation rate on the layer Hg of the producing layers
+// k_m,eff = sum P / sum Hg (1/month; 1/d = / 30.44) and the production-weighted k_demeth = sum P kd / sum P.
+inline double mehg_kmeff_d(double prod, double hsub) { return (hsub > 0.0) ? prod / hsub / 30.44 : 0.0; }
+inline double mehg_kdeff_d(double kdp, double prod) { return (prod > 0.0) ? kdp / prod / 30.44 : 0.0; }
 inline void mehg_month(const Params& p, State& s, const double* a_turn, const double* ts, int nsl, bool ch4_driver) {
   const double km = ch4_driver ? p.k_meth_ch4 : p.k_meth_proxy;
-  double prod = 0.0;
+  double prod = 0.0, hsub = 0.0, kdp = 0.0;
   for (int l = 0; l < MAX_SOI_LAY; l++) {
     const double hl = s.soil[l] + s.diss[l];   // T2: layer Hg = sorbed + dissolved (diss = 0 without hg_t2_diss)
     if (l >= nsl || !(hl > 0.0)) { s.mehg[l] = 0.0; continue; }
     const double t = std::isfinite(ts[l]) ? ts[l] : p.t_ref;
-    const double pr = km * hl * std::fmax(0.0, a_turn[l]) * std::pow(p.q10_meth, (t - p.t_ref) / 10.0);
+    // phase M1 (hg_t2_mehg_subst): substrate = layer Hg (0), dissolved Hg (1) or Kd-equilibrium dissolved share x Hg (2)
+    const double hs = (p.t2_mehg_subst == 1) ? std::fmin(hl, std::fmax(0.0, s.diss[l]))
+                    : (p.t2_mehg_subst == 2) ? hl * std::fmin(1.0, std::fmax(0.0, s.phieq[l])) : hl;
+    const double pr = km * hs * std::fmax(0.0, a_turn[l]) * std::pow(p.q10_meth, (t - p.t_ref) / 10.0);
     const double kd = p.k_demeth * std::pow(p.q10_demeth, (t - p.t_ref) / 10.0);
     const double meq = pr / kd;
     s.mehg[l] = meq + (s.mehg[l] - meq) * std::exp(-kd);
     s.mehg[l] = std::fmin(std::fmax(s.mehg[l], 0.0), hl);
     prod += pr;
+    if (pr > 0.0) { hsub += hl; kdp += pr * kd; }   // phase M1 rate diagnostics (layer Hg of the producing layers)
   }
   s.mehg_prod_m += prod; s.mehg_prod_y += prod;
+  s.mehg_hsub_m += hsub; s.mehg_hsub_y += hsub; s.mehg_kdp_m += kdp; s.mehg_kdp_y += kdp;
 }
 
 // Restart layout (version 4): [0] version, veg (NUM_PFT x 3), dead (NUM_PFT), wd, soil (MAX_SOI_LAY),

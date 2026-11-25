@@ -2823,6 +2823,9 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
       scalar("HG_THAWEV", h.m.thawev, h.y.thawev);   // T2 phase 6b
       scalar("HG_THAWEX", h.m.thawex, h.y.thawex);
       scalar("MEHGPROD", h.mehg_prod_m, h.mehg_prod_y);
+      scalar("HG_KMEFF", hgtr::mehg_kmeff_d(h.mehg_prod_m, h.mehg_hsub_m), hgtr::mehg_kmeff_d(h.mehg_prod_y, h.mehg_hsub_y));   // phase M1
+      scalar("HG_KDEFF", hgtr::mehg_kdeff_d(h.mehg_kdp_m, h.mehg_prod_m), hgtr::mehg_kdeff_d(h.mehg_kdp_y, h.mehg_prod_y));
+      scalar("HG_MEHGEXP", h.mehg_exp_m, h.mehg_exp_y);
       scalar("HG_BALERR", h.balance_error(), h.balance_error());
     }
   }
