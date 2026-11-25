@@ -451,3 +451,25 @@ HG_MEHGBAL 0; unit tests 555/555 (Hg 73/73).
 hydrological (daily water table for the saturation proxy, or the overland zone and MeHg mobility in the snowmelt flush).
 
 M3 cost 0.259 of 0.3 core-h; ledger 10.708. Details: WORK_NOTES_hg_t2.md section 15.
+
+## 27. Phase M4 status (2026-11-25)
+Local feat/hg-t2 (not pushed): 076f3bba (code and tests), plus docs. Binary binM4.
+
+**New, default off.** `hg_t2_mehg_satd`: the proxy saturation factor is the month mean of daily factors from each day's
+water table times that day's thaw state, instead of the factor from the monthly-mean water table (which frozen days pull
+shallow). `hg_t2_mehg_zrun` (MeHg-only overland zone depth) and `hg_t2_mehg_frzmob` (MeHg mobility in the perched layer
+over frozen ground): coded and tested, not run (stop rule). Restart unchanged (v4).
+
+**Results.**
+- satd removes the HPC snowmelt flush (May layer 0-2 production -66 % at equal k): HPC export per %MeHg 992 -> 250, ratio
+  10.11 -> 8.09. Both A runs reach the k-independent feasible box; without the freeze factor the fen fails (3.77).
+- M4V1 (lag + transport + daily cutoff + satd, k 99.9/6079): TVC 0.753, HPC 0.093 (ratio 8.09), fen 2.000, exports HPC
+  23.2, TVC 16.7, Toolik fen 9.0 / proxy 1.6. Passes every primary criterion; Toolik proxy export just below 2 (secondary).
+- Warming (w8): TVC %MeHg x2.98, HPC x0.11, same direction as M1; exports milder (TVC x1.01, HPC x0.44).
+
+**Checks.** Off identity 0 diffs; non-MeHg identity of 3 variants and the warming set 0 diffs; Hg-off sub_off PASS;
+balance <= 1.8e-9; HG_MEHGBAL 0; unit tests 558/558 (Hg 76/76).
+
+**Recommendation:** preset unchanged (D5). M4V1 is the passing MeHg-on candidate for adoption by Elchin.
+
+M4 cost 0.241 of 0.45 core-h; ledger 10.949. Details: WORK_NOTES_hg_t2.md section 16.

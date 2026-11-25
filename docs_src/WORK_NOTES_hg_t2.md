@@ -1716,3 +1716,98 @@ src/m3/: patchM3.py, testsM3.cpp, runM3.sh, chain1-3.sh, sum_m3.py, plots_m3.py 
 
 ![fig29](figures_hg_t2/hg_t2_fig29_m3_toolik.png)
 ![fig30](figures_hg_t2/hg_t2_fig30_m3_tradeoff.png)
+
+## 16. Phase M4: daily saturation proxy (hydrological step), recalibration, warming (2026-11-25)
+Plan: `/workspace/hg/t2/PLAN_mehg_M4.md` (approved "full M4": D1 0.4 core-h budget, 0.45 hard cap, new "PHASE M4" ledger
+section; D2 items A and C, B conditional and last; D3 a C pass needing frzmob <= 0.2 is tuning only; D4 HPC export pass
+line 50 ng/m2; D5 preset unchanged). Base: feat/hg-t2 at 8ce2cec9. Code commit 076f3bba (local, not pushed). Binary
+bins/binM4 (md5 d54607f2). Scripts in src/m4/: patchM4.py, testsM4.cpp, runM4.sh, chain1-2.sh, sum_m4.py, plots_m4.py
+(and src/ledgerM4.py). Results in an2/m4/. **M4 used 0.241 of 0.45 core-h (budget 0.4); ledger total 10.949.**
+
+### 16.1 Code (one commit, all default off, bit-identical when off)
+- `hg_t2_mehg_satd` (0/1; needs hg_mehg, hg_t2, hg_t2_diss). Item A. With the proxy driver, the saturation factor of the
+  methylation index is the month mean of daily factors, sat_d = clamp((z + dz - wt_d)/dz) x g_d, from each day's water
+  table (Hg-only copy of d_sois.watertab, hg_dwt[31]) times that day's thaw state g_d (the daily freeze factor when
+  hg_t2_mehg_frzd 1, else a thawed indicator). This replaces sat from the monthly-mean water table, which getWaterTable
+  pulls shallow on frozen days (frozen layers count as saturated). With frzd 1 the monthly freeze factor is then set to 1
+  for the proxy so it is not applied twice. The CH4 driver is unchanged.
+- `hg_t2_mehg_zrun` (0-1 m; needs transport). Item B. MeHg-only overland zone depth: with zrun > 0, layers l > 0 whose top
+  is at or below zrun do not supply the overland mobile pool. zrun = hg_z_runoff reproduces off exactly.
+- `hg_t2_mehg_frzmob` (0-1, default 1; needs transport). Item C. Scales hg_t2_mehg_mobfac in the perched layer (the
+  lowest thawed layer above a frozen one, per day).
+- Restart unchanged (v4). Unit tests (3 new): parse (defaults, ranges, dependencies); sat_daily algebra; B/C transport
+  (zrun = z_runoff equals off, shallower zrun and frzmob < 1 lower only MeHg export, Hg identical, MeHg conserved). Unit
+  tests 558/558 (Hg 76/76).
+
+### 16.2 Runs (Jun-Sep %MeHg, last 20 yr; exports ng/m2 May-Oct; all with lag + transport; figures 31-32)
+
+| run | setting | TVC | HPC | ratio | fen (CH4) | HPC exp | TVC exp | TLK fen exp | TLK proxy exp | HPC exp per HPC % |
+|---|---|---|---|---|---|---|---|---|---|---|
+| M4P | binM4, all M4 switches off (MeHg preset) | 0.712 | 0.0997 | 7.15 | 2.018 | | | | | |
+| M4A1 | M3V1 + satd 1 (k 127.1 / 6079) | 0.958 | 0.1183 | 8.09 | 2.000 | 29.6 | 21.2 | 9.0 | 2.0 | 250 |
+| M4A2 | satd 1, no freeze factor (k 127.1 / 6079) | 0.974 | 0.1248 | 7.81 | 3.773 | 30.3 | 21.2 | 118.0 | 1.9 | 243 |
+| **M4V1** | **M4A1 recalibrated, k 99.9 / 6079** | **0.753** | **0.0930** | **8.09** | **2.000** | **23.2** | **16.7** | **9.0** | **1.6** | **250** |
+| M3V1 | M3 best (monthly-mean wt), k 127.1 / 6079 | 0.824 | 0.0816 | 10.11 | 2.000 | 80.9 | 19.2 | 9.0 | 2.3 | 992 |
+
+- **Item A works as predicted.** At equal k, satd cuts HPC May production in the overland layers 0-2 from 324 to about
+  109 ug/m2/month (M4V1 86 at k 99.9) and raises HPC Jun-Sep production from 33 to about 115 (M4V1 91): the frozen-day
+  saturation of the just-thawed layer is gone, and summer days with a deep daily water table are no longer averaged
+  with frozen days. HPC export per %MeHg falls from 992 to 250 ng/m2 per %, the ratio from 10.11 to 8.09 (figure 31).
+- **Both A runs reach the k-independent feasible box** (ratio 4.67-10.5 and E <= 625; figure 32a). A2 fails the fen
+  criterion: without the freeze factor the CH4 driver (which satd does not touch) methylates in frozen months (fen 3.77,
+  Toolik fen export 118). So the freeze factor stays.
+- **Stop rule applied:** A1 reached the box, so steps 4-5 (C frzmob, B zrun) were skipped (no runs). Their code stays,
+  default off and tested.
+- Recalibration: k linear, k_proxy 127.1 x sqrt((0.7/0.9575)(0.1/0.11834)) = 99.9; k_ch4 unchanged (fen already 2.000).
+  M4V1 matched the prediction to 3 digits (TVC 0.753, HPC 0.093, HPC export 23.2).
+
+### 16.3 M4V1 against every criterion
+
+| criterion | target | M4V1 | pass |
+|---|---|---|---|
+| TVC %MeHg (act, Jun-Sep) | 0.7 ±20 % | 0.753 (+7.5 %) | yes |
+| HPC %MeHg | 0.1 ±20 % | 0.0930 (-7.0 %) | yes |
+| TVC/HPC ratio | 4.67-10.5 | 8.09 | yes |
+| Toolik fen (CH4) | 2.0 ±20 % | 2.000 | yes |
+| HPC May-Oct export | 2-50 | 23.2 | **yes** (was 80.9 in M3V1) |
+| TVC export | 2-50 | 16.7 | yes |
+| Toolik export, fen / proxy | 2-50 | 9.0 / 1.58 | fen yes; proxy **just below 2** (secondary, see 16.6) |
+| 0-50 cm order | plateau < bog < fen | 0.137 < 1.093 < 2.778 | yes |
+| k_d,eff | <= 0.5 1/d | 0.050-0.057 | yes |
+| k_m,eff below tracer k_m | HPC 8e-4, TVC 4e-3, fen 0.059 | 8.2e-5, 7.7e-4, 1.8e-3 | yes |
+| MeHg:THg export | <= ~5 % | HPC 1.1 %, TVC 0.4 %, fen 0.3 % | yes |
+| balance / HG_MEHGBAL | <= 2.2e-9 / 0 | 1.8e-9 / 0 | yes |
+| identities | | see 16.4 | yes |
+
+### 16.4 Checks
+- M4P (binM4, all switches off) vs M3P: 0 diffs in every variable, all 6 case groups.
+- M4A1, M4A2, M4V1 vs M2P: 0 non-MeHg diffs (558 files). Warming set M4V1 vs M1B: 0 non-MeHg diffs (796 files).
+- Hg-off sub_off, binM vs binM4 (out/M4R1_sub_off): PASS.
+
+### 16.5 Warming of M4V1 (step 8; 2080-2099 Jun-Sep, copied M1B 2024 restarts, ctl vs w8)
+
+| site | config | %MeHg ctl -> w8 | May-Oct export ctl -> w8 | ALD ctl -> w8 (m) |
+|---|---|---|---|---|
+| TVC | M1B | 0.745 -> 2.333 (x3.13) | 15.9 -> 1.3 (x0.08) | 0.70 -> 1.26 |
+| TVC | M4V1 | 0.903 -> 2.687 (x2.98) | 15.7 -> 15.8 (x1.01) | 0.70 -> 1.26 |
+| HPC | M1B | 0.119 -> 0.019 (x0.16) | 215 -> 12.6 (x0.06) | 0.75 -> 1.22 |
+| HPC | M4V1 | 0.104 -> 0.011 (x0.11) | 24.8 -> 11.0 (x0.44) | 0.75 -> 1.22 |
+
+- The M1 warming direction is kept (TVC %MeHg up about x3, HPC down as the plateau drains). The export response is
+  milder than M1B: TVC export holds (the lag and transport keep the deepening thawed-zone MeHg mobile), HPC falls x0.44
+  instead of x0.06 (no snowmelt flush to lose).
+
+### 16.6 Recommendation (Elchin decides; preset unchanged per D5)
+- **M4V1 is the first MeHg-on setting that passes every primary criterion**: hg_t2_mehg_lag 1, hg_t2_mehg_transport 1,
+  hg_t2_mehg_frz 1, hg_t2_mehg_frzd 1, hg_t2_mehg_satd 1, hg_t2_k_meth_proxy 99.9, hg_t2_k_meth_ch4 6079. It is the
+  candidate to adopt if Elchin wants a MeHg-on configuration; the preset is not changed in code.
+- Caveat: Toolik proxy-driver export is 1.58 ng/m2 (secondary; the fen CH4 driver gives 9.0). It scales with k_proxy and
+  was 2.0 before recalibration, so it is a calibration-level miss, not a mechanism failure. Items B and C (export-only
+  levers) would only lower it further, which is another reason they were not run.
+- Items B (zrun) and C (frzmob) are coded, tested and off; not needed for the pass.
+- **Figures** (docs_src/figures_hg_t2): hg_t2_fig31_m4_satd_layers.png (HPC / TVC monthly production by layer and export,
+  M3V1 vs M4V1), hg_t2_fig32_m4_tradeoff.png (k-independent plane with the M4 points; criteria bars M2V1 / M3V1 / M4V1).
+  M4A1 and M4V1 sit on the same point in figure 32a (both axes are k-independent).
+
+![fig31](figures_hg_t2/hg_t2_fig31_m4_satd_layers.png)
+![fig32](figures_hg_t2/hg_t2_fig32_m4_tradeoff.png)
