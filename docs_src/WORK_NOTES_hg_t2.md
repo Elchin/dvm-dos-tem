@@ -1480,3 +1480,143 @@ binM1 with the preset (`hg_mehg 1, hg_t2 1`) and extra keys. The metric is the J
 ![fig23](figures_hg_t2/hg_t2_fig23_m1_pctmehg_q10_subst.png)
 ![fig24](figures_hg_t2/hg_t2_fig24_m1_rates.png)
 ![fig25](figures_hg_t2/hg_t2_fig25_m1_export_warming.png)
+
+## 14. Phase M2: frozen-layer methylation, MeHg transport and timing, Jun-Oct export, depth-attenuated thaw evasion (2026-11-25)
+Plan: `/workspace/hg/t2/PLAN_mehg_M2.md` (approved: D1 0.8 core-h budget, 1.0 cap; D2 May-Oct export target, Jun-Oct secondary;
+D3 report the trade-off rather than force a fit; D4 item 2 in; D5 item h in, item f deferred; D6 preset unchanged).
+Base: local feat/hg-t2 at 127a0ffb. Code commits (local, not pushed): 132b9d7f (item 1), 764bf360 (items 2 and h), 8c2f92f5
+(item 2 timing). Binaries bins/binM2 (764bf360, md5 of the final binary binM2c e16fed1c at 8c2f92f5). Scripts in src/m2/:
+patchM2a/b/c.py, testsM2a/b/c.cpp, mk_m2.py, runM2.sh, diag_m2.py, an_m2.py, sum_m2.py, cmp_m2.py, mk_w6h.py, mk_w6dh.py,
+run_h.sh, run_h2.sh, anh_m2.py, plots_m2.py. Results in an2/m2/. **M2 used 0.8025 of 1.0 core-h; ledger total 10.449.**
+
+### 14.1 Code (all default off; unit tests 552/552, Hg 70/70)
+- **Item 1, `hg_t2_mehg_frz`** (int 0-2, default 0), with `hg_t2_mehg_frz_t0` (°C, default 0) and `hg_t2_mehg_frz_dt` (°C,
+  default 1). In `mehg_month` the production P of each layer is multiplied by f(ts):
+  - 0: f = 1 (unchanged);
+  - 1: f = 0 at ts <= t0, else 1 (hard cutoff);
+  - 2: linear ramp, f = clamp((ts - t0) / dt, 0, 1).
+
+  Demethylation is unchanged, so a frozen layer only loses MeHg. Needs hg_mehg = 1 and hg_t2 = 1.
+  New output MEHGPRODL (layer MeHg production, ug/m2/month; sums to MEHGPROD; spec row off by default).
+- **Item 2, `hg_t2_mehg_transport`** (0/1, default 0) and `hg_t2_mehg_mobfac` (default 1). In `diss_transport_` every daily
+  dissolved transfer F out of a layer carries F x mobfac x MeHg / (sorbed + dissolved) of the index; exports (overland,
+  lateral, melt and the flow-path routes) leave the index, so HG_MEHGEXP becomes a removal. MeHg arriving in a layer is
+  clamped to the layer Hg; the clamp loss is booked. New output HG_MEHGBAL = dMeHg - (P - D - export - clamp).
+- **Item 2 timing, `hg_t2_mehg_lag`** (0/1, default 0). Found during M2.0: Cohort's end-of-month step runs `mehg_month` before
+  the month's dissolved transport, so the month's water export carries MeHg produced in that same month (May export = end of
+  May stock). With lag = 1 the index update is deferred until after the transport, so a month's water moves the
+  start-of-month stock and the new production is exported from the next month on.
+- **Item h, `hg_t2_thaw_evz`** (m, default 0 = off). In thawrel the evading fraction becomes f_thaw_evade x exp(-(z -
+  z_prev,max) / evz); the remainder goes to the dissolved pool as before (mass-conserving).
+- **Item 3** is analysis only (an_m2.py): MEHGEXP May-Oct, Jun-Oct, May share, annual, a thawed-surface window, MeHg:THg
+  export and HG_MEHGBAL. It reproduces M1 (HPC 190.6 / 17.4, TVC 15.7 / 7.5).
+- The restart format stays v4 (no new restart fields; the lag state is within-month only).
+
+### 14.2 Identity and regression (all pass unless noted)
+- All M2 switches off (binM2) vs M2D (binM2a) and M2Q (binM2c) vs M2P: 0 diffs in every variable, all 6 case groups.
+- M2D (binM2a, diagnostic outputs) vs M1B: 0 diffs.
+- Every MeHg variant (F1, F2a, F2b, L, LF1, LT, LF1T, LF2a, LF2c, V1, V2) vs M2P: 0 non-MeHg diffs (cmp_m2, 558 files).
+- Hg-off sub_off, binM vs binM2c: PASS. hg_t2 = 0 (T1 path), Toolik M2T0 (binM2c) vs P6T0: 0 diffs.
+- Warming: M2P w8/w8h/ctl reproduce the 6c table exactly (net Hg(0) -17.0, thaw evasion 0.452 / 3.635 mg/m2).
+- **Item h in the present climate is not bit-identical** (plan expected 0 diffs). thawrel fires in the spin-up whenever the
+  thaw depth sets a new maximum, so evz changes trace releases: TVC 20/19 files and Toolik 17 files differ; HPC 0. Main-run
+  differences are <= 1e-6 relative (HGSOIL 0.0095 of 1.4e4 ug/m2); all targets unchanged to 4 digits.
+- Balance <= 1.8e-9 ug in all runs; HG_MEHGBAL 0 with transport on.
+
+### 14.3 M2.0 diagnosis (step 1; the stop rule did not fire)
+- End-of-April stock (as planned): 98 % (HPC) and 94 % (TVC) made at ts <= 0 °C, 100 % / 99.9 % at <= 1 °C; HPC 85 % in April.
+  HPC holds it in layers 1-2 (15 and 41 ug/m2; 6.7 and 8.2 %MeHg).
+- End-of-May stock (the one May export actually uses, see 14.1 timing): HPC 95 % made in May itself, 66 % at ts <= 0 and 34 %
+  at 0-1 °C, 230 ug/m2 in layer 2 (45.6 %MeHg). TVC 89 % in May, 94 % at <= 0.
+- Under the cutoff (M2F1) the residual HPC May stock (83 ug/m2, layer 2 at 16 %MeHg) is all made at 0-1 °C in May: a thin,
+  snowmelt-saturated, just-thawed organic layer with Q10_meth = 1 methylates at full rate.
+
+### 14.4 Results (Jun-Sep %MeHg, last 20 yr; export ng/m2; figures 26-27)
+
+| run | switches | TVC act | HPC act | ratio | fen (CH4) | HPC May-Oct | HPC Jun-Oct | TVC May-Oct | TLK fen May-Oct |
+|---|---|---|---|---|---|---|---|---|---|
+| M2P | preset (off) | 0.712 | 0.0998 | 7.14 | 2.018 | **190.6** | 17.4 | 15.7 | 20.5 |
+| M2F1 | cutoff T<=0 | 0.478 | 0.0444 | 10.78 | 1.229 | 49.3 | 3.8 | 4.3 | 0.00 |
+| M2F2a | ramp -1..0 | 0.689 | 0.0698 | 9.88 | 1.613 | 106.6 | 12.6 | 6.5 | 0.00 |
+| M2F2b | ramp 0..2 | 0.244 | 0.0061 | 39.9 | 0.518 | 7.4 | 0.5 | 0.9 | 0.00 |
+| M2L | lag | 0.712 | 0.0995 | 7.16 | 2.017 | 139.6 | 109.0 | 29.5 | 63.1 |
+| M2LT | lag + transport | 0.712 | 0.0994 | 7.16 | 2.017 | 139.4 | 108.9 | 29.4 | 63.1 |
+| M2LF1 | lag + cutoff | 0.478 | 0.0442 | 10.81 | 1.228 | 19.8 | 19.8 | 6.3 | 0.01 |
+| M2LF1T | lag + cutoff + transport | 0.478 | 0.0442 | 10.81 | 1.228 | 19.8 | 19.8 | 6.2 | 0.01 |
+| M2LF2a | lag + ramp -1..0 | 0.689 | 0.0696 | 9.90 | 1.613 | 79.2 | 78.5 | 13.8 | 0.01 |
+| M2LF2c | lag + ramp -2..0 | 0.695 | 0.0786 | 8.84 | 1.730 | 90.0 | 89.0 | 18.5 | 0.05 |
+| **M2V1** | lag + cutoff, k 129.1 / 5293 | 0.870 | 0.0778 | 11.18 | 2.000 | **33.9** | 33.9 | 11.4 | 0.01 |
+| **M2V2** | lag + ramp -1..0, k 85.8 / 4031 | 0.833 | 0.0841 | 9.90 | 2.000 | **95.7** | 94.8 | 16.6 | 0.01 |
+
+Against the M2 success criteria:
+1. **One k_proxy for TVC 0.7 and HPC 0.1 (±20 %; ratio 4.67-10.5):** V2 passes (+19 % / -16 %, ratio 9.9); V1 fails
+   (+24 % / -22 %, ratio 11.2). Every configuration with the hard cutoff has a ratio of 10.8-11.2.
+2. **Fen 2.0 ±20 %:** V1 and V2 2.000 (k_ch4 refitted).
+3. **0-50 cm order plateau < bog < fen:** holds in all runs (V2: 0.116 < 0.883 < 2.59).
+4. **k_d <= 0.5 d⁻¹, k_m,eff below the tracer k_m:** yes (k_d,eff 0.040-0.056 d⁻¹; k_m,eff <= 2.4e-3 d⁻¹).
+5. **HPC May-Oct 2-50:** only the hard cutoff passes (F1 49.3, LF1 19.8, V1 33.9; F2b 7.4 but ratio 39.9). Every ramp
+   (F2a, LF2a, LF2c, V2: 79-107) fails.
+   - **TVC stays in 2-50 in all runs. Toolik does not:** with any freeze factor the Toolik May-Oct MeHg export falls to
+     <= 0.05 ng/m2 (from 6-63). Toolik's %MeHg is fine; only its exported share collapses. Cause not diagnosed in M2 (likely:
+     Toolik water leaves through layers that are frozen or at the freezing point in the months that drain).
+6. **Balance and identity:** pass (14.2).
+
+- **The trade-off (D3): no configuration passes criteria 1 and 5 together.** The ratio-passing set (preset, ramps, lag)
+  leaves HPC at 79-191; the export-passing set (hard cutoff) puts the ratio at 10.8-11.2, just outside 10.5. V1 misses
+  criterion 1 by 2-4 % per site; V2 misses criterion 5 by about 2x.
+- **Lag (item 2 timing) is what makes the cutoff work:** it moves the export peak from May to June (May share 0.91 -> 0.00)
+  and with the cutoff cuts HPC from 49 to 20. Alone it lowers HPC only to 140 and raises TVC and Toolik export (29 and 63),
+  because the start-of-month stock is larger than the end-of-month stock in the growing season.
+- **Transport (item 2) changes almost nothing** (<= 0.2 % in %MeHg and export): the M1 export diagnostic already used the
+  same share, and the removed MeHg is small compared with production. Its value is mass consistency (HG_MEHGBAL = 0). The
+  mobfac 3 sensitivity in the plan was not run (budget; transport was shown insensitive).
+- **Jun-Oct (item 3)** passes for the preset (17.4) but, as the plan warned, only because the build-up is exported in May.
+  With the lag the May and Jun-Oct seasons coincide.
+
+### 14.5 Warming of V2 (step 5; 2080-2099 Jun-Sep, copied M1B 2024 restarts; figure 28c)
+
+| config | TVC act ctl → w8 | TVC 0-50 cm | TVC MEHGPROD mg/m2/yr | HPC act ctl → w8 | HPC MEHGPROD | HPC May-Oct export |
+|---|---|---|---|---|---|---|
+| preset | 0.745 → 2.333 (x3.1) | 0.946 → 0.079 | 2.21 → 28.8 (x13.0) | 0.119 → 0.019 | 0.92 → 0.87 | 215 → 12.6 |
+| V2 | 0.869 → 2.816 (x3.2) | 1.098 → 0.094 | 2.41 → 34.5 (x14.3) | 0.102 → 0.015 | 0.64 → 0.28 | 100 → 20.9 |
+
+- Same direction as M1: TVC production x14 and %MeHg x3 (Yang 2016 direction); HPC falls. V2 does not change the warming
+  story; HPC production falls more (x0.43) because w8 adds near-freezing months.
+
+### 14.6 Item h: depth-attenuated thaw evasion (step 6; TVC ctl / w8 / w8h, HPC w8; figure 28a-b)
+
+| run | evz | ALD max | thaw evasion (mg/m2, sum) | thaw export | evasion last 25 yr | export last 25 yr | net Hg(0) last 25 yr | Δ Hg below 1 m |
+|---|---|---|---|---|---|---|---|---|
+| TVC w8 | off (6c) | 1.72 | 0.452 | 0.042 | 25.5 | 7.55 | **-17.0** | -1.16 |
+| TVC w8 | 0.3 m | 1.72 | 0.142 | 0.043 | 13.1 | 7.56 | **-4.6** | -0.85 |
+| TVC w8 | 0.1 m | 1.72 | 0.018 | 0.043 | 8.1 | 7.57 | **+0.4** | -0.72 |
+| TVC w8h | off (6c) | 2.69 | 3.635 | 0.341 | 25.3 | 8.07 | -17.0 | -4.53 |
+| TVC w8h | 0.3 m | 2.69 | 0.518 | 0.354 | 8.4 | 8.20 | -0.1 | -1.50 |
+| TVC w8h | 0.1 m | 2.69 | 0.046 | 0.357 | 6.9 | 8.21 | +1.4 | -1.07 |
+| HPC w8 | any | 1.43 | 0 | 0 | 7.18 | 2.31 | -0.26 | +0.05 |
+
+- **Criterion met:** TVC w8 net Hg(0) is above the -17 upper bound at both depths (-4.6 at 0.3 m; +0.4, a small sink again, at
+  0.1 m). The released Hg that no longer evades stays in the soil (dissolved pool -> re-sorbed): the thaw export barely moves
+  (+2-5 %) and the deep loss shrinks (w8 -1.16 -> -0.72 to -0.85 mg/m2; w8h -4.53 -> -1.07 to -1.50).
+- HPC never thaws below its previous maximum in w8, so item h does nothing there.
+- The attenuation depth has no direct observation; 0.1-0.3 m is the defensible bracket. Present climate: see 14.2 (not
+  bit-identical, negligible).
+- Item h changes THg, not only MeHg; it is a sensitivity, not proposed for the preset without Elchin's decision.
+
+### 14.7 Recommendation (Elchin decides; preset unchanged in code)
+- **Keep the preset** (all M2 switches off). No configuration meets the %MeHg contrast and the HPC export together.
+- If the HPC export target matters more than the ±20 % site fit, the best single candidate is **V1** (lag + cutoff T <= 0,
+  k_proxy 129.1, k_ch4 5293): HPC export 33.9, fen 2.000, but TVC +24 %, HPC -22 %, ratio 11.2. If the %MeHg contrast matters
+  more, **V2** (lag + ramp -1..0 °C, k 85.8 / 4031) passes criteria 1-4 but leaves HPC export at 96.
+- Either candidate breaks the Toolik MeHg export (~0), which should be diagnosed before adoption.
+- Adopt `hg_t2_mehg_transport` with any MeHg configuration that is reported as a flux (consistency, no cost in fit).
+- Item h: 0.1-0.3 m removes the -17 ug/m2/yr thaw-evasion source at TVC; recommend reporting 6c results with this bracket.
+- Next (M3, not done): the residual HPC flush is May production at 0-1 °C in snowmelt-saturated layer 2. Candidates: lag +
+  cutoff with Q10_meth 2 (M1 V22 halved the flush), or a saturation-proxy cap in thawing layers; diagnose the Toolik export
+  collapse first. Item f stays deferred.
+- **Figures** (docs_src/figures_hg_t2): hg_t2_fig26_m2_hpc_layers.png, hg_t2_fig27_m2_export_configs.png,
+  hg_t2_fig28_m2_warming.png.
+
+![fig26](figures_hg_t2/hg_t2_fig26_m2_hpc_layers.png)
+![fig27](figures_hg_t2/hg_t2_fig27_m2_export_configs.png)
+![fig28](figures_hg_t2/hg_t2_fig28_m2_warming.png)

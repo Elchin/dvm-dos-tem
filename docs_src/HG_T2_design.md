@@ -396,3 +396,34 @@ The work is on local feat/hg-t2 (not pushed): ed950a56 (code and tests), plus do
 **Recommendation:** keep the preset, keep subst off, and carry the HPC spring flush to M2.
 
 M1 cost 0.638 of 1.2 core-h; ledger 9.646. Details: WORK_NOTES_hg_t2.md section 13.
+
+## 25. Phase M2 status (2026-11-25)
+Local feat/hg-t2 (not pushed): 132b9d7f (item 1), 764bf360 (items 2, h), 8c2f92f5 (lag), plus docs. Binary binM2c.
+
+**New, all default off.**
+- `hg_t2_mehg_frz` (0 off, 1 cutoff at t0, 2 linear ramp t0..t0+dt), `hg_t2_mehg_frz_t0`, `hg_t2_mehg_frz_dt`; output
+  MEHGPRODL.
+- `hg_t2_mehg_transport`, `hg_t2_mehg_mobfac`: the MeHg index moves with the dissolved transfers; exports remove it; output
+  HG_MEHGBAL.
+- `hg_t2_mehg_lag`: the MeHg update runs after the month's dissolved transport.
+- `hg_t2_thaw_evz` (m): depth-attenuated thaw evasion (THg).
+- Restart format unchanged (v4).
+
+**Results.**
+- M2.0: the HPC May export uses end-of-May stock, 95 % made in May (66 % at <= 0 °C, 34 % at 0-1 °C), in layer 2.
+- No configuration meets the TVC/HPC %MeHg contrast and HPC May-Oct export 2-50 together:
+  - V1 (lag + cutoff, k 129.1/5293): HPC export 33.9 (pass), TVC 0.870 / HPC 0.0778 (ratio 11.2, fail by 2-4 %), fen 2.000;
+  - V2 (lag + ramp -1..0, k 85.8/4031): 0.833 / 0.0841 (ratio 9.9, pass), fen 2.000, HPC export 95.7 (fail).
+- Any freeze factor drops the Toolik MeHg export to ~0 (open issue).
+- Transport changes %MeHg and export by <= 0.2 %.
+- V2 warming has the M1 direction (TVC %MeHg x3.2, production x14; HPC down).
+- Item h: TVC w8 net Hg(0) -17.0 -> -4.6 (evz 0.3 m) / +0.4 (0.1 m); deep Hg loss smaller; HPC unchanged.
+
+**Checks.** Off identity 0 diffs; non-MeHg identity of 11 variants 0 diffs; Hg-off sub_off PASS; hg_t2 0 vs P6T0 0 diffs;
+balance <= 1.8e-9; HG_MEHGBAL 0; unit tests 552/552 (Hg 70/70). Item h present climate not bit-identical (spin-up trace
+releases, <= 1e-6 relative in the main run).
+
+**Recommendation:** keep the preset; Elchin picks V1 (export) or V2 (contrast) or an M3 follow-up (Q10_meth 2 + cutoff,
+Toolik export diagnosis). Item h as a 0.1-0.3 m sensitivity bracket.
+
+M2 cost 0.8025 of 1.0 core-h; ledger 10.449. Details: WORK_NOTES_hg_t2.md section 14.
