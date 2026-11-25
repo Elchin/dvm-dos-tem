@@ -358,3 +358,41 @@ f_thaw_export 0.015 and reference year 2024. This supersedes the section 22 "not
 - HPC w8 and proj release nothing (ALD 1.43 m).
 
 6c cost 0.110 of 0.12; ledger 8.863. Details: WORK_NOTES_hg_t2.md section 12.
+
+## 24. Phase M1 status (2026-11-25)
+The work is on local feat/hg-t2 (not pushed): ed950a56 (code and tests), plus docs. Binary binM1.
+
+**New, all default off or diagnostic only.**
+- `hg_t2_mehg_subst`: the methylation substrate is 0 layer Hg (default), 1 dissolved Hg, or 2 the Kd-equilibrium dissolved
+  share.
+- Outputs HG_KMEFF and HG_KDEFF (effective rates, 1/d) and HG_MEHGEXP (MeHg-share x dissolved export; diagnostic, not removed
+  from the index).
+- `hg_q10_meth` and `hg_q10_demeth` already work with hg_t2 = 1, so no T2 copies were added.
+- The restart format is unchanged (v4).
+
+**Results** (Jun-Sep, last 20 yr).
+- The preset (Q10 1/2, k 71/3250) fits TVC 0.712, HPC 0.0997 and the Toolik fen 2.018 with one k per driver.
+- Q10_demeth 1 breaks the TVC/HPC contrast (ratio 14.6-16.8 against the 4.67-10.5 band), for any k.
+- Q10_meth 2-3 with Q10_demeth 2, recalibrated, also fits:
+  - V22: k 138.7/6362, 0.740/0.0946/2.000;
+  - V32: k 205.3/9419, 0.761/0.0920/2.000.
+- The dissolved and Kd substrates fail (ratio 0.8-1.0 and 91).
+- The 0-50 cm order is plateau < bog < fen: 0.144 < 0.767 < 2.54.
+- k_m,eff is 8.6e-6 (HPC), 6.3e-4 (TVC) and 4.1e-4 (fen) d⁻¹, 6-142x below the Thompson tracer k_m. k_d,eff is 0.044-0.055
+  d⁻¹.
+- MeHg export (May-Oct) is 15.7 ng/m2 at TVC and 20.5 at Toolik (fen) (pass). HPC is 191 (fail): a May flush of MeHg built up
+  over winter in thin shallow organic layers.
+- Warming w8: TVC production rises x13 and %MeHg x3 (the Yang 2016 direction); HPC %MeHg falls x0.16. The Q10 swap barely
+  changes this.
+
+**Checks.** All pass:
+- off identity vs P6P (0 diffs);
+- the new outputs do not perturb (0 diffs);
+- Hg-off sub_off PASS;
+- non-MeHg identity of all 10 variants and the warming runs (0 diffs);
+- balance ≤ 1.8e-9;
+- unit tests 546/546 (Hg 64/64).
+
+**Recommendation:** keep the preset, keep subst off, and carry the HPC spring flush to M2.
+
+M1 cost 0.638 of 1.2 core-h; ledger 9.646. Details: WORK_NOTES_hg_t2.md section 13.

@@ -1313,3 +1313,170 @@ No restart was reused as input. The full A+B run costs 0.135 core-h.
 Cost: P6T0 0.010, P6R1 0.033, P6R2 0.034, P6R3 0.067, for 0.145 of 0.2 core-h. The ledger total is 9.0080.
 
 ![fig22](figures_hg_t2/hg_t2_fig22_6c_warming.png)
+
+## 13. Phase M1: MeHg-index temperature response, substrate, 0-50 cm metric, effective rates, export diagnostic (2026-11-25)
+Plan: `/workspace/hg/t2/PLAN_mehg_lit.md`, phase M1, items (a), (b), (d), (e) and (g). Literature: `lit_7questions.md`.
+Base: local feat/hg-t2 at 3d8927a5. Code commit ed950a56 (not pushed). Binary bins/binM1. Scripts are in src/m1/: patchM1.py,
+testsM1.cpp, mk_m1.py, runM1.sh, an_m1.py, cmp_m1.py, sum_m1.py, exp_months.py and plots_m1.py. Results are in an2/m1/.
+M1 used 0.638 of 1.2 core-h; the ledger total is 9.646.
+
+### 13.1 Code (all default off or diagnostic only)
+- **(a) Q10 swap: no code needed.** The hg_t2 = 1 parse rule rejects only the T1 names hg_r_stem, hg_r_root,
+  hg_k_meth_proxy and hg_k_meth_ch4. `hg_q10_meth` and `hg_q10_demeth` are read directly with hg_t2 = 1 (unit test), so the
+  plan's T2 copies are unnecessary.
+- **(b) `hg_t2_mehg_subst`** (int 0-2, default 0) sets the methylation substrate in `mehg_month`:
+  - 0: layer Hg hl = sorbed + dissolved (unchanged);
+  - 1: dissolved Hg, min(hl, State::diss);
+  - 2: Kd-equilibrium dissolved share, hl x phi_eq, with phi_eq = liq / (liq + Kd M) from the month's mean liquid water.
+    It is computed in diss_transport_ and is not part of the restart.
+
+  The cap MeHg <= hl is unchanged. Values > 0 need hg_mehg = 1, hg_t2 = 1 and hg_t2_diss = 1 (parse error otherwise).
+- **(e) HG_KMEFF and HG_KDEFF** (1/d; monthly and yearly).
+  - k_m,eff = sum P / sum hl over the producing layers / 30.44: the effective first-order rate on ambient layer Hg.
+  - k_d,eff = sum (P x kd) / sum P / 30.44: the production-weighted demethylation rate.
+- **(g) HG_MEHGEXP** (ug/m2/time; monthly and yearly): the dissolved export of each layer each day (overland plus lateral
+  drainage, the acc.export_ flows) times that layer's MeHg share min(1, MeHg / (sorbed + dissolved)), taken before the
+  transport step.
+  - It is a diagnostic only. MeHg is not removed, because the T2 transport does not carry the index.
+  - It is zero without flow or with hg_mehg = 0.
+- New State fields (mehg_hsub, mehg_kdp, mehg_exp _m/_y and phieq) are not in the restart, so the restart format stays v4. The
+  output_spec rows are invalid by default.
+- **Unit tests** (3 new cases): parse (default, range, dependencies, q10 names with hg_t2); steady state for subst 0/1/2; the
+  KMEFF/KDEFF algebra; the Q10 swap at t_ref - 10; MEHGEXP bounds (zero without flow, Hg pools bit-identical with the index on
+  or off); phi_eq in (0, 1].
+  - Standalone Hg suite: 64/64 cases, 2925 assertions.
+  - Full unit suite: 546/546 cases. The same 8 known failing may-fail assertions appear as in every earlier build; status
+    SUCCESS.
+
+### 13.2 Runs and checks
+Every run is a full 4-case set: TVC and HPC (spin + main, sites_d4) plus Toolik proxy and CH4 (sp 15 yr + tr 75 yr), on
+binM1 with the preset (`hg_mehg 1, hg_t2 1`) and extra keys. The metric is the Jun-Sep mean over the last 20 years.
+- **Off identity.** M1P0 (binM1, old output spec) vs P6P (binT2p6c): 0 differences over the TVC/HPC spin and main and the
+  Toolik sp and tr outputs (cmp_t2.py).
+- **New outputs do not perturb.** M1B (new spec, with --ch4) vs M1P0: 0 differences in every common variable, including
+  MEHGSOIL and MEHGPROD (cmp_t2.py and cmp_m1.py; 475 files).
+- **Hg-off regression.** run_regression sub_off, binM vs binM1: PASS.
+- **Non-MeHg identity of every variant vs M1B.** cmp_m1.py compares all variables except MEHGSOIL, MEHGPROD, HG_KMEFF,
+  HG_KDEFF and HG_MEHGEXP, and compares hg_state without its mehg slice.
+  - Q11, Q21, Q31, Q22, Q32, S1, S2, S1Q32, V22 and V32: 0 differences each (558 files).
+  - Warming W6 V22 and V32 vs M1B: 0 differences (796 files).
+- **Balance.** Max |HG_BALERR| is 4.1e-10 (TVC), 1.1e-9 (HPC), 1.4e-9 (Toolik proxy) and 1.8e-9 (Toolik CH4) µg, identical
+  in every variant (≤ 2.2e-9).
+
+### 13.3 Results: %MeHg (active layer / 0-50 cm), figure 23
+"Q a/b" means hg_q10_meth a, hg_q10_demeth b. The preset is Q 1/2 with k_proxy 71 and k_ch4 3250.
+
+| run | TVC | HPC | TVC/HPC | Toolik proxy | Toolik CH4 |
+|---|---|---|---|---|---|
+| M1B preset Q 1/2 | 0.712 / 0.767 | 0.0997 / 0.144 | 7.14 | 0.161 / 0.206 | 2.018 / 2.541 |
+| Q 1/1 | 0.404 / 0.450 | 0.0276 / 0.0343 | 14.6 | 0.079 / 0.102 | 1.045 / 1.322 |
+| Q 2/1 | 0.218 / 0.250 | 0.0137 / 0.0169 | 15.9 | 0.040 / 0.052 | 0.541 / 0.693 |
+| Q 3/1 | 0.152 / 0.178 | 0.0091 / 0.0112 | 16.8 | 0.027 / 0.035 | 0.369 / 0.476 |
+| Q 2/2 | 0.379 / 0.419 | 0.0484 / 0.0696 | 7.83 | 0.077 / 0.099 | 1.022 / 1.299 |
+| Q 3/2 | 0.263 / 0.297 | 0.0318 / 0.0457 | 8.27 | 0.050 / 0.065 | 0.690 / 0.883 |
+| subst 1, Q 1/2 | 0.00095 / 0.0012 | 0.00124 / 0.0020 | 0.76 | 0.0003 | 0.0024 |
+| subst 1, Q 3/2 | 0.00039 / 0.0005 | 0.00039 / 0.0007 | 0.99 | 0.0001 | 0.0009 |
+| subst 2, Q 1/2 | 0.00034 / 0.0005 | 0.000004 / 0.00001 | 91 | 0.0002 | 0.0017 |
+| **V22** Q 2/2, k 138.7 / 6362 | 0.740 / 0.819 | 0.0946 / 0.136 | 7.83 | 0.150 / 0.193 | 2.000 / 2.543 |
+| **V32** Q 3/2, k 205.3 / 9419 | 0.761 / 0.857 | 0.0920 / 0.132 | 8.27 | 0.146 / 0.188 | 2.000 / 2.560 |
+
+- **Recalibration.** %MeHg is linear in k. The proxy k is the geometric mean over TVC and HPC; the CH4 k is scaled to
+  Toolik 2.0. Verified: V22 and V32 give Toolik CH4 at exactly 2.000.
+- **The TVC/HPC contrast does not depend on k.** It is set by Q10_demeth. With Q10_demeth 1 (the literature choice, "k_d
+  insensitive to T") the ratio is 14.6-16.8, more than the band's upper limit of 10.5.
+  - With the best single k_proxy, TVC and HPC would be off by about +44 % / -31 % (Q 1/1) to +55 % / -35 % (Q 3/1).
+  - So no single proxy rate fits both sites with Q10_demeth ~1.
+  - With Q10_demeth 2, every Q10_meth in {1, 2, 3} passes (ratio 7.1-8.3).
+- **Substrate switches fail by an order of magnitude.** The dissolved share is larger at HPC than at TVC, so the ratio
+  collapses to 0.8-1.0 (subst 1). The Kd share at HPC is about 1e-4, so the ratio blows up to 91 (subst 2).
+  - Fitting subst 1 would also need k about 740x (proxy) and 850x (CH4).
+  - Both stay default-off sensitivities.
+
+### 13.4 Results against the success criteria
+1. **One k_proxy fits TVC 0.7 % and HPC 0.1 % within ±20 %.**
+   - Yes for the preset: +1.8 % / -0.3 %.
+   - Yes for V22 (+5.7 % / -5.4 %) and V32 (+8.7 % / -8.0 %).
+   - No for any Q10_demeth 1 setting or either substrate switch.
+2. **One k_ch4 fits Toolik fen 2.0 % ±20 %.** Yes: preset 2.018 (+0.9 %); V22 and V32 2.000.
+3. **0-50 cm metric with plateau < bog < fen.** Holds in all three candidates:
+   - preset: HPC 0.144 < TVC 0.767 < Toolik CH4 2.54;
+   - V22: 0.136 < 0.819 < 2.54;
+   - V32: 0.132 < 0.857 < 2.56.
+
+   Toolik proxy (moist acidic tussock) is 0.19-0.21. 0-50 cm is above active-layer %MeHg everywhere, because MeHg is surface
+   weighted.
+4. **Effective rates** (Jun-Sep, 1/d; figure 24).
+
+   | site (class) | k_m,eff preset / V22 / V32 | Thompson 2025 tracer k_m | offset (tracer / eff, preset) | k_d,eff preset |
+   |---|---|---|---|---|
+   | HPC (plateau) | 8.6e-6 / 8.3e-6 / 8.1e-6 | 8e-4 | 93x | 0.048 |
+   | TVC (bog) | 6.3e-4 / 6.6e-4 / 6.8e-4 | 4e-3 | 6.4x | 0.054 |
+   | Toolik CH4 (poor fen) | 4.1e-4 / 3.8e-4 / 3.7e-4 | 0.059 (rich fen 0.146) | 142x (352x) | 0.046 |
+
+   - Toolik proxy: k_m,eff 3.1e-5 and k_d,eff 0.044.
+   - k_d,eff is 0.044-0.055 d⁻¹, at most 0.5 (Helmrich 2022), and within Helmrich's 0.04 ± 0.03 k_m sediment range, which
+     brackets ambient k_d of the same order.
+   - k_m,eff is below the tracer k_m in every class, as an ambient rate on total Hg should be. The offset grows from bog
+     (6x) to plateau (93x) and fen (142x). The fen offset is consistent with tracer k_m/%MeHg implying k_d 3-7 d⁻¹ (not a
+     self-consistent ambient steady state; lit_7questions Q1).
+   - **PASS.**
+5. **MeHg export** (last 20 yr; ng/m2):
+
+   | site | May-Oct (preset / V22 / V32) | annual | May share | Jun-Oct | MeHg:THg export |
+   |---|---|---|---|---|---|
+   | TVC | 15.7 / 14.2 / 13.4 | 15.7 | 52 % | 7.5 | 0.39 % |
+   | HPC | 191 / 177 / 170 | 204 | 91 % | 17.4 | 9.8 % |
+   | Toolik proxy | 6.3 | 6.3 | | 2.6 | 0.24 % |
+   | Toolik CH4 | 20.5 | 20.5 | | 8.9 | 0.78 % |
+
+   - THg export here is the dissolved route (HG_DRAIN + HG_RUNOFF = HG_EXPORT): TVC 4.0, HPC 2.1 and Toolik 2.6 µg/m2/yr.
+   - TVC and Toolik pass (season 2-50, annual 1-100). **HPC fails**: 191 per season and 204 per year.
+   - **HPC cause:** a spring flush. 91 % of the HPC export leaves in May. MeHg builds up over winter in the thin shallow
+     organic layers (layers 2-3, about 0.03-0.07 m). The May mean MeHg share is 6 % and 46 % of layer Hg, against 0.1-0.9 % in
+     July.
+     - This happens because with Q10_meth ≤ Q10_demeth, cold-season demethylation slows at least as much as methylation, and
+       proxy methylation continues in cold, saturated layers.
+     - The flush shrinks as Q10_meth rises: May export is 173 (Q 1/2), 82 (Q 2/2), 53 (Q 3/2) and 31 (Q 3/1). With Q10_demeth
+       2 it never reaches 50.
+     - Jun-Oct export alone (17.4) would pass.
+     - The index is not transported by T2, so this is a diagnostic of what the MeHg-share-weighted water export would carry,
+       not a mass flux removed from the index.
+   - MeHg:THg export observations, for scale: Mackenzie and Scotty Creek order 1-5 %. TVC and Toolik are low (0.2-0.8 %);
+     HPC is high (9.8 %).
+6. **Identity.** PASS (section 13.2).
+7. **Warming** (2080-2099 Jun-Sep, w8 vs ctl; copied 2024 restarts; figure 25):
+
+   | config | TVC act ctl → w8 | TVC 0-50 cm | TVC MEHGPROD (mg/m2/yr) | HPC act ctl → w8 | HPC MEHGPROD |
+   |---|---|---|---|---|---|
+   | preset | 0.745 → 2.333 (x3.1) | 0.946 → 0.079 | 2.21 → 28.8 (x13.0) | 0.119 → 0.019 (x0.16) | 0.92 → 0.87 (x0.95) |
+   | V22 | 0.789 → 2.323 (x2.9) | 1.017 → 0.079 | 2.21 → 28.3 (x12.8) | 0.113 → 0.017 | 0.83 → 0.71 |
+   | V32 | 0.821 → 2.320 (x2.8) | 1.068 → 0.079 | 2.21 → 28.1 (x12.7) | 0.110 → 0.017 | 0.79 → 0.65 |
+
+   - ALD: TVC 0.70 → 1.26 m; HPC 0.75 → 1.22 m.
+   - **TVC: the same direction as Yang 2016** (> 10x net production from -2 to 8 °C). Gross production rises x13, and
+     active-layer %MeHg rises x3, carried by the newly thawed, saturated deep active layer.
+     - The top 0-50 cm loses MeHg (x0.08) as it dries.
+   - **HPC: the opposite.** %MeHg falls x0.16 and production stays flat, because the deeper thaw adds Hg without saturation.
+   - **The Q10 swap barely changes the warming response** (TVC within 5 %, HPC production -14 to -30 %). The response is set by
+     the saturation proxy and the thaw depth, not by Q10_meth.
+   - Plausibility only; not a target.
+
+### 13.5 Recommendation for the T2 preset (Elchin decides)
+- **Keep the preset as it is:** Q 1/2, k_proxy 71, k_ch4 3250, subst 0.
+  - It already meets criteria 1-4 and 6.
+  - The literature-motivated swap (Q10_demeth ~1) cannot keep the 7:1 TVC/HPC contrast with one k.
+  - Q10_meth 2-3 with Q10_demeth 2 (V22/V32) also passes but fits slightly worse. It does not change the warming response, and
+    it only halves the HPC spring flush without curing it.
+- **Keep `hg_t2_mehg_subst` off** as a sensitivity.
+- **Adopt the diagnostics in reporting:** HG_KMEFF, HG_KDEFF and HG_MEHGEXP (spec rows off by default), and the 0-50 cm
+  metric.
+- **Open issue for M2 (not done here):** the HPC spring MeHg flush. Options:
+  - (i) no or reduced methylation in frozen or near-freezing layers (an explicit T threshold);
+  - (ii) transport the index with the dissolved share;
+  - (iii) report Jun-Oct export only.
+- **Figures** (docs_src/figures_hg_t2): hg_t2_fig23_m1_pctmehg_q10_subst.png, hg_t2_fig24_m1_rates.png,
+  hg_t2_fig25_m1_export_warming.png.
+
+![fig23](figures_hg_t2/hg_t2_fig23_m1_pctmehg_q10_subst.png)
+![fig24](figures_hg_t2/hg_t2_fig24_m1_rates.png)
+![fig25](figures_hg_t2/hg_t2_fig25_m1_export_warming.png)
