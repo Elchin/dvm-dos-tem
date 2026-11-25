@@ -1620,3 +1620,99 @@ Against the M2 success criteria:
 ![fig26](figures_hg_t2/hg_t2_fig26_m2_hpc_layers.png)
 ![fig27](figures_hg_t2/hg_t2_fig27_m2_export_configs.png)
 ![fig28](figures_hg_t2/hg_t2_fig28_m2_warming.png)
+
+## 15. Phase M3: Toolik export collapse, daily freeze factor, Q10_meth 2, recalibration (2026-11-25)
+Plan: `/workspace/hg/t2/PLAN_mehg_M3.md` (approved: 0.3 core-h hard cap, new "PHASE M3" ledger section; preset unchanged).
+Base: local feat/hg-t2 at 71c8f791. Code commit 19f1e736 (local, not pushed). Binary bins/binM3 (md5 0f727ba7). Scripts in
+src/m3/: patchM3.py, testsM3.cpp, runM3.sh, chain1-3.sh, sum_m3.py, plots_m3.py (and src/ledgerM3.py). Results in an2/m3/.
+**M3 used 0.259 of 0.3 core-h; ledger total 10.708.**
+
+### 15.1 Toolik diagnosis (0 core-h; existing M2P / M2F1 / M2L Toolik outputs; figure 29): physical, not a bug
+- Toolik's dissolved export is **overland only**: HG_DRAIN is 0 in every month (no lateral drainage from the thawed zone),
+  HG_RUNOFF carries 0.3-0.9 ug/m2/month in May-Aug.
+- The overland mixing zone is the thawed layers starting above hg_z_runoff = 4.5 cm: layers 0-2 (0-7 cm).
+- Those layers methylate **only in the shoulder months** (May, Sep-Oct), when water perches on the frost table and they
+  are saturated (proxy) or produce CH4 (CH4 driver) at a monthly T near or below 0 C. In Jun-Aug they are above the water
+  table and produce nothing; Toolik's summer methylation is in layers 3-7 (7-46 cm), which have no export path (vertical
+  advection only moves MeHg down).
+- So the whole Toolik MeHg export (preset 20.5 ng/m2 CH4, 6.3 proxy) is the shoulder-season production of the surface
+  layers. A freeze factor on the monthly T removes exactly that production, and the export falls to <= 0.05. The switch
+  works as designed; no code fix. The monthly time step is the limitation: a month whose mean T is <= 0 can still have
+  thawed days.
+
+### 15.2 HPC May flush, year by year (0 core-h, M2LF1)
+- The flush comes from the years in which layer 2 (3-7 cm) is just above 0 C at the monthly step (0.07-0.48 C) while
+  layer 3 is still frozen: perched snowmelt water makes the just-thawed layer saturated, and the whole month is credited at
+  that state (up to 635 ug/m2 in one May, 45 %MeHg). Layer 2 is in the overland zone, so the lag exports it in June.
+
+### 15.3 Code: `hg_t2_mehg_frzd` (0 off, default; 1 on)
+- With hg_t2_mehg_frz 1 or 2, the factor is evaluated on each day's layer T of the month (Hg-only copy of the daily soil
+  T, next to the existing daily liq / ice copy) and the month mean of the daily factors is used instead of the factor at the
+  monthly T: a thaw-time weighting of the production of thawing layers. Works with and without the lag. Needs
+  hg_t2_mehg_frz > 0 and hg_t2_diss = 1.
+- Restart unchanged (v4). Unit tests (3 new): parse (default, range, dependencies); the daily-mean algebra (all warm 1, all
+  frozen 0, 10 of 30 warm days 1/3, ramp); frzd 0 ignores the daily factors (bit-identical) and frzd 1 uses them. Unit tests
+  555/555 (Hg 73/73).
+- A separate liq/(liq+ice) cap on the saturation proxy was not coded: frzd already weights thawing layers by thawed time,
+  and 15.4 shows the remaining conflict is not a temperature one.
+
+### 15.4 Runs (Jun-Sep %MeHg, last 20 yr; exports ng/m2 May-Oct; all with lag + transport; figure 30)
+
+| run | setting | TVC | HPC | ratio | fen (CH4) | HPC exp | TVC exp | TLK fen exp | TLK proxy exp | HPC exp per HPC % |
+|---|---|---|---|---|---|---|---|---|---|---|
+| M3D1 | cutoff T<=0, daily | 0.460 | 0.0456 | 10.11 | 1.069 | 45.2 | 10.8 | 4.8 | 1.3 | 992 |
+| M3D2 | as D1 + Q10_meth 2 | 0.253 | 0.0225 | 11.24 | 0.575 | 21.9 | 5.1 | 1.8 | 0.5 | 975 |
+| M3D3 | daily cutoff t0 0.25 C, k 127.1 / 6078 | 0.555 | 0.0427 | 13.00 | 1.565 | 53.7 | 9.0 | 6.2 | 1.8 | 1258 |
+| **M3V1** | **D1 recalibrated, k 127.1 / 6079** | **0.824** | **0.0816** | **10.11** | **2.000** | **80.9** | **19.2** | **9.0** | **2.3** | 992 |
+| M2V1 | lag + monthly cutoff, k 129.1 / 5293 | 0.870 | 0.0778 | 11.18 | 2.000 | 33.9 | 11.4 | 0.01 | 0.00 | 436 |
+| M2V2 | lag + monthly ramp -1..0, k 85.8 / 4031 | 0.833 | 0.0841 | 9.90 | 2.000 | 95.7 | 16.6 | 0.01 | 0.00 | 1138 |
+
+- The daily factor (D1 vs M2LF1T) restores Toolik export (fen 4.8, proxy 1.3 before recalibration; 9.0 / 2.3 after) and
+  brings the ratio inside the band (10.11 vs 10.81), but raises HPC export per %MeHg from 448 to 992 ng/m2 per %: the
+  thawed days of May now methylate again in layer 2.
+- Q10_meth 2 lowers all sites about equally (ratio 11.2, export per % unchanged): it does not separate the flush from the
+  summer production.
+- A daily cutoff above 0 (t0 0.25 C) makes both worse (ratio 13.0, 1258 per %): HPC's summer methylation sits at 0-2 C in
+  the layers near the frost table (10-40 cm), so any temperature filter strong enough to stop the May layer-2 production
+  also stops HPC's summer production.
+- %MeHg and export scale linearly with k (M3V1 reproduced the M3D1 x 1.79 prediction to 3 digits).
+- **Feasibility (k-independent):** passing needs a ratio of 4.67-10.5 and HPC export per %MeHg <= 625 (50 ng at HPC
+  0.08 %). No M2 or M3 configuration is in that box (figure 30a): ratio-passing settings have 975-1910, the monthly cutoff
+  has 436-448 but a ratio of 10.8-11.2.
+
+### 15.5 M3V1 against every criterion
+
+| criterion | target | M3V1 | pass |
+|---|---|---|---|
+| TVC %MeHg (act, Jun-Sep) | 0.7 ±20 % | 0.824 (+17.7 %) | yes |
+| HPC %MeHg | 0.1 ±20 % | 0.0816 (-18.4 %) | yes |
+| TVC/HPC ratio | 4.67-10.5 | 10.11 | yes |
+| Toolik fen (CH4) | 2.0 ±20 % | 2.000 | yes |
+| HPC May-Oct export | 2-50 | 80.9 | **no** (x1.6) |
+| TVC export | 2-50 | 19.2 | yes |
+| Toolik export, fen / proxy | 2-50 | 9.0 / 2.3 | yes |
+| 0-50 cm order | plateau < bog < fen | 0.107 < 1.177 < 2.78 | yes |
+| k_d,eff | <= 0.5 1/d | 0.047-0.055 | yes |
+| k_m,eff below tracer k_m | HPC 8e-4, TVC 4e-3, fen 0.059 | 5.9e-5, 8.9e-4, 1.8e-3 | yes |
+| MeHg:THg export | <= ~5 % | HPC 3.9 %, TVC 0.5 %, fen 0.3 % | yes |
+| balance / HG_MEHGBAL | <= 2.2e-9 / 0 | 1.8e-9 / 0 | yes |
+| identities | | see 15.6 | yes |
+
+### 15.6 Checks
+- M3P (binM3, all switches off) vs M2P: 0 diffs in every variable, all 6 case groups.
+- M3D1, M3D2, M3D3, M3V1 vs M2P: 0 non-MeHg diffs (558 files).
+- Hg-off sub_off, binM vs binM3: PASS.
+- No warming run (budget); M2 showed the lag/freeze settings keep the M1 warming direction.
+
+### 15.7 Recommendation (Elchin decides; preset unchanged)
+- **Keep the preset.** No setting passes every criterion.
+- **Best trade-off: M3V1** (hg_t2_mehg_lag 1, hg_t2_mehg_transport 1, hg_t2_mehg_frz 1, hg_t2_mehg_frzd 1, k_proxy 127.1,
+  k_ch4 6079). It passes everything except HPC May-Oct export (81 vs 50), and unlike M2 V1/V2 it keeps a sane Toolik export.
+  It is the better MeHg-on configuration to report if one is wanted.
+- The remaining conflict is hydrological, not thermal: the HPC flush is snowmelt-perched saturation in the overland zone
+  (layer 2). Next levers (not done): the saturation proxy from the daily water table (the same thaw-time logic as frzd), or
+  the overland zone depth / MeHg mobility in the flush. Each needs code and about 0.1 core-h.
+- **Figures** (docs_src/figures_hg_t2): hg_t2_fig29_m3_toolik.png, hg_t2_fig30_m3_tradeoff.png.
+
+![fig29](figures_hg_t2/hg_t2_fig29_m3_toolik.png)
+![fig30](figures_hg_t2/hg_t2_fig30_m3_tradeoff.png)

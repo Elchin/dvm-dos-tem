@@ -427,3 +427,27 @@ releases, <= 1e-6 relative in the main run).
 Toolik export diagnosis). Item h as a 0.1-0.3 m sensitivity bracket.
 
 M2 cost 0.8025 of 1.0 core-h; ledger 10.449. Details: WORK_NOTES_hg_t2.md section 14.
+
+## 26. Phase M3 status (2026-11-25)
+Local feat/hg-t2 (not pushed): 19f1e736 (code and tests), plus docs. Binary binM3.
+
+**New, default off.** `hg_t2_mehg_frzd`: the freeze factor of hg_t2_mehg_frz is the month mean of daily factors from the
+daily layer T (thaw-time weighting) instead of the factor at the monthly T. Restart unchanged (v4).
+
+**Toolik export collapse: physical, not a bug.** Toolik exports only by overland flow (no lateral drainage) from the top
+4.5 cm (layers 0-2). Those layers methylate only in the shoulder months on perched water near 0 C. Any monthly freeze
+factor removes that production; the daily factor restores it (fen export 9.0, proxy 2.3 after recalibration).
+
+**Results.**
+- M3V1 (lag + transport + daily cutoff, k 127.1/6079): TVC 0.824, HPC 0.0816 (ratio 10.11), fen 2.000, TVC export 19.2,
+  Toolik 9.0 / 2.3. HPC May-Oct export is 80.9 (fail, target <= 50).
+- Q10_meth 2 and a cutoff above 0 do not help: HPC's summer methylation also sits at 0-2 C near the frost table.
+- In the k-independent plane (ratio vs HPC export per %MeHg) no M2 or M3 setting reaches the feasible box.
+
+**Checks.** Off identity 0 diffs; non-MeHg identity of 4 variants 0 diffs; Hg-off sub_off PASS; balance <= 1.8e-9;
+HG_MEHGBAL 0; unit tests 555/555 (Hg 73/73).
+
+**Recommendation:** keep the preset. M3V1 is the best trade-off (fails HPC export only, x1.6). The remaining lever is
+hydrological (daily water table for the saturation proxy, or the overland zone and MeHg mobility in the snowmelt flush).
+
+M3 cost 0.259 of 0.3 core-h; ledger 10.708. Details: WORK_NOTES_hg_t2.md section 15.
