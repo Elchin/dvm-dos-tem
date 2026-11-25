@@ -7,9 +7,15 @@
 # (tests/rts/reference/legacy_m2d).
 name: RTS tests
 
+# Run only on RTS branches (e.g. rts-light-cbal, wetland/rts-merge) and on
+# demand. On other branches (feat/hg-*, fix/*, prod/*) the RTS suite is not
+# maintained (no rts-test Makefile target, tests/rts out of sync), so running it
+# on every push only produced failure notifications.
 on:
   push:
+    branches: [ "rts-**", "**/rts-**" ]
   pull_request:
+    branches: [ "rts-**", "**/rts-**" ]
   workflow_dispatch:
 
 jobs:
@@ -20,6 +26,10 @@ jobs:
       - uses: actions/checkout@v4
         with:
           fetch-depth: 0   # Makefile uses `git describe` for GIT_SHA
+
+      - name: Fetch external Reburn modules (Fireweed, Burnup)
+        # Untracked dirs (.gitignore); WildFire.h needs FireweedFuelModels.h.
+        run: bash scripts/get_external.sh
 
       - name: Install system dependencies
         run: |
