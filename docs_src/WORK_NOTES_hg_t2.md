@@ -1838,3 +1838,58 @@ cmp_m5.py, ledgerM5.py. Results in an2/m5/. **M5 used 0.0438 of 0.05 core-h; led
   Results and caveats as section 16 (M4V1; Toolik proxy-driver export 1.6 ng/m2, just below 2).
 
 ![fig32](figures_hg_t2/hg_t2_fig32_m4_tradeoff.png)
+
+## 18. Phase M6: Toolik proxy-driver MeHg export (M4V1 / hg_t2_mehg_preset: 1.58 ng/m2 vs the 2 line) (2026-11-25)
+Approved: up to 0.1 core-h (hard cap; new "PHASE M6" ledger section); diagnose first from existing outputs; at most one or
+two small Toolik-targeted, physically justified default-off adjustments; preset values unchanged. Base: feat/hg-t2 at
+a2fef73f. Scripts in src/m6/: diag_m6.py, plots_m6.py, ledgerM6.py. Results in an2/m6/diag.json. **M6 used 0 core-h (no
+runs, no code change); ledger total 10.993.**
+
+### 18.1 What the "Toolik proxy" case is
+- It is the Toolik CMT06 fen cell with the wetland CH4 module **disabled** (the only config difference to the Toolik fen
+  case is wetland.enabled false), so the MeHg index falls back to the saturation proxy. The fen criterion (2.0 % ±20 %)
+  and the Toolik export criterion are met by the CH4-driver case, the standard Toolik setup (M4V1: fen 2.000 %, export
+  9.0 ng/m2).
+- The proxy case has no calibration target of its own: its %MeHg is 0.10 (20x below the fen target) and its annual
+  production 105 ug/m2 (fen 1796). Its export follows from that low production, not from an export-path problem.
+
+### 18.2 Where the Toolik proxy export comes from (M4V1, last 20 yr; figure 33)
+- **Overland only:** HG_DRAIN is 0 in every month; HG_RUNOFF carries the export in May-Aug. The overland zone is layers
+  0-2 (top 7 cm; layer 0, 1 cm of moss, makes nothing). QRUNOFF is 117 mm in May (snowmelt), 18 / 37 / 44 mm in Jun-Aug,
+  about 1 mm in Sep, 0 in Oct.
+- **Layers 0-2 make 6 % of the production** (6.7 of 105 ug/m2/yr: May 1.2, Jun 3.2, Sep 2.3). The summer production is in
+  layers 3-7 (7-46 cm; 83 ug/m2/yr), which have no export path (vertical advection only moves MeHg down).
+- Export: Jun 0.47, Jul 0.91, Aug 0.20 ng/m2 (with the lag, the month's stock moves before that month's update). The Sep
+  production in layers 0-2 meets almost no runoff (1 mm) and is demethylated over winter.
+- Export per %MeHg: Toolik proxy 15.6 ng/m2 per %, fen 4.5: the proxy case is not export-limited relative to the fen.
+
+### 18.3 Effect of satd (equal k 127.1: M3V1 -> M4A1) and of the recalibration
+- satd lowers Toolik proxy export by 13 % (2.33 -> 2.02). In M3V1 the layer 0-2 production was mostly in May (6.2 of 7.7
+  ug/m2/yr), credited at frozen-day saturation, i.e. the same artifact that made the HPC flush; with satd it moves to June
+  (4.0) after the snowmelt runoff peak, and the export moves from June (1.87) to July (1.16).
+- The k recalibration for TVC / HPC (127.1 -> 99.9, -21 %) gives the rest: 2.02 -> 1.58. Export is linear in k.
+
+### 18.4 Adjustments considered (none run)
+- **Global k_proxy:** 2 ng/m2 needs k_proxy 126, which puts TVC at 0.95 % (band <= 0.84; figure 33d). Not possible.
+- **Any proxy-index or MeHg-transport lever** (saturation proxy, freeze factor, mobility, overland zone depth
+  hg_z_runoff / hg_t2_mehg_zrun, hg_t2_mehg_frzmob) acts equally on TVC and HPC, which use the same proxy driver. The
+  overland zone is already the same for all sites; zrun and frzmob only lower export. A deeper overland zone would export
+  Toolik's summer production of layers 3-7 but would also re-open the HPC flush route (HPC layer 2-3 near the frost table;
+  sections 15-16).
+- **A Toolik-only switch** would have to key on the site (CMT or the wetland flag), i.e. a tuning knob for a case that
+  has no target, with no mechanism that differs between Toolik and the other sites. Not physically justified.
+- **Site-config level:** the physically appropriate driver for the Toolik fen is the CH4 driver (wetland module on), and it
+  passes. The proxy case is a fallback / sensitivity configuration.
+- So no adjustment was coded or run; the 0.1 core-h was not used.
+
+### 18.5 Recommendation (Elchin decides; hg_t2_mehg_preset unchanged)
+- **Accept the miss.** The Toolik proxy export (1.58 ng/m2) is 21 % below a lower sanity line, in a configuration with no
+  target whose %MeHg is 20x below the fen target. It is not an export-path failure (export per %MeHg is 3.5x the fen's),
+  satd removed an artifact from it, and the only lever that raises it (k_proxy) breaks TVC.
+- Report Toolik MeHg export with the CH4 driver (9.0 ng/m2; passes). Treat the proxy-driver Toolik values as a sensitivity
+  case (no lateral drainage, overland export from the top 7 cm only).
+- **Figure** (docs_src/figures_hg_t2): hg_t2_fig33_m6_toolik_proxy.png (a-c monthly production by layer, export and runoff:
+  Toolik proxy M3V1, Toolik proxy M4V1, Toolik fen M4V1; d k_proxy scaling of the Toolik proxy export against the TVC and
+  HPC bands).
+
+![fig33](figures_hg_t2/hg_t2_fig33_m6_toolik_proxy.png)
