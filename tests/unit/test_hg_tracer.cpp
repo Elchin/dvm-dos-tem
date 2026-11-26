@@ -1787,8 +1787,8 @@ TEST_CASE("D1 DOC geometry change: pool redistributed over the DOC layers by soi
   CHECK(s.dz[1] == 0.07);
   hgtr::Snap b3 = b2; for (int l = 0; l < 3; l++) b3.type[l] = 3; b3.dz[0] = 0.06;
   hgtr::doc_geom(s, b3, 2); CHECK(d1tot(s) == 0.0); CHECK(s.sink_m == doctest::Approx(6.0)); CHECK(s.sink_y == doctest::Approx(6.0));
-  hgtr::DocState a; hgtr::doc_geom(a, b, 0); a.d[0] = 0.25; a.d[2] = 1.5; double v[hgtr::DOC_NSTATE]; hgtr::doc_pack(a, v);
-  hgtr::DocState c; hgtr::doc_unpack(c, v); CHECK(c.init); CHECK(c.nsl == 5);
+  hgtr::DocState a; hgtr::doc_geom(a, b, 0); a.d[0] = 0.25; a.d[2] = 1.5; a.cn = 3.5; a.cd = 0.25; double v[hgtr::DOC_NSTATE]; hgtr::doc_pack(a, v);
+  hgtr::DocState c; hgtr::doc_unpack(c, v); CHECK(c.init); CHECK(c.nsl == 5); CHECK(c.cn == 3.5); CHECK(c.cd == 0.25);
   for (int l = 0; l < MAX_SOI_LAY; l++) { CHECK(c.d[l] == a.d[l]); CHECK(c.dz[l] == a.dz[l]); }
   hgtr::doc_geom(c, b, 3); CHECK(c.d[0] == 0.25);   // same geometry: no redistribution
 }
@@ -1838,4 +1838,34 @@ TEST_CASE("D1 coupling beta 1, cref = f_C / Kd: dissolved share = DOC / (DOC + s
   CHECK(s.soil[0] + s.diss[0] == doctest::Approx(H0).epsilon(1e-14));
   hgtr::Params p0 = p; p0.t2_doc_hg = 0; hgtr::State r; d1hg(r, b); hgtr::diss_transport_(p0, r, b, f, r.m);
   CHECK(s.diss[3] == r.diss[3]); CHECK(s.soil[3] == r.soil[3]);   // mineral layer unchanged
+}
+TEST_CASE("D1b parse and site reference: hg_doc_cref -1 / crefyr; running sums of c x w; Kd with cref -1 == cref = cref_eff; no history = off") {
+  hgtr::Params p0 = t2params(); (void)p0;
+  Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_t2"] = 1; m["hg_dep_file"] = T2DEP; m["hg_t2_doc"] = 1; m["hg_t2_doc_hg"] = 1;
+  hgtr::Params r; CHECK(r.doc_crefyr == 5.0);
+  Json::Value a = m; a["hg_doc_cref"] = -1; a["hg_doc_crefyr"] = 2; REQUIRE(hgtr::parse(a, r) == ""); CHECK(r.doc_cref == -1.0); CHECK(r.doc_crefyr == 2.0);
+  Json::Value b = m; b["hg_doc_cref"] = -0.5; CHECK(hgtr::parse(b, r) != "");
+  Json::Value c = m; c["hg_doc_cref"] = 0; CHECK(hgtr::parse(c, r) != "");
+  Json::Value e = m; e["hg_doc_crefyr"] = 0.01; CHECK(hgtr::parse(e, r) != "");
+  std::remove(T2DEP);
+  // running sums: one layer, lateral drainage only: w = dl per day, c = the day's concentration
+  hgtr::Params q = d1params(); q.doc_fp = 0.0; q.doc_tau = 1e5; q.doc_crefyr = 1.0; hgtr::Snap s4 = column(4); hgtr::Flux f = d1flux(3);
+  for (int d = 0; d < 3; d++) { f.d_drain[d][0] = 2.0; }
+  double r0[MAX_SOI_LAY] = {}; double ts[31][MAX_SOI_LAY]; d1ts(ts, 10.0); double cd[31][MAX_SOI_LAY];
+  hgtr::DocState s; hgtr::doc_geom(s, s4, 0); s.d[0] = 1.0; hgtr::doc_days(q, s, s4, f, r0, ts, cd);
+  CHECK(s.cref_cur == 0.0);
+  const double num = (cd[0][0] + cd[1][0] + cd[2][0]) * 2.0, den = 6.0;
+  CHECK(s.cxn_m == doctest::Approx(num).epsilon(1e-14)); CHECK(s.cxd_m == doctest::Approx(den));
+  CHECK(s.cn == doctest::Approx(num).epsilon(1e-14)); CHECK(s.cd == doctest::Approx(den));
+  hgtr::doc_geom(s, s4, 1); hgtr::doc_days(q, s, s4, f, r0, ts, nullptr);
+  CHECK(s.cref_cur == doctest::Approx(num / den).epsilon(1e-14));
+  const double a1 = std::exp(-1.0 / 12.0); CHECK(s.cn == doctest::Approx(num * a1 + s.cxn_m).epsilon(1e-14)); CHECK(s.cd == doctest::Approx(den * a1 + s.cxd_m).epsilon(1e-14));
+  // diss_transport_: cref -1 with cref_eff X == cref X (bitwise); cref_eff 0 == coupling off
+  hgtr::Params pd = d1params(); pd.t2_doc_hg = 1; pd.doc_beta = 1.0; hgtr::Snap b4 = column(4); hgtr::Flux fw = d1wet(20); fw.cdoc_on = 1;
+  hgtr::Params px = pd; px.doc_cref = 37.5; hgtr::State sx; d1hg(sx, b4); hgtr::diss_transport_(px, sx, b4, fw, sx.m);
+  hgtr::Params pm = pd; pm.doc_cref = -1.0; hgtr::Flux fm = fw; fm.cref_eff = 37.5; hgtr::State sm; d1hg(sm, b4); hgtr::diss_transport_(pm, sm, b4, fm, sm.m);
+  CHECK(d1same(sx, sm));
+  hgtr::Flux f0 = fw; f0.cref_eff = 0.0; hgtr::State s0; d1hg(s0, b4); hgtr::diss_transport_(pm, s0, b4, f0, s0.m);
+  hgtr::Flux fo = fw; fo.cdoc_on = 0; hgtr::State so; d1hg(so, b4); hgtr::diss_transport_(pd, so, b4, fo, so.m);
+  CHECK(d1same(s0, so));
 }

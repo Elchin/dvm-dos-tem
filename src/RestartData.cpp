@@ -618,7 +618,7 @@ void RestartData::read_px_hg_vars(const std::string& fname, const int rowidx, co
     if (len == (size_t)HG_DOCN) {
       size_t s3[3] = {(size_t)rowidx, (size_t)colidx, 0}; size_t c3[3] = {1, 1, (size_t)HG_DOCN};
       temutil::nc( nc_get_vara_double(ncid, v, s3, c3, &hg_doc[0]) );
-      has_hg_doc = (hg_doc[0] == 1.0);
+      has_hg_doc = (hg_doc[0] == 2.0);   // layout 2 (D1b)
     }
   }
   temutil::nc( nc_close(ncid) );

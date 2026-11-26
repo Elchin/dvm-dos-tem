@@ -2808,6 +2808,8 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
         scalar("HG_DOCWAT", dc.wat_m, dc.wat_y);
         scalar("HG_DOCBAL", dc.bal_m, dc.bal_y);
         scalar("HG_ORGEXP", h.m.orgexp, h.y.orgexp);
+        scalar("HG_DOCCREF", dc.cref_cur, dc.cref_cur);   // D1b: the month's site reference (mg C/L; 0 = none yet)
+        scalar("HG_DOCCX", (dc.cxd_m > 0.0) ? dc.cxn_m / dc.cxd_m : 0.0, (dc.cd > 0.0) ? dc.cn / dc.cd : 0.0);   // flow-weighted c of the month
       }
       scalar("HGVEG", h.vegtot(), h.vegtot());
       scalar("HGDEAD", h.deadtot(), h.deadtot());

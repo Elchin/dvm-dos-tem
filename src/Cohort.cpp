@@ -780,7 +780,7 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
       const bool dump = (md->hg.doc_dump == 1 && (stage == "tr-run" || stage == "sc-run"));
       hgtr::DocState d0; if (dump) { d0 = hgdoc; }
       hgtr::doc_days(md->hg, hgdoc, hg_a, ft, hg_doc_rh, hg_dts, ft.d_cdoc);
-      ft.cdoc_on = (md->hg.t2_doc_hg == 1) ? 1 : 0;
+      ft.cdoc_on = (md->hg.t2_doc_hg == 1) ? 1 : 0; ft.cref_eff = hgdoc.cref_cur;   // D1b
       if (dump) {   // output only: the month's DOC drivers and results (offline fit, src/doc in the work tree notes)
         std::ofstream o(md->output_dir + "hg_doc_dump.txt", std::ios::app); o.precision(17);
         const int nb = std::min(hg_a.nsl, MAX_SOI_LAY);
