@@ -675,6 +675,12 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
       }
       f.decomp_wd = bdall->m_soi2a.rhwdeb;
       if (md->hg.t2_doc == 1) { for (int il = 0; il < MAX_SOI_LAY; il++) { hg_doc_rh[il] = f.decomp[il]; } }   // DOC step 1
+      if (md->hg.doc_c_loss == 1) {   // DOC step 2: production from the CO2 decomposition only (P <= RH; CH4 production stays CH4)
+        const int nsl = std::min(cd.m_soil.numsl, MAX_SOI_LAY);
+        for (int il = 0; il < MAX_SOI_LAY; il++) {
+          hg_doc_rh[il] = (il < nsl) ? bdall->m_soi2a.rhrawc[il] + bdall->m_soi2a.rhsoma[il] + bdall->m_soi2a.rhsompr[il] + bdall->m_soi2a.rhsomcr[il] : 0.0;
+        }
+      }
       {   // deposition: hg_dep_file series (calendar year from the stage) or the constant hg_dep_soil
         const hgtr::DepVal dv = hgtr::dep_at(md->hg, hg_cal_year(yrcnt, stage), currmind + 1);
         f.dep_soil = dv.rate / 12.0; f.veg_scale = dv.veg_scale;
@@ -779,7 +785,17 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
       hgtr::doc_geom(hgdoc, hg_a, currmind);
       const bool dump = (md->hg.doc_dump == 1 && (stage == "tr-run" || stage == "sc-run"));
       hgtr::DocState d0; if (dump) { d0 = hgdoc; }
-      hgtr::doc_days(md->hg, hgdoc, hg_a, ft, hg_doc_rh, hg_dts, ft.d_cdoc);
+      hgtr::doc_days(md->hg, hgdoc, hg_a, ft, hg_doc_rh, hg_dts, ft.d_cdoc, (md->hg.t2_doc_hglim == 1) ? &ft.dfl : nullptr);
+      if (md->hg.t2_doc_hglim == 1) { ft.dhg_on = 1; }   // DOC step 2: the day's DOC fluxes for the Hg(II) cap
+      if (md->hg.doc_c_loss == 1) {   // DOC step 2 (E1 partition, E1b sunk DOC mineralised): the DOC production of the decomposed C is
+        // not CO2, its mineralised and sunk parts are: RHSOM (month, year) and NEP change by -(prod - min - sink) = -(export + retained +
+        // pool change); the SOM pools are untouched. doclost = export + retained (leaves the column).
+        const double adj = -(hgdoc.prod_m - hgdoc.min_m - hgdoc.sink_m);
+        hgdoc.adj_m = adj; hgdoc.adj_y += adj;
+        bdall->m_soi2a.rhsom += adj; bdall->y_soi2a.rhsom += adj;
+        bdall->m_l2a.nep -= adj; bdall->y_l2a.nep -= adj;
+        bdall->m_soi2l.doclost = hgdoc.exp_m + hgdoc.ret_m; bdall->y_soi2l.doclost = hgdoc.exp_y + hgdoc.ret_y;
+      }
       ft.cdoc_on = (md->hg.t2_doc_hg == 1) ? 1 : 0; ft.cref_eff = hgdoc.cref_cur;   // D1b
       if (dump) {   // output only: the month's DOC drivers and results (offline fit, src/doc in the work tree notes)
         std::ofstream o(md->output_dir + "hg_doc_dump.txt", std::ios::app); o.precision(17);

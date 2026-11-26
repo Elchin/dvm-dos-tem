@@ -2013,3 +2013,63 @@ Ledger (core-h): D1 + identity I1-I4 0.290, D3 pilots 0.142, D1b identity (D4Q1,
 ![fig34](figures_hg_t2/hg_t2_fig34_doc_fit.png)
 ![fig35](figures_hg_t2/hg_t2_fig35_doc_hg_timing.png)
 ![fig36](figures_hg_t2/hg_t2_fig36_doc_warming.png)
+
+## 20. DOC step 2: DOC carbon loss (doclost), Hg:DOC-limited export, DOC sorption (2026-11-26)
+Design: `~/tem-dev/hg_t2/doc_export/DOC_EXPORT_step2_design.md`. Elchin's decision ("Yes" to the recommended set): E1
+partition (C loss on, sink 0), E1b sinking DOC mineralised (no re-spin, S2 skipped), E2 eps fixed at 1, E3 DON off, E4 Hg
+export scored against the dissolved band 0.2-2.3 (THg band V1 left to a future particulate path), E5 daily cap on inorganic
+Hg only, E6 C loss tied to the Hg DOC switch, E7 Toolik for timing and porewater only, E8 DOC sorption added (S4); budget
+~0.69 core-h, hard cap 1.0; local commits on feat/hg-t2 (base c7e8c77d), no push. Binary bins/binS2 (md5 7dc5e7df, built
+from the code of the first step-2 commit). Scripts in ~/tem-dev/hg_t2/src/doc2/: patchS2.py, testsS2.cpp, mk_s2.py,
+runS.sh, ledgerS2.py, an_c.py, crit_mehg.py, prodS2.sh, chainS*.sh, plots_s2.py. Results in an2/s2/.
+
+**Naming:** hgtr::parse only reads keys that start with `hg_`, so the design's names became `hg_doc_c_loss`,
+`hg_doc_c_sink`, `hg_doc_n_loss`, `hg_t2_doc_hglim`, `hg_doc_eps`, `hg_doc_capmoss`, `hg_doc_kdoc`.
+
+### 20.1 Code (all default off, bit-identical when off)
+- `hg_doc_c_loss` (0/1; needs hg_t2_doc and hg_doc_fp <= 1): the DOC that leaves the soil becomes a real C loss.
+  DOC production is fp x the layer CO2 decomposition (rhrawc + rhsoma + rhsompr + rhsomcr; CH4 production is not
+  included when the switch is on). After the month's DOC days (Cohort::updateMonthly, after soil_updatePools) the
+  difference adj = -(production - mineralisation - sinking) is added to the month's and year's RHSOM (bdall m_/y_soi2a.rhsom)
+  and subtracted from NEP (m_/y_l2a.nep). DOCLOST = export + retained. The SOM pools are not changed, so GPP, NPP, SOC
+  and N are bit-identical: the DOC pathway re-labels part of the CO2 flux as a lateral loss plus a storage change of the
+  DOC pool. `hg_doc_c_sink` (only 0 allowed, E1b: sorbed/sinking DOC counts as mineralised) and `hg_doc_n_loss` (only 0,
+  E3) are parsed placeholders. Outputs DOCLOST, DOCPOOLC, DOCRHADJ (g C/m2/time).
+- `hg_t2_doc_hglim` (0/1; needs hg_t2_doc), `hg_doc_eps` (default 1), `hg_doc_capmoss` (0/1, needs hglim): in the daily
+  dissolved transport, after the MeHg fluxes, the Hg(II) leaving a DOC layer with each water flux (overland, lateral,
+  vertical out) is capped at eps x the layer Hg(II):C (soil + dissolved - MeHg, over soil C) x that day's DOC flux of the
+  layer (from doc_days, DocFlow). The withheld Hg stays dissolved in the layer (HG_DOCCAP, ug/m2). MeHg is not capped
+  (E5). capmoss also caps the moss layer.
+- `hg_doc_kdoc` (L/kg OM, default 0; needs hg_t2_doc): DOC sorption. The dissolved share phi = liq / (liq + kdoc x
+  OM), OM = 2e-3 x layer C (kg/m2), sets the porewater concentration and the mobile DOC (transport); the sorbed part stays
+  in the pool and is mineralised.
+- closure.py: when DOCLOST and DOCPOOLC are written, DOCPOOLC joins the C stocks and DOCLOST the outputs
+  (DOCLOST_mean_gm2yr reported).
+- Limitations: the daily split outputs (RECO_DS etc., daily_c_split = 1) and the RTS tk_rh_hist use RHSOM before the DOC
+  adjustment.
+- Unit tests (tests/unit/test_hg_tracer.cpp, 3 new cases): parse / ranges / dependencies; doc_days DocFlow bit identity and
+  flux sums (export + retained, sink), kdoc 0 bit identity, kdoc > 0 lowers conc and export and conserves, phi;
+  cap off / dhg_on 0 / eps 1e30 bit identical, eps 1 lowers export and conserves Hg, eps 0 gives zero organic export,
+  MeHg export unchanged, capmoss. Full suite 571/571 test cases (the 8 known may-fail non-Hg assertions unchanged).
+
+### 20.2 S0 identity (binS2)
+| check | result |
+|---|---|
+| Hg-off 8-case prod (regress/cs/prod) binS2 vs binD1b (c7e8c77d) | RESULT: PASS (all A == B bit-identical, closures OK) |
+| S0Q1: D4V1 settings, new switches absent, vs D4V1 (binD1b) | 0 differing variables in all stages (TVC / HPC spin + main, Toolik proxy / ch4 sp + tr) |
+
+### 20.3 S1: C loss on (S1A = D4V1 + hg_doc_c_loss 1)
+Only RHSOM and RECO change (plus the new DOC files); GPP, NPP, SOC, VEGC, N and water are identical to D4V1. In the Toolik
+CH4 run only HG_ / DOC variables change (production now CO2 only) and no C state.
+
+| site | RHSOM D4V1 -> S1A | NEE (RECO - GPP) | DOCLOST | DOCRHADJ | DOC pool end (g C/m2) | closure C resid mean / max |
+|---|---|---|---|---|---|---|
+| TVC | 225.62 -> 223.75 | 19.98 -> 18.11 | 2.08 | -1.87 | 15.2 | -0.0002 / 0.003 (pass) |
+| HPC | 181.54 -> 178.72 | -8.90 -> -11.73 | 3.22 | -2.83 | 8.9 | 0.0005 / 0.004 (pass) |
+| Toolik proxy | 53.44 -> 52.72 | 14.95 -> 14.23 | 0.68 | -0.72 | 4.2 | (no closure run) |
+| Toolik ch4 | 53.54 -> 52.81 | 14.63 -> 13.89 | | | | |
+(g C/m2/yr, last 20 yr.) Without the two new closure terms the C residual would be about +1.9 / +2.8 g C/m2/yr (fails the
+0.5 tolerance). The monthly adjustment (figure 37) is negative during flushing (May-Aug) and positive in autumn/winter,
+when the DOC pool built in summer is mineralised.
+
+![fig37](figures_hg_t2/hg_t2_fig37_doc_closs.png)

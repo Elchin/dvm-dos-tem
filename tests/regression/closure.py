@@ -7,6 +7,7 @@ Formulas as /workspace/v5h/seb_explore/scripts/metrics_tvc.py:
   water (1951-2024): P - EET - QRUNOFF - QDRAINAGE - dS, dS = d(sum (LWC+IWC)*dz*1000) + dSWE  [mm]
                      PASS if |residual| < 1 % of P
   carbon (yearly):   d(SOC + VEGC + DEADC + DWDC) + NEE  [gC/m2/yr], NEE = RECO - GPP
+                     DOC step 2 (hg_doc_c_loss = 1; DOCLOST output present): + d(DOCPOOLC) + DOCLOST
   nitrogen (yearly): d(VEGNTOT + ORGN + AVLN + DEADN + DWDN) - (NINPUT [+ BNF_VEG] - NLOST)  [gN/m2/yr]
                      v5q: NINPUT includes the soil part of biological N fixation (BNF output);
                      BNF_VEG (bnf_to_plant = 1: BNF given directly to plant labile N) is an
@@ -138,6 +139,10 @@ def closure(rundir):
         if have(v): st = st + yv(v)
     nee_y = (m("RECO") - m("GPP")).reshape(ny, 12).sum(1)
     rc = np.diff(st) + nee_y[1:]
+    if have("DOCLOST", "monthly") and have("DOCPOOLC", "monthly") and len(m("DOCLOST")) == nm:   # DOC step 2
+        st = st + m("DOCPOOLC")[11::12]; r["C_terms"] += ["DOCPOOLC", "DOCLOST"]
+        rc = np.diff(st) + nee_y[1:] + m("DOCLOST").reshape(ny, 12).sum(1)[1:]
+        r["DOCLOST_mean_gm2yr"] = float(m("DOCLOST")[12:].sum() / (ny - 1))
     r["C_resid_mean_gm2yr"] = float(rc.mean()); r["C_resid_max_abs_annual"] = float(np.abs(rc).max())
     if all(have(v) for v in ("VEGNTOT", "ORGN", "AVLN", "NINPUT", "NLOST")):
         Nst = yv("VEGNTOT") + yv("ORGN") + yv("AVLN"); r["N_terms"] = ["VEGNTOT", "ORGN", "AVLN"]

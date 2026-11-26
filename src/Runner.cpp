@@ -2810,6 +2810,12 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
         scalar("HG_ORGEXP", h.m.orgexp, h.y.orgexp);
         scalar("HG_DOCCREF", dc.cref_cur, dc.cref_cur);   // D1b: the month's site reference (mg C/L; 0 = none yet)
         scalar("HG_DOCCX", (dc.cxd_m > 0.0) ? dc.cxn_m / dc.cxd_m : 0.0, (dc.cd > 0.0) ? dc.cn / dc.cd : 0.0);   // flow-weighted c of the month
+        if (md.hg.doc_c_loss == 1) {   // DOC step 2: real DOC C loss (g C/m2 per month / year; pool end of month)
+          scalar("DOCLOST", dc.exp_m + dc.ret_m, dc.exp_y + dc.ret_y);
+          scalar("DOCPOOLC", dc.tot(), dc.tot());
+          scalar("DOCRHADJ", dc.adj_m, dc.adj_y);
+        }
+        if (md.hg.t2_doc_hglim == 1) { scalar("HG_DOCCAP", h.m.doccap, h.y.doccap); }   // DOC step 2 (ug/m2)
       }
       scalar("HGVEG", h.vegtot(), h.vegtot());
       scalar("HGDEAD", h.deadtot(), h.deadtot());

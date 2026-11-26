@@ -1869,3 +1869,83 @@ TEST_CASE("D1b parse and site reference: hg_doc_cref -1 / crefyr; running sums o
   hgtr::Flux fo = fw; fo.cdoc_on = 0; hgtr::State so; d1hg(so, b4); hgtr::diss_transport_(pd, so, b4, fo, so.m);
   CHECK(d1same(s0, so));
 }
+
+// ---- DOC step 2 (hg_doc_c_loss / hg_t2_doc_hglim / hg_doc_kdoc; docs_src/DOC_EXPORT_step2_design.md, WORK_NOTES_hg_t2 section 20) ----
+namespace {
+bool s2same(const hgtr::DocState& a, const hgtr::DocState& b) {
+  for (int l = 0; l < MAX_SOI_LAY; l++) { if (a.d[l] != b.d[l] || a.conc_m[l] != b.conc_m[l]) return false; }
+  return a.prod_m == b.prod_m && a.min_m == b.min_m && a.exp_m == b.exp_m && a.ret_m == b.ret_m && a.sink_m == b.sink_m && a.bal_m == b.bal_m;
+}
+}
+TEST_CASE("S2 parse: step-2 switches default off, ranges and dependencies") {
+  hgtr::Params p0 = t2params(); (void)p0;
+  hgtr::Params q; CHECK(hgtr::parse(ms0(), q) == "");
+  CHECK(q.doc_c_loss == 0); CHECK(q.doc_c_sink == 0); CHECK(q.doc_n_loss == 0); CHECK(q.t2_doc_hglim == 0); CHECK(q.doc_eps == 1.0);
+  CHECK(q.doc_capmoss == 0); CHECK(q.doc_kdoc == 0.0);
+  Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_t2"] = 1; m["hg_dep_file"] = T2DEP;
+  hgtr::Params r;
+  Json::Value a = m; a["hg_t2_doc"] = 1; a["hg_doc_fp"] = 0.1; a["hg_doc_c_loss"] = 1; a["hg_t2_doc_hglim"] = 1; a["hg_doc_eps"] = 0.8; a["hg_doc_capmoss"] = 1; a["hg_doc_kdoc"] = 5.0;
+  REQUIRE(hgtr::parse(a, r) == ""); CHECK(r.doc_c_loss == 1); CHECK(r.t2_doc_hglim == 1); CHECK(r.doc_eps == 0.8); CHECK(r.doc_capmoss == 1); CHECK(r.doc_kdoc == 5.0);
+  Json::Value b = m; b["hg_doc_c_loss"] = 1; CHECK(hgtr::parse(b, r) != "");                               // needs hg_t2_doc
+  Json::Value c = m; c["hg_t2_doc"] = 1; c["hg_doc_c_loss"] = 1; c["hg_doc_fp"] = 1.5; CHECK(hgtr::parse(c, r) != "");   // fp <= 1
+  Json::Value e = m; e["hg_t2_doc"] = 1; e["hg_doc_c_sink"] = 1; CHECK(hgtr::parse(e, r) != "");          // not implemented
+  Json::Value g = m; g["hg_t2_doc"] = 1; g["hg_doc_n_loss"] = 1; CHECK(hgtr::parse(g, r) != "");          // not implemented
+  Json::Value h = m; h["hg_t2_doc_hglim"] = 1; CHECK(hgtr::parse(h, r) != "");                             // needs hg_t2_doc
+  Json::Value i = m; i["hg_t2_doc"] = 1; i["hg_doc_capmoss"] = 1; CHECK(hgtr::parse(i, r) != "");         // needs hglim
+  Json::Value j = m; j["hg_doc_kdoc"] = 1.0; CHECK(hgtr::parse(j, r) != "");                               // needs hg_t2_doc
+  Json::Value k = m; k["hg_t2_doc"] = 1; k["hg_doc_eps"] = -1; CHECK(hgtr::parse(k, r) != "");
+  std::remove(T2DEP);
+}
+TEST_CASE("S2 doc_days: DocFlow record does not change the DOC (bitwise); recorded fluxes = export + retained + sink; kdoc 0 bitwise; kdoc > 0 lowers c and export, conserves") {
+  hgtr::Params p = d1params(); p.doc_fp = 0.1; p.doc_tau = 50.0; p.doc_fconn = 0.7; hgtr::Snap b = column(4); hgtr::Flux f = d1wet(25);
+  double rh[MAX_SOI_LAY] = {20.0, 15.0, 10.0, 5.0}; double ts[31][MAX_SOI_LAY]; d1ts(ts, 8.0);
+  hgtr::DocState s0, s1, s2;
+  for (hgtr::DocState* s : {&s0, &s1, &s2}) { hgtr::doc_geom(*s, b, 0); s->d[0] = 3.0; s->d[1] = 2.0; s->d[2] = 1.0; }
+  double c0[31][MAX_SOI_LAY], c1[31][MAX_SOI_LAY];
+  hgtr::doc_days(p, s0, b, f, rh, ts, c0);
+  hgtr::DocFlow fl; hgtr::doc_days(p, s1, b, f, rh, ts, c1, &fl);
+  CHECK(s2same(s0, s1));
+  for (int d = 0; d < 25; d++) for (int l = 0; l < 4; l++) { CHECK(c0[d][l] == c1[d][l]); }
+  double ex = 0.0, sk = 0.0;
+  for (int d = 0; d < 25; d++) { for (int l = 0; l < 3; l++) { ex += fl.ov[d][l] + fl.lat[d][l]; } sk += fl.out[d][2]; ex += fl.ov[d][3] + fl.lat[d][3]; }
+  CHECK(ex == doctest::Approx(s1.exp_m + s1.ret_m).epsilon(1e-12)); CHECK(sk == doctest::Approx(s1.sink_m).epsilon(1e-12));
+  hgtr::Params pk = p; pk.doc_kdoc = 0.0; hgtr::doc_days(pk, s2, b, f, rh, ts, nullptr); CHECK(s2same(s0, s2));
+  hgtr::Params ps = p; ps.doc_kdoc = 20.0; hgtr::DocState s3; hgtr::doc_geom(s3, b, 0); s3.d[0] = 3.0; s3.d[1] = 2.0; s3.d[2] = 1.0;
+  const double t0 = s3.tot(); double c3[31][MAX_SOI_LAY]; hgtr::doc_days(ps, s3, b, f, rh, ts, c3);
+  CHECK(s3.exp_m + s3.ret_m < s0.exp_m + s0.ret_m); CHECK(c3[0][0] < c0[0][0]);
+  CHECK((s3.tot() - t0) - (s3.prod_m - s3.min_m - s3.exp_m - s3.ret_m - s3.sink_m) == doctest::Approx(0.0).epsilon(1e-12));
+  // first day, layer 0, before any transport: c = 1000 (D0 + P_day - min) phi / liq
+  const double phi = hgtr::doc_phi(ps, b, 0, 25.0); CHECK(phi == doctest::Approx(25.0 / (25.0 + 20.0 * b.soil[0] * 2.0e-3)));
+  CHECK(c3[0][0] == doctest::Approx(c0[0][0] * phi).epsilon(1e-12));
+  CHECK(hgtr::doc_phi(ps, b, 3, 25.0) == 1.0);   // mineral layer: not a DOC layer
+}
+TEST_CASE("S2 Hg:DOC cap: off, dhg_on 0 or eps huge bit-identical; eps 1 caps Hg(II) at eps x Hg(II):C x DOC flux; Hg conserved; MeHg path unchanged") {
+  hgtr::Params p = d1params(); p.t2_xpath = 1; p.f_conn = 0.6; p.doc_fp = 0.1; hgtr::Snap b = column(4); hgtr::Flux f = d1wet(20);
+  double rh[MAX_SOI_LAY] = {20.0, 15.0, 10.0, 5.0}; double ts[31][MAX_SOI_LAY]; d1ts(ts, 8.0);
+  hgtr::DocState ds; hgtr::doc_geom(ds, b, 0); ds.d[0] = 0.02; ds.d[1] = 0.01; ds.d[2] = 0.01;
+  hgtr::doc_days(p, ds, b, f, rh, ts, nullptr, &f.dfl);
+  hgtr::State ref; d1hg(ref, b); hgtr::diss_transport_(p, ref, b, f, ref.m);
+  hgtr::Flux f1 = f; f1.dhg_on = 1;
+  hgtr::State s0; d1hg(s0, b); hgtr::diss_transport_(p, s0, b, f1, s0.m); CHECK(d1same(s0, ref));          // hglim 0
+  hgtr::Params pl = p; pl.t2_doc_hglim = 1;
+  hgtr::State s1; d1hg(s1, b); hgtr::diss_transport_(pl, s1, b, f, s1.m); CHECK(d1same(s1, ref));          // dhg_on 0
+  hgtr::Params ph = pl; ph.doc_eps = 1e30;
+  hgtr::State s2; d1hg(s2, b); hgtr::diss_transport_(ph, s2, b, f1, s2.m); CHECK(d1same(s2, ref)); CHECK(s2.m.doccap == 0.0);   // never binds
+  hgtr::State s3; d1hg(s3, b); const double h0 = s3.soiltot() + s3.disstot(); hgtr::diss_transport_(pl, s3, b, f1, s3.m);
+  CHECK(s3.m.export_ < ref.m.export_); CHECK(s3.m.doccap > 0.0);
+  CHECK(s3.soiltot() + s3.disstot() + s3.m.export_ == doctest::Approx(h0).epsilon(1e-12));                  // conserved
+  // eps 0: no Hg(II) leaves the DOC layers (MeHg off), the mineral layer still exports
+  hgtr::Params p0 = pl; p0.doc_eps = 0.0; hgtr::State s4; d1hg(s4, b); hgtr::diss_transport_(p0, s4, b, f1, s4.m);
+  CHECK(s4.m.orgexp == 0.0); CHECK(s4.m.export_ > 0.0); CHECK(s4.m.export_ < s3.m.export_);
+  // MeHg: with MeHg transport the MeHg removal is the same as without the cap on the first day
+  hgtr::Params pm = p; pm.mehg = 1; pm.t2_mehg_transport = 1; hgtr::Params pmc = pm; pmc.t2_doc_hglim = 1;
+  hgtr::Flux fm = f1; fm.nd = 1;
+  hgtr::State a; d1hg(a, b); for (int l = 0; l < 4; l++) { a.mehg[l] = 0.5; } hgtr::State c = a;
+  hgtr::diss_transport_(pm, a, b, fm, a.m); hgtr::diss_transport_(pmc, c, b, fm, c.m);
+  CHECK(a.mehg_exp_m == doctest::Approx(c.mehg_exp_m).epsilon(1e-14));
+  for (int l = 0; l < 4; l++) { CHECK(c.mehg[l] <= c.soil[l] + c.diss[l]); }
+  // capmoss with a moss top layer: its Hg(II) does not leave
+  hgtr::Snap bm = column(4); bm.type[0] = 0; hgtr::Params pc = pl; pc.doc_capmoss = 1;
+  hgtr::State m0; d1hg(m0, bm); hgtr::State m1 = m0; hgtr::diss_transport_(pl, m0, bm, f1, m0.m); hgtr::diss_transport_(pc, m1, bm, f1, m1.m);
+  CHECK(m1.m.export_ < m0.m.export_);
+}
