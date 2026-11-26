@@ -2570,3 +2570,35 @@ Last 20 yr (2079-2098):
   dashed vs T3K solid, control grey vs w8 red.
 
 ![fig51](figures_hg_t2/hg_t2_fig51_t3_w8.png)
+
+## 27. T3 P3: Toolik drained vs poorly drained contrast under T3K (report-only) (2026-11-26)
+
+**Design change vs `T3_design.md` (needs Elchin's sign-off).** The k2 restart covers only cell (0,0), and toolik06 has no
+multi-cell restart. So instead of the planned 6+6 cells from restart, I ran a **1+1 cell contrast with a fresh spin-up**.
+The toolik06 cells nearly replicate each other (climate varies by <= 0.8 C, texture is identical), so more cells would add
+cost but little contrast. The run-mask was **copied** to `sites2/T3_masks/run-mask_c0{0,2}.nc`; `~/cal-cmt06` is only
+read. The cells are c00 = (0,0), drainage_class 1 (poorly drained, the k2 cell), and c02 = (0,2), drainage_class 0 (well
+drained). Both are CMT06 with the CH4-module params and config of `toolik_ch4_k2`. The stages run in new dirs:
+A = pr 100 + eq 1000 (Hg off), then B = sp 15 from A's restart-eq, then C = tr 75 from B's restart-sp. B and C use the
+T3K ms. No restart file was reused across sets. Scripts: `src/t3/mk_tc.py`, `chainT3.sh`, `an_tc.py`; numbers:
+`an2/r/tc_T3D.json`. Core-h P3: 0.2297 (wall per cell A 359/365 s, B 5 s, C 46-47 s; ledger 0.5434 -> 0.7731).
+
+Last 20 yr of tr (2005-2024):
+
+| set | %MeHg act. | MeHg exp May-Oct ng/m2 | MEHGPROD ug/m2/yr | THg export ug/m2/yr | evasion | WATERTAB m | QDRAINAGE mm | QRUNOFF mm | ALD m |
+|---|---|---|---|---|---|---|---|---|---|
+| T3K (k2 restart, cell 0,0) | 2.22 | 42.2 | 4952 | 0.775 | 3.31 | 0.061 | 17.3 | 219 | 0.68 |
+| c00 poorly drained, fresh | 2.31 | 37.3 | 5182 | 0.756 | 3.17 | 0.061 | 18.7 | 218 | 0.70 |
+| c02 well drained, fresh | 2.45 | 36.0 | 5377 | 0.778 | 3.16 | 0.058 | 19.9 | 240 | 0.68 |
+
+- **The spin-up path gives similar results.** c00 (the k2 cell, freshly spun up) stays in the fen bands: %MeHg 2.31 vs
+  2.22 and export 37 vs 42 ng/m2. The fresh spin-up does not change the T3K conclusions.
+- **Drainage class alone does not produce an upland/fen contrast in this model.** In the well-drained cell the water table
+  is only 3 mm deeper, and drainage and runoff are +7 % and +10 %. %MeHg is +6 % (2.45, just above the fen band top, but
+  this cell is not a scored target) and export is -4 %. In this CMT06 / CH4-module setup the drainage flag barely changes
+  soil saturation. Under the T3 rate law MeHg therefore follows the CMT and driver, not drainage. The large Toolik contrast
+  in sec. 25 (upland proxy 0.118 % vs fen 2.22 %) comes from the CMT and driver, not from drainage class.
+- So a landscape MeHg contrast needs a wetness-resolving input, either the `hg_t3_wavail` path (T4) with a real
+  saturation signal or a separate wetland CMT. It cannot come from `drainage_class` alone.
+
+![fig52](figures_hg_t2/hg_t2_fig52_t3_drainage.png)
