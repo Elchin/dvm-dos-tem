@@ -1,0 +1,26 @@
+{
+ "_comment": "Hg T2 overlay R1B = RECOMMENDED set (2026-11-26; WORK_NOTES_hg_t2 sections 21-22): S5F + re-emission fix R light term only: hg_t2_ev_light 1, hg_ev_wl 1.0 (hg_ev_tauref 1 default), hg_fd 0.223. Soil-air (hg_t2_ev_air) and temperature (hg_ev_q10) terms stay off. Needs a binary with commit 0096a403 or later. Scoring: Toolik Ro, Hg:DOC, net Hg(0) and winter share are report-only (Toolik C recalibration pending). model_settings overlay on top of the built-in hg_t2 preset and the MeHg preset; code defaults unchanged (all R switches off).",
+ "_site_keys": "Per-site keys not in the overlay (set by the case): hg_dep_file (TVC / HPC: config/hg_deposition_{tvc,hpc}_geoschem.csv; Toolik: config/hg_deposition_toolik_obrist2017.csv), hg_sc_year0 (1850 spin-up stage / 1950 main, TVC / HPC). Run with dynamic_lai 1.",
+ "model_settings": {
+  "hg_tracer": 1,
+  "hg_mehg": 1,
+  "hg_t2": 1,
+  "hg_t2_mehg_preset": 1,
+  "hg_spinup": 1,
+  "hg_t2_doc": 1,
+  "hg_doc_fp": 0.1,
+  "hg_doc_tau": 160,
+  "hg_doc_frz": 0.1,
+  "hg_t2_doc_hg": 1,
+  "hg_doc_cref": -1,
+  "hg_doc_beta": 0.6,
+  "hg_t2_log_kd_org": 3.296,
+  "hg_f_conn": 0.582,
+  "hg_doc_c_loss": 1,
+  "hg_t2_doc_hglim": 1,
+  "hg_doc_kdoc": 4,
+  "hg_fd": 0.223,
+  "hg_t2_ev_light": 1,
+  "hg_ev_wl": 1.0
+ }
+}

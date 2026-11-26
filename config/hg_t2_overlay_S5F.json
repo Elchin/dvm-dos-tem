@@ -1,0 +1,24 @@
+{
+ "_comment": "Hg T2 overlay S5F (DOC step 2 final set, 2026-11-26; WORK_NOTES_hg_t2 section 20.6): D4V1 (DOC step 1) + hg_doc_c_loss 1, hg_t2_doc_hglim 1 (eps 1), hg_doc_kdoc 4, hg_fd 0.0826. Superseded as the recommended set by config/hg_t2_overlay_R1B.json (section 22). model_settings overlay on top of the built-in hg_t2 preset (config/hg_t2_calibrated.json) and the MeHg preset; code defaults unchanged.",
+ "_site_keys": "Per-site keys not in the overlay (set by the case): hg_dep_file (TVC / HPC: config/hg_deposition_{tvc,hpc}_geoschem.csv; Toolik: config/hg_deposition_toolik_obrist2017.csv), hg_sc_year0 (1850 spin-up stage / 1950 main, TVC / HPC). Run with dynamic_lai 1.",
+ "model_settings": {
+  "hg_tracer": 1,
+  "hg_mehg": 1,
+  "hg_t2": 1,
+  "hg_t2_mehg_preset": 1,
+  "hg_spinup": 1,
+  "hg_t2_doc": 1,
+  "hg_doc_fp": 0.1,
+  "hg_doc_tau": 160,
+  "hg_doc_frz": 0.1,
+  "hg_t2_doc_hg": 1,
+  "hg_doc_cref": -1,
+  "hg_doc_beta": 0.6,
+  "hg_t2_log_kd_org": 3.296,
+  "hg_f_conn": 0.582,
+  "hg_doc_c_loss": 1,
+  "hg_t2_doc_hglim": 1,
+  "hg_doc_kdoc": 4,
+  "hg_fd": 0.0826
+ }
+}

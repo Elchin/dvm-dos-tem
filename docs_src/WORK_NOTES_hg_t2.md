@@ -2260,3 +2260,52 @@ refit and the R3 final set were therefore not run: the choice needs a decision (
 
 ![fig40](figures_hg_t2/hg_t2_fig40_reem.png)
 ![fig41](figures_hg_t2/hg_t2_fig41_reem_air.png)
+
+## 22. Decision 2026-11-26: R1B is the recommended hg_t2 set; Toolik net Hg(0) and winter share report-only
+
+**Decision (Elchin, 2026-11-26):** adopt R1B (section 21) and score Toolik net Hg(0) and winter share as report-only,
+alongside the already report-only Toolik Ro and Hg:DOC (and the E7 Toolik DOC / May-Jun items).
+
+- **Recommended set: config/hg_t2_overlay_R1B.json** = S5F (config/hg_t2_overlay_S5F.json, written next to it for reference:
+  D4V1 + hg_doc_c_loss 1, hg_t2_doc_hglim 1, hg_doc_kdoc 4) with `hg_t2_ev_light 1, hg_ev_wl 1.0, hg_fd 0.223`
+  (hg_ev_tauref 1 default). Both are model_settings overlays on the built-in hg_t2 / MeHg presets; their hg_* keys equal the
+  model_settings of the R1B / S5F runs (TVC, HPC, Toolik) exactly, except the per-site hg_dep_file / hg_sc_year0.
+  Needs a binary at 0096a403 or later. parameters/ and the code defaults are unchanged (all R switches default off).
+- **The soil-air switch (hg_t2_ev_air) stays off**, and so does the temperature term (hg_ev_q10 1): in the model the decay
+  that re-emits sits in the dry fibric layers at every site, so g_air is largest at HPC and does not separate TVC from
+  Toolik (21.3, fig 41).
+- **Scoring** (src/reem/scoreR.py; section-21 version kept as scoreR_v1_11band.py): 9 scored bands = Ro TVC / HPC, Rm x3,
+  dissolved export x3, Toolik uptake. Report-only: Toolik Ro, Hg:DOC, net Hg(0), winter share, May-Jun share. Goals
+  (reported, not counted): Hg:DOC and May-Jun share at TVC / HPC. Re-scored from the existing outputs (no new runs).
+
+| target | band | S5F | **R1B (recommended)** |
+|---|---|---|---|
+| Ro TVC / HPC | 0.29-0.41 | 0.750 (x) / 0.305 | **0.378 / 0.298** |
+| Rm TVC / HPC / Toolik | 0.97-1.69 | 1.452 / 1.603 / 1.504 | 1.292 / 1.589 / 1.471 |
+| dissolved export TVC / HPC / Toolik | 0.2-2.3 | 1.42 / 1.00 / 0.78 | 0.84 / 0.98 / 0.69 |
+| Toolik uptake | 3.7-4.5 | 4.06 | 4.06 |
+| **scored (9)** | | **8/9** | **9/9** |
+| Hg:DOC TVC / HPC (goal) | 0.2-0.45 | 0.56 (x) / 0.33 | 0.29 / 0.32 |
+| Hg May-Jun share TVC / HPC (goal) | 0.35-0.60 | 0.38 / 0.43 | 0.43 / 0.43 |
+| Toolik Ro (report-only) | 0.29-0.41 | 1.195 | 1.013 |
+| Toolik Hg:DOC (report-only) | 0.2-0.45 | 0.98 | 0.83 |
+| Toolik net Hg(0) (report-only) | 5.8-7.2 | 5.81 | 4.65 |
+| Toolik winter share (report-only) | 0.30-0.44 | 0.414 | 0.517 |
+| Toolik May-Jun share (report-only) | 0.35-0.60 | 0.64 | 0.66 |
+| Toolik budget stomatal + sink0 - soilev - snowred | | 3.99 + 4.19 - 0.95 - 1.42 | 3.99 + 4.19 - 2.12 - 1.42 |
+| E4 12-band (old count, for reference) | | 10/12 | 9/12 |
+| MeHg primary | 7 | 7/7 | 7/7 (TVC 0.75 %, HPC 0.093 %, ratio 8.0, fen 2.21 %; exports HPC 36.2 / TVC 22.0 / fen 38.5 ng/m2) |
+| HG_BALERR max (ug/m2) | | 3.4e-9 | 2.5e-9 |
+
+Checks carried over from section 21: identity with the switches absent (0 diffs), Hg-off 8-case prod PASS, C / N / water
+bitwise = S5F and closure pass, W6 warming as 21.5 (TVC Hg export x3.4, %MeHg 0.90 -> 2.55; HPC as S5F).
+
+**Flag: Toolik C recalibration (future work).** The Toolik CMT06 runs have very low vascular LAI (~0.15; canopy
+transmission 0.975, so the light term cannot shade the Toolik ground) and low DOC production (E7: DOC export 0.58 g C/m2/yr,
+stream DOC 5 mg/L). Toolik Ro (1.0), Hg:DOC (0.83), net Hg(0) (4.65) and winter share (0.52) stay report-only until the
+Toolik C is recalibrated; then re-test whether R1B's re-emission at Toolik (2.1 ug/m2/yr vs 0.95 in S5F) is still too high.
+
+Budget: no new runs (re-scoring and plots only); R total stays 0.242 core-h of the 0.7 cap.
+
+![fig40](figures_hg_t2/hg_t2_fig40_reem.png)
+![fig42](figures_hg_t2/hg_t2_fig42_reem_score.png)
