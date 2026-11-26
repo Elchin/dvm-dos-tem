@@ -2423,3 +2423,52 @@ as the recommended hg_t2 overlay, replacing R1B (section 22). R1B and S5F overla
 are unchanged from section 22 (9 scored bands; Toolik Ro, Hg:DOC, net Hg(0), winter share and May-Jun share report-only).
 B2F: 9/9, MeHg 7/7; TVC +8 C thaw-layer evasion ~0 (R1B 17.1, option A thaw_evz 0.3 as upper sensitivity 5.31 ug/m2/yr).
 Code defaults are unchanged (all switches default off). Docs-only commit; no runs.
+
+## 24. T3 process-based MeHg, P0: switches, unit tests and identities (2026-11-26)
+
+Design: `docs_src/T3_design.md` (recommendations T1-T12, approved 2026-11-26 11:12 ET: build T3 with T1-T12, cap 1.0 core-h,
+copied Toolik run-mask, local only). Branch `feat/hg-t3` off `feat/hg-t2` @ 75fccfb1. Ledger: `PHASE T3` lines in
+`~/tem-dev/hg_t2/LEDGER.txt` (`src/t3/ledgerT3.py`: T3 core-h = T2 total - 12.8608, cap 1.0).
+
+### 24.1 What was built (all default-off; `hg_t3` = 1 with every other `hg_t3_*` key at its default is the T2 model)
+
+| key | default | meaning |
+|---|---|---|
+| `hg_t3` | 0 | master; needs `hg_mehg`, `hg_t2`, `hg_t2_diss`, `hg_transport`, `hg_t2_mehg_transport` = 1 |
+| `hg_t3_closure` | 0 | T1/T2: MeHg is a mass-conserving sub-pool of the layer Hg, carried in the sorbed pool. Hg(II) processes see THg - MeHg: decay release, evasion, thaw release, internal C transfers (the MeHg is withheld from `State::soil` for the C-driven part of `step()` and put back before the transport sub-step), sorption target `phi (THg - MeHg)` (the dissolved pool is Hg(II) only), Hg(II) transfers, the Hg:DOC cap, and the methylation substrate. MeHg transfers / exports / flow-path retention / bioturbation move THg. With a geometry change the MeHg is re-mapped with the C, and the MeHg of lost C goes to the pot as Hg(II). The spin-up jump runs with MeHg = 0 as before, so it is unchanged. |
+| `hg_t3_dlogkd_mehg` | 0 | T7: log10 Kd(MeHg) - log10 Kd(Hg(II)); the MeHg mobile share is multiplied by `phi_M / phi_H = (liq + Kd M) / (liq + Kd 10^d M)`, with the day's (DOC-scaled) Kd. MeHg stays outside the Hg:DOC cap. |
+| `hg_t3_fred` | 0 | T5: share of the gross demethylation `D = P - dM` reduced to Hg(0). The escape-probability share `P_l` (thawed layers) evades and is booked in `HG_EVASION` / `HG_SOILEV` / `HG_T3RED`. Needs closure and `hg_t2_ev_diff`. Sensitivity only. |
+| `hg_t3_wavail` | 0 | T3: methylation x ((1 - w) + w phi_eq / THg-weighted column mean phi_eq). Built and unit-tested, not run. |
+| `hg_t3_so4`, `_ks` 0.1, `_ki` 1.6, `_sref` 0.1 mM, `hg_t3_so4_class {"cmt": S}` | 0 | T6: `(S/(Ks+S)) (Ki/(Ki+S))`, normalised at S_ref (optimum sqrt(Ks Ki) = 0.4 mM). Not fitted. |
+| `hg_t3_class {"cmt": g}` | none | T8: methylation factor by CMT (the cohort's `cd.cmttype`). |
+
+New outputs (only with `hg_t3` = 1): `MEHG_DEMETH` (gross demethylation) and `HG_T3RED` (reductive-demethylation Hg(0) evaded,
+part of `HG_EVASION`). Deviation from the design: `MEHG_DISS`, `MEHG_PWC` and `HG_T3BAL` were not added. The THg balance is
+`HG_BALERR`, which closure keeps at roundoff (unit test), and the MeHg transport balance is `HG_MEHGBAL`. No restart change:
+MeHg already sits in the v4 restart.
+
+Unit tests (`tests/unit/test_hg_tracer.cpp`, 6 new cases) cover:
+- parse: defaults, dependencies, class maps;
+- rate factors exactly 1 at the defaults, and the sulfate optimum;
+- step + `mehg_month` bitwise identity at `hg_t3` 1;
+- closure: THg balance at 1e-12, MeHg moves are THg moves, MeHg not lost with the Hg(II) release, zero MeHg == off,
+  geometry change conserved;
+- the Kd offset raises the MeHg export;
+- the closure substrate, the class factor, and `f_red` booking.
+
+binT3a (c5ac8d70; built -j2 from the tree of this commit): 585/585 cases pass, with the same 8 known xfail assertions as binB.
+
+### 24.2 P0 identities (0.1664 core-h)
+
+- **T3A0** (B2F settings, `hg_t3` absent, binT3) vs **B2F** (binB): 0 differences in every NetCDF variable of the 8 groups
+  (TVC/HPC spin000 + main, Toolik proxy/ch4 sp + tr; 360-382 variables per group).
+- **T3A1** (B2F + `hg_t3` 1, every other key at its default) vs **B2F**: 0 differences in all 8 groups (index equivalence, T11).
+- **Hg-off 8-case prod** binT3 vs binR (runs of out/R0P_B): RESULT PASS.
+
+![fig46](figures_hg_t2/hg_t2_fig46_t3_identity.png)
+![fig47](figures_hg_t2/hg_t2_fig47_t3_b2f_profiles.png)
+
+Fig. 47 shows the B2F (= T3 at defaults) JJAS %MeHg and gross-production profiles. TVC peaks at 1.9 % at about 10 cm; HPC
+peaks at 1.5 % in the top 5 cm and is about 0.1 % below; the Toolik fen peaks at 6.7 % at about 20 cm. This is the MeHg that
+the closure takes out of the Hg(II) substrate. Up to 7 % of the layer THg at the fen peak means up to 7 % less substrate
+there, so closure is a small first-order effect on %MeHg.

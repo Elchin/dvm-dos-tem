@@ -2156,3 +2156,143 @@ TEST_CASE("B thaw: hg_t2_ev_diff_thaw re-emits f_thaw_evade x P (from the surfac
   CHECK(std::fabs(sr.balance_error()) < 1e-13 * sr.total()); CHECK(sr.total() > s0.total());
   std::remove(T2DEP);
 }
+
+// ---- T3 (docs_src/T3_design.md; WORK_NOTES_hg_t2 sections 24+): process-based MeHg ----
+namespace {
+hgtr::Params t3params() {   // T2 dissolved + MeHg transport (the T3 prerequisites)
+  hgtr::Params p = t2dparams(); p.d_cryo = 0; p.d_bio = 0; p.mehg = 1; p.t2_mehg_transport = 1; p.transport = 1; return p;
+}
+hgtr::State t3state(const hgtr::Params& p, const hgtr::Snap& a) {
+  hgtr::State s; hgtr::initialize(p, s, a);
+  for (int l = 0; l < a.nsl; l++) { s.diss[l] = 0.01 * s.soil[l]; s.soil[l] -= s.diss[l]; s.mehg[l] = 0.01 * (l + 1) * (s.soil[l] + s.diss[l]); }
+  s.h_init = s.total(); return s;
+}
+bool same_state(const hgtr::State& x, const hgtr::State& y) {
+  bool ok = (x.snow == y.snow && x.wd == y.wd && x.m.export_ == y.m.export_ && x.m.evasion == y.m.evasion && x.mehg_exp_m == y.mehg_exp_m
+             && x.mehg_prod_m == y.mehg_prod_m && x.mehg_tbal_m == y.mehg_tbal_m);
+  for (int l = 0; l < MAX_SOI_LAY; l++) { ok = ok && x.soil[l] == y.soil[l] && x.diss[l] == y.diss[l] && x.mehg[l] == y.mehg[l]; }
+  return ok;
+}
+}
+
+TEST_CASE("T3 parse: defaults off; hg_t3_* need hg_t3; hg_t3 needs the MeHg / dissolved / transport prerequisites; class maps") {
+  hgtr::Params p0 = t2params();
+  CHECK(p0.t3 == 0); CHECK(p0.t3_closure == 0); CHECK(p0.t3_dlogkd_mehg == 0.0); CHECK(p0.t3_fred == 0.0); CHECK(p0.t3_wavail == 0.0);
+  CHECK(p0.t3_so4 == 0); CHECK(p0.t3_cls_cmt.empty()); CHECK(p0.t3_so4_cmt.empty());
+  Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_t2"] = 1; m["hg_dep_file"] = T2DEP; m["hg_mehg"] = 1; m["hg_transport"] = 1;
+  m["hg_t2_mehg_preset"] = 1; hgtr::Params r;
+  REQUIRE(hgtr::parse(m, r) == ""); CHECK(r.t3 == 0);
+  Json::Value a = m; a["hg_t3"] = 1; REQUIRE(hgtr::parse(a, r) == ""); CHECK(r.t3 == 1); CHECK(r.t3_closure == 0);
+  Json::Value b = m; b["hg_t3_closure"] = 1; CHECK(hgtr::parse(b, r) != "");             // needs hg_t3
+  Json::Value b2 = m; b2["hg_t3_dlogkd_mehg"] = -0.5; CHECK(hgtr::parse(b2, r) != "");
+  Json::Value c = a; c["hg_mehg"] = 0; CHECK(hgtr::parse(c, r) != "");
+  Json::Value c2 = a; c2["hg_t2_mehg_transport"] = 0; CHECK(hgtr::parse(c2, r) != "");
+  Json::Value c3 = a; c3["hg_t2_diss"] = 0; CHECK(hgtr::parse(c3, r) != "");
+  Json::Value d = a; d["hg_t3_closure"] = 1; d["hg_t3_dlogkd_mehg"] = -1.0; REQUIRE(hgtr::parse(d, r) == "");
+  CHECK(r.t3_closure == 1); CHECK(r.t3_dlogkd_mehg == -1.0);
+  Json::Value d2 = a; d2["hg_t3_dlogkd_mehg"] = -3.5; CHECK(hgtr::parse(d2, r) != "");
+  Json::Value e = a; e["hg_t3_fred"] = 0.001; CHECK(hgtr::parse(e, r) != "");            // needs closure (and ev_diff)
+  Json::Value e2 = e; e2["hg_t3_closure"] = 1; e2["hg_t2_ev_diff"] = 1; REQUIRE(hgtr::parse(e2, r) == ""); CHECK(r.t3_fred == 0.001);
+  Json::Value g = a; g["hg_t3_class"]["6"] = 2.5; g["hg_t3_class"]["5"] = 0.5; REQUIRE(hgtr::parse(g, r) == "");
+  CHECK(hgtr::t3_rate(r, 6) == 2.5); CHECK(hgtr::t3_rate(r, 5) == 0.5); CHECK(hgtr::t3_rate(r, 4) == 1.0);
+  Json::Value g2 = a; g2["hg_t3_class"]["x6"] = 2.5; CHECK(hgtr::parse(g2, r) != "");
+  Json::Value g3 = a; g3["hg_t3_class"] = 2.5; CHECK(hgtr::parse(g3, r) != "");
+  Json::Value h = a; h["hg_t3_so4_class"]["6"] = 0.4; CHECK(hgtr::parse(h, r) != "");   // needs hg_t3_so4
+  Json::Value h2 = h; h2["hg_t3_so4"] = 1; REQUIRE(hgtr::parse(h2, r) == "");
+  CHECK(hgtr::t3_rate(r, 6) > 1.0); CHECK(hgtr::t3_rate(r, 4) == 1.0);
+  Json::Value h3 = a; h3["hg_t3_so4"] = 1; h3["hg_t3_so4_ks"] = 0.2; REQUIRE(hgtr::parse(h3, r) == ""); CHECK(hgtr::t3_rate(r, 6) == 1.0);
+  std::remove(T2DEP);
+}
+
+TEST_CASE("T3 rate factors: g_class x f_SO4, exactly 1 at the defaults; sulfate optimum near sqrt(Ks Ki); phi ratio") {
+  hgtr::Params p; CHECK(hgtr::t3_rate(p, 6) == 1.0);
+  p.t3 = 1; CHECK(hgtr::t3_rate(p, 6) == 1.0);
+  p.t3_so4 = 1; CHECK(hgtr::t3_rate(p, 6) == 1.0);
+  p.t3_so4_cmt = {6}; p.t3_so4_s = {p.t3_so4_sref}; CHECK(hgtr::t3_rate(p, 6) == 1.0);
+  const double so = std::sqrt(p.t3_so4_ks * p.t3_so4_ki);
+  auto f = [&](double S) { p.t3_so4_s = {S}; return hgtr::t3_rate(p, 6); };
+  CHECK(f(so) > f(0.5 * so)); CHECK(f(so) > f(2.0 * so)); CHECK(f(20.0) < 1.0); CHECK(f(0.0) == 0.0);
+  CHECK(hgtr::t3_phir(20.0, 500.0, 0.0) == 1.0);
+  CHECK(hgtr::t3_phir(20.0, 500.0, -1.0) == doctest::Approx(520.0 / 70.0).epsilon(1e-14));
+  CHECK(hgtr::t3_phir(20.0, 500.0, 0.5) < 1.0);
+}
+
+TEST_CASE("T3 identity: hg_t3 = 1 at the defaults == T2 bitwise (step with transport, mehg_month, spin-up absent)") {
+  hgtr::Params p = t3params(); p.t2_evasion = 1; hgtr::Params q = p; q.t3 = 1;
+  hgtr::Snap a = column(6); hgtr::Flux f = dflux(6, 10, 2.0, 1.0, 1.0, 20.0, 5);
+  for (int l = 0; l < 6; l++) { f.decomp[l] = 3.0; f.ts[l] = 4.0; f.liq[l] = 20.0; f.por[l] = 0.8; }
+  hgtr::Snap b = a; for (int l = 0; l < 6; l++) { b.soil[l] = a.soil[l] - 3.0; }
+  hgtr::State s = t3state(p, a), s0 = s, s1 = s; s1.cmt = 6; s0.cmt = 6;
+  hgtr::step(p, s0, a, b, f); hgtr::step(q, s1, a, b, f);
+  CHECK(same_state(s0, s1));
+  double at[MAX_SOI_LAY], ts[MAX_SOI_LAY]; for (int l = 0; l < MAX_SOI_LAY; l++) { at[l] = 0.002 * (l + 1); ts[l] = 3.0 - l; }
+  hgtr::mehg_month(p, s0, at, ts, 6, false); hgtr::mehg_month(q, s1, at, ts, 6, false);
+  CHECK(same_state(s0, s1));
+  hgtr::mehg_month(p, s0, at, ts, 6, true); hgtr::mehg_month(q, s1, at, ts, 6, true);
+  CHECK(same_state(s0, s1)); CHECK(s1.mehg_dem_m > 0.0); CHECK(s1.m.t3red == 0.0);
+  std::remove(T2DEP);
+}
+
+TEST_CASE("T3 closure: THg conserved (balance error roundoff), MeHg moves are THg moves, MeHg not lost with Hg(II) release; zero MeHg == off") {
+  hgtr::Params p = t3params(); p.t3 = 1; hgtr::Params q = p; q.t3_closure = 1;
+  hgtr::Snap a = column(6); hgtr::Flux f = dflux(6, 10, 2.0, 1.0, 1.0, 20.0, 5);
+  for (int l = 0; l < 6; l++) { f.decomp[l] = 3.0; f.ts[l] = 4.0; }
+  hgtr::Snap b = a; for (int l = 0; l < 6; l++) { b.soil[l] = a.soil[l] - 3.0; }
+  hgtr::State s = t3state(p, a), s0 = s, s1 = s;
+  hgtr::step(p, s0, a, b, f); hgtr::step(q, s1, a, b, f);
+  CHECK(std::fabs(s1.balance_error()) < 1e-12 * s1.total());
+  CHECK(std::fabs(s1.mehg_tbal_m) < 1e-12 * s.mehgtot());
+  CHECK(s1.mehg_exp_m > 0.0);
+  CHECK(s1.m.export_ > 0.0);
+  for (int l = 0; l < MAX_SOI_LAY; l++) { CHECK(s1.mehg[l] >= 0.0); CHECK(s1.mehg[l] <= s1.soil[l] + s1.diss[l] + 1e-12); }
+  // no transport: closure keeps the MeHg (the T2 index follows the Hg(II) losses), THg conserved
+  hgtr::Flux g = dflux(6, 10, 0.0, 0.0, 0.0, 20.0, 5); for (int l = 0; l < 6; l++) { g.decomp[l] = 3.0; g.ts[l] = 4.0; }
+  hgtr::State t0 = s, t1 = s; hgtr::step(p, t0, a, b, g); hgtr::step(q, t1, a, b, g);
+  CHECK(t1.mehgtot() == doctest::Approx(s.mehgtot()).epsilon(1e-12)); CHECK(t0.mehgtot() < s.mehgtot());
+  CHECK(std::fabs(t1.balance_error()) < 1e-12 * t1.total());
+  CHECK(t1.m.export_ <= t0.m.export_ * (1.0 + 1e-12));   // the release acts on THg - MeHg
+  // zero MeHg: closure == off
+  hgtr::State z = s; for (int l = 0; l < MAX_SOI_LAY; l++) { z.mehg[l] = 0.0; }
+  hgtr::State z0 = z, z1 = z; hgtr::step(p, z0, a, b, f); hgtr::step(q, z1, a, b, f);
+  CHECK(same_state(z0, z1));
+  // geometry change: THg conserved
+  hgtr::Snap c = a; c.nsl = 5; for (int l = 0; l < 5; l++) { c.soil[l] = a.soil[l] * 6.0 / 5.0 - 2.0; c.dz[l] = a.dz[l] * 6.0 / 5.0; c.type[l] = a.type[l]; } c.soil[5] = 0.0; c.dz[5] = 0.0;
+  hgtr::State u = s; hgtr::step(q, u, a, c, g);
+  CHECK(std::fabs(u.balance_error()) < 1e-12 * u.total());
+  std::remove(T2DEP);
+}
+
+TEST_CASE("T3 dlogkd_mehg: 0 == off; < 0 raises the MeHg export; closure + Kd offset conserve THg") {
+  hgtr::Params p = t3params(); p.t3 = 1; hgtr::Params q = p; q.t3_dlogkd_mehg = -1.0; hgtr::Params r = q; r.t3_closure = 1;
+  hgtr::Snap a = column(6); hgtr::Flux f = dflux(6, 10, 2.0, 1.0, 1.0, 20.0, 5);
+  hgtr::State s = t3state(p, a), s0 = s, s1 = s, s2 = s;
+  hgtr::step(p, s0, a, a, f); hgtr::step(q, s1, a, a, f); hgtr::step(r, s2, a, a, f);
+  CHECK(s1.mehg_exp_m > s0.mehg_exp_m);
+  for (int l = 0; l < MAX_SOI_LAY; l++) { CHECK(s1.soil[l] == s0.soil[l]); CHECK(s1.diss[l] == s0.diss[l]); }   // no closure: index only
+  CHECK(std::fabs(s1.mehg_tbal_m) < 1e-12 * s.mehgtot()); CHECK(std::fabs(s2.mehg_tbal_m) < 1e-12 * s.mehgtot());
+  CHECK(std::fabs(s2.balance_error()) < 1e-12 * s2.total()); CHECK(s2.m.export_ > 0.0);
+  std::remove(T2DEP);
+}
+
+TEST_CASE("T3 mehg_month: closure substrate THg - MeHg; class factor scales production; f_red evades the escape share, booked") {
+  hgtr::Params p = t3params(); p.t3 = 1; p.t2_evasion = 1; p.t2_ev_diff = 1;
+  hgtr::Snap a = column(6); hgtr::State s = t3state(p, a);
+  for (int l = 0; l < MAX_SOI_LAY; l++) { s.pesc_l[l] = 0.5; }
+  double at[MAX_SOI_LAY], ts[MAX_SOI_LAY]; for (int l = 0; l < MAX_SOI_LAY; l++) { at[l] = 0.002; ts[l] = 5.0; }
+  hgtr::Params q = p; q.t3_closure = 1; hgtr::Params g = p; g.t3_cls_cmt = {6}; g.t3_cls_g = {2.0};
+  hgtr::Params rr = q; rr.t3_fred = 0.01;
+  hgtr::State s0 = s, s1 = s, s2 = s, s3 = s; s2.cmt = 6; s3.cmt = 6;
+  hgtr::mehg_month(p, s0, at, ts, 6, false); hgtr::mehg_month(q, s1, at, ts, 6, false);
+  hgtr::mehg_month(g, s2, at, ts, 6, false); hgtr::mehg_month(rr, s3, at, ts, 6, false);
+  CHECK(s1.mehg_prod_m < s0.mehg_prod_m);
+  CHECK(s2.mehg_prod_m == doctest::Approx(2.0 * s0.mehg_prod_m).epsilon(1e-14));
+  CHECK(s1.total() == s.total()); CHECK(s0.total() == s.total());
+  CHECK(s3.m.t3red > 0.0); CHECK(s3.m.evasion == s3.m.t3red); CHECK(s3.m.soilev == s3.m.t3red);
+  CHECK(s3.m.t3red == doctest::Approx(0.01 * 0.5 * s3.mehg_dem_m).epsilon(1e-12));
+  CHECK(s3.total() == doctest::Approx(s.total() - s3.m.t3red).epsilon(1e-14));
+  for (int l = 0; l < 6; l++) { CHECK(s3.mehg[l] == s1.mehg[l]); }
+  hgtr::Params w = p; w.t3_wavail = 0.2; for (int l = 0; l < MAX_SOI_LAY; l++) { s.phieq[l] = 0.001 * (l + 1); }
+  hgtr::State s4 = s, s5 = s; hgtr::mehg_month(p, s4, at, ts, 6, false); hgtr::mehg_month(w, s5, at, ts, 6, false);
+  CHECK(s5.mehg_prodl[0] < s4.mehg_prodl[0]); CHECK(s5.mehg_prodl[5] > s4.mehg_prodl[5]);
+  std::remove(T2DEP);
+}

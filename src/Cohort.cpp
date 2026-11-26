@@ -3290,14 +3290,15 @@ void Cohort::hg_month_begin(const int currmind, hgtr::Snap & a) {
       hg_rec_ys.assign(1, 0); hg_rec_yn.assign(1, hg.nsl);
     }
   }
-  hg.m.clear(); hg.mehg_prod_m = 0.0; hg.mehg_hsub_m = 0.0; hg.mehg_kdp_m = 0.0; hg.mehg_exp_m = 0.0; hg.mehg_tbal_m = 0.0;
-  if (currmind == 0) { hg.y.clear(); hg.mehg_prod_y = 0.0; hg.mehg_hsub_y = 0.0; hg.mehg_kdp_y = 0.0; hg.mehg_exp_y = 0.0; hg.mehg_tbal_y = 0.0; }
+  hg.m.clear(); hg.mehg_prod_m = 0.0; hg.mehg_hsub_m = 0.0; hg.mehg_kdp_m = 0.0; hg.mehg_exp_m = 0.0; hg.mehg_tbal_m = 0.0; hg.mehg_dem_m = 0.0;
+  if (currmind == 0) { hg.y.clear(); hg.mehg_prod_y = 0.0; hg.mehg_hsub_y = 0.0; hg.mehg_kdp_y = 0.0; hg.mehg_exp_y = 0.0; hg.mehg_tbal_y = 0.0; hg.mehg_dem_y = 0.0; }
 }
 
 /** MeHg index for this month (hg_mehg = 1). Driver: CH4 production / layer C where the CH4 module is on
  *  (cd.ch4_on, hg_mehg_driver 0), else saturated fraction (water table) x RH / layer C. */
 void Cohort::hg_mehg_month(const hgtr::Flux & fbgc) {
   const int nsl = std::min(cd.m_soil.numsl, MAX_SOI_LAY);
+  hg.cmt = cd.cmttype;   // T3: CMT class map / sulfate class (hg_t3_class, hg_t3_so4_class)
   const bool ch4drv = cd.ch4_on && md->hg.mehg_driver == 0;
   double aturn[MAX_SOI_LAY] = {}, ts[MAX_SOI_LAY] = {};
   const double wt = edall->m_sois.watertab;

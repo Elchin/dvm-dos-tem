@@ -2853,6 +2853,10 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
       scalar("HG_KDEFF", hgtr::mehg_kdeff_d(h.mehg_kdp_m, h.mehg_prod_m), hgtr::mehg_kdeff_d(h.mehg_kdp_y, h.mehg_prod_y));
       scalar("HG_MEHGEXP", h.mehg_exp_m, h.mehg_exp_y);
       scalar("HG_MEHGBAL", h.mehg_tbal_m, h.mehg_tbal_y);   // phase M2 item 2
+      if (md.hg.t3 == 1) {   // T3 diagnostics: gross demethylation, reductive-demethylation Hg(0) evaded (part of HG_EVASION)
+        scalar("MEHG_DEMETH", h.mehg_dem_m, h.mehg_dem_y);
+        scalar("HG_T3RED", h.m.t3red, h.y.t3red);
+      }
       scalar("HG_BALERR", h.balance_error(), h.balance_error());
     }
   }

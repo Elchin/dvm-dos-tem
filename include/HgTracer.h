@@ -411,6 +411,20 @@ struct Params {
   double ev_dwh = 4.0e-9;       // hg_ev_dwh (m2/s): Dw / H, dissolved path (Kuss et al. 2009; H ~0.3)
   int    ev_tort = 1;           // hg_ev_tort: 1 = 0.66 x (x / phi)^3 (CH4 module), 0 = Millington-Quirk
   int    t2_ev_diff_thaw = 0;   // hg_t2_ev_diff_thaw
+  // ---- T3 (docs_src/T3_design.md; WORK_NOTES_hg_t2 sections 24+): process-based MeHg. Every switch is default-off and
+  // hg_t3 = 1 with every other hg_t3_* key at its default is bitwise the T2 model (identity bar T11).
+  int    t3 = 0;                // hg_t3: master (needs hg_mehg, hg_t2, hg_t2_diss, hg_transport, hg_t2_mehg_transport = 1)
+  int    t3_closure = 0;        // hg_t3_closure (T1/T2): MeHg is a mass-conserving sub-pool of the layer Hg (carried in the
+                                //   sorbed pool); the Hg(II) processes (decay release, evasion, thaw release, sorption, Hg(II)
+                                //   transfers, substrate) see THg - MeHg; MeHg transfers / exports move THg
+  double t3_dlogkd_mehg = 0.0;  // hg_t3_dlogkd_mehg (T7): log10 Kd(MeHg) - log10 Kd(Hg(II)); MeHg mobile share x phi_M / phi_H
+  double t3_fred = 0.0;         // hg_t3_fred (T5): share of the gross demethylation reduced to Hg(0); the escape-probability
+                                //   share evades (needs hg_t3_closure = 1 and hg_t2_ev_diff = 1; sensitivity only)
+  double t3_wavail = 0.0;       // hg_t3_wavail (T3): methylation x ((1 - w) + w phi_eq / column mean phi_eq) (sensitivity only)
+  int    t3_so4 = 0;            // hg_t3_so4 (T6): sulfate factor (S / (Ks + S)) (Ki / (Ki + S)) normalised at S_ref (not fitted)
+  double t3_so4_ks = 0.1, t3_so4_ki = 1.6, t3_so4_sref = 0.1;   // hg_t3_so4_ks / _ki / _sref (mM; optimum sqrt(Ks Ki) 0.4 mM)
+  std::vector<int> t3_cls_cmt; std::vector<double> t3_cls_g;      // hg_t3_class {"<cmt>": g} (T8): methylation factor by CMT
+  std::vector<int> t3_so4_cmt; std::vector<double> t3_so4_s;      // hg_t3_so4_class {"<cmt>": S (mM)} (default S_ref)
   bool   dep_comp    = false; // the deposition file has components (hg2_wet / hg2_dry / hg0_soil columns)
   std::vector<double> dep_w, dep_d2, dep_d0, dep_s0;   // components per row (ug/m2/yr)
 };
@@ -574,7 +588,9 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_doc_eps", &p.doc_eps, 0, 1e30}, {"hg_doc_kdoc", &p.doc_kdoc, 0, 1e6},
             {"hg_ev_wl", &p.ev_wl, 0, 1}, {"hg_ev_tauref", &p.ev_tauref, 1e-6, 1}, {"hg_ev_air_b", &p.ev_air_b, 0, 3},
             {"hg_ev_dref", &p.ev_dref, 1e-6, 1}, {"hg_ev_q10", &p.ev_q10, 1, 20}, {"hg_ev_tref", &p.ev_tref, -50, 50},
-            {"hg_ev_lref", &p.ev_lref, 1e-3, 10}, {"hg_ev_d0", &p.ev_d0, 1e-7, 1e-3}, {"hg_ev_dwh", &p.ev_dwh, 0, 1e-6}};
+            {"hg_ev_lref", &p.ev_lref, 1e-3, 10}, {"hg_ev_d0", &p.ev_d0, 1e-7, 1e-3}, {"hg_ev_dwh", &p.ev_dwh, 0, 1e-6},
+            {"hg_t3_dlogkd_mehg", &p.t3_dlogkd_mehg, -3, 1}, {"hg_t3_fred", &p.t3_fred, 0, 1}, {"hg_t3_wavail", &p.t3_wavail, 0, 1},
+            {"hg_t3_so4_ks", &p.t3_so4_ks, 1e-4, 100}, {"hg_t3_so4_ki", &p.t3_so4_ki, 1e-4, 100}, {"hg_t3_so4_sref", &p.t3_so4_sref, 1e-4, 100}};
   struct I { const char* k; int* v; int lo, hi; };
   I is[] = {{"hg_tracer", &p.tracer, 0, 1}, {"hg_mehg", &p.mehg, 0, 1}, {"hg_mehg_driver", &p.mehg_driver, 0, 1},
             {"hg_spinup", &p.spinup, 0, 1}, {"hg_transport", &p.transport, 0, 1}, {"hg_spinup_cycle", &p.spinup_cycle, 1, 50}, {"hg_spinup_closure", &p.spinup_closure, 0, 2}, {"hg_tr_year0", &p.tr_year0, -100000, 100000},
@@ -594,7 +610,8 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_doc_c_loss", &p.doc_c_loss, 0, 1}, {"hg_doc_c_sink", &p.doc_c_sink, 0, 0}, {"hg_doc_n_loss", &p.doc_n_loss, 0, 0},
             {"hg_t2_doc_hglim", &p.t2_doc_hglim, 0, 1}, {"hg_doc_capmoss", &p.doc_capmoss, 0, 1},
             {"hg_t2_ev_light", &p.t2_ev_light, 0, 1}, {"hg_t2_ev_air", &p.t2_ev_air, 0, 1},
-            {"hg_t2_ev_diff", &p.t2_ev_diff, 0, 1}, {"hg_ev_tort", &p.ev_tort, 0, 1}, {"hg_t2_ev_diff_thaw", &p.t2_ev_diff_thaw, 0, 1}};
+            {"hg_t2_ev_diff", &p.t2_ev_diff, 0, 1}, {"hg_ev_tort", &p.ev_tort, 0, 1}, {"hg_t2_ev_diff_thaw", &p.t2_ev_diff_thaw, 0, 1},
+            {"hg_t3", &p.t3, 0, 1}, {"hg_t3_closure", &p.t3_closure, 0, 1}, {"hg_t3_so4", &p.t3_so4, 0, 1}};
   for (const std::string& key : ms.getMemberNames()) {
     if (key.rfind("hg_", 0) != 0) { continue; }
     bool known = false;
@@ -614,6 +631,20 @@ inline std::string parse(const Json::Value& ms, Params& p) {
           return "model_settings." + key + " must be an integer in [" + std::to_string(d.lo) + ", " + std::to_string(d.hi) + "]";
         }
         *d.v = v.asInt();
+      }
+    }
+    if (key == "hg_t3_class" || key == "hg_t3_so4_class") {   // T3: {"<cmt number>": value, ...}
+      known = true; const Json::Value& o = ms[key];
+      const bool cls = (key == "hg_t3_class");
+      if (!o.isObject()) { return "model_settings." + key + " must be an object {\"<cmt>\": number}"; }
+      for (const std::string& c : o.getMemberNames()) {
+        int cm = -1;
+        try { size_t pos = 0; cm = std::stoi(c, &pos); if (pos != c.size()) { cm = -1; } } catch (const std::exception&) { cm = -1; }
+        if (cm < 0 || cm > 99 || !num_(o[c]) || o[c].asDouble() < 0.0 || o[c].asDouble() > 100.0) {
+          return "model_settings." + key + ": keys must be CMT numbers 0-99 and values numbers in [0, 100]";
+        }
+        if (cls) { p.t3_cls_cmt.push_back(cm); p.t3_cls_g.push_back(o[c].asDouble()); }
+        else { p.t3_so4_cmt.push_back(cm); p.t3_so4_s.push_back(o[c].asDouble()); }
       }
     }
     if (key == "hg_dep_file") {
@@ -694,6 +725,21 @@ inline std::string parse(const Json::Value& ms, Params& p) {
   if (p.t2_ev_diff == 1 && p.t2_ev_air == 1) { return "model_settings.hg_t2_ev_diff and hg_t2_ev_air exclude each other"; }
   if (p.t2_ev_diff_thaw == 1 && !(p.t2_ev_diff == 1 && p.t2_thawrel == 1)) { return "model_settings.hg_t2_ev_diff_thaw = 1 needs hg_t2_ev_diff = 1 and hg_t2_thawrel = 1"; }
   if (p.t2_ev_diff_thaw == 1 && p.t2_thaw_evz > 0.0) { return "model_settings.hg_t2_ev_diff_thaw and hg_t2_thaw_evz > 0 exclude each other"; }
+  {   // T3
+    const bool any = (p.t3_closure != 0 || p.t3_dlogkd_mehg != 0.0 || p.t3_fred != 0.0 || p.t3_wavail != 0.0 || p.t3_so4 != 0
+                      || !p.t3_cls_cmt.empty() || !p.t3_so4_cmt.empty() || ms.isMember("hg_t3_so4_ks") || ms.isMember("hg_t3_so4_ki")
+                      || ms.isMember("hg_t3_so4_sref"));
+    if (any && p.t3 != 1) { return "model_settings.hg_t3_* settings need hg_t3 = 1"; }
+    if (p.t3 == 1 && !(p.mehg == 1 && p.t2 == 1 && p.t2_diss == 1 && p.transport == 1 && p.t2_mehg_transport == 1)) {
+      return "model_settings.hg_t3 = 1 needs hg_mehg = 1, hg_t2 = 1, hg_t2_diss = 1, hg_transport = 1 and hg_t2_mehg_transport = 1";
+    }
+    if (p.t3_fred > 0.0 && !(p.t3_closure == 1 && p.t2_evasion == 1 && p.t2_ev_diff == 1)) {
+      return "model_settings.hg_t3_fred > 0 needs hg_t3_closure = 1 and hg_t2_ev_diff = 1";
+    }
+    if ((!p.t3_so4_cmt.empty() || ms.isMember("hg_t3_so4_ks") || ms.isMember("hg_t3_so4_ki") || ms.isMember("hg_t3_so4_sref")) && p.t3_so4 != 1) {
+      return "model_settings.hg_t3_so4_class / _ks / _ki / _sref need hg_t3_so4 = 1";
+    }
+  }
   return "";
 }
 
@@ -765,6 +811,7 @@ struct Acc {
   double doccap = 0;   // DOC step 2: Hg(II) withheld by the Hg:DOC cap (stays dissolved in the layer; diagnostic)
   double soilev0 = 0, gtrans = 0;   // R: re-emission with G = 1 (diagnostic), ground transmission (sum of monthly values)
   double pw = 0, pn = 0;   // B: decay-weighted escape probability sum(decomp x P) / sum(decomp) of thawed layers (diagnostic)
+  double t3red = 0;   // T3 (hg_t3_fred): Hg(0) from the reductive demethylation share that evades (part of evasion and soilev)
   void clear() { *this = Acc(); }
   void add(const Acc& o) {
     uptake += o.uptake; dep += o.dep; evasion += o.evasion; export_ += o.export_; fire += o.fire;
@@ -775,6 +822,7 @@ struct Acc {
     ash += o.ash; partic += o.partic; wash += o.wash;
     thawev += o.thawev; thawex += o.thawex;
     orgexp += o.orgexp; doccap += o.doccap; soilev0 += o.soilev0; gtrans += o.gtrans; pw += o.pw; pn += o.pn;
+    t3red += o.t3red;
   }
   double net() const { return uptake + dep - evasion - export_ - fire + spin; }   // spin: spin-up jump
 };
@@ -801,6 +849,8 @@ struct State {
   double mehg_prodl[MAX_SOI_LAY] = {};
   double pesc_l[MAX_SOI_LAY] = {};   // B (hg_t2_ev_diff): escape probability by layer of the month (diagnostic, not in the restart)
   double mehg_tbal_m = 0.0, mehg_tbal_y = 0.0;   // phase M2 item 2: transport-step MeHg balance error (ug/m2; 0 when off)   // phase M2: MeHg production of the month by layer (ug/m2; diagnostic, not in the restart)
+  double mehg_dem_m = 0.0, mehg_dem_y = 0.0;   // T3 diagnostic: gross demethylation of the MeHg pool (P - dM; ug/m2)
+  int cmt = -1;           // T3: the cohort's CMT (set by Cohort; not in the restart)
   int spun = 0;           // spin-up: 0 not done, 1 done, 2 gave up (geometry never repeated)
   int spin_tries = 0;
   double zmax = -1.0;     // T2 phase 6b: maximum thaw depth so far (m; -1 unset)
@@ -1083,6 +1133,24 @@ inline void thaw_track(const Params& p, State& s, const Snap& b, const Flux& f) 
 }
 
 // T2 phase 2: daily sorption, overland / lateral / vertical transport of the dissolved Hg, then monthly mixing (see top).
+// T3 methylation rate factor of a CMT: g_class (hg_t3_class) x f_SO4 (hg_t3_so4); exactly 1 at the defaults
+inline double t3_so4_raw(const Params& p, double S) { return (S / (p.t3_so4_ks + S)) * (p.t3_so4_ki / (p.t3_so4_ki + S)); }
+inline double t3_rate(const Params& p, int cmt) {
+  if (p.t3 != 1) { return 1.0; }
+  double g = 1.0;
+  for (size_t i = 0; i < p.t3_cls_cmt.size(); i++) { if (p.t3_cls_cmt[i] == cmt) { g = p.t3_cls_g[i]; } }
+  if (p.t3_so4 == 1) {
+    double S = p.t3_so4_sref;
+    for (size_t i = 0; i < p.t3_so4_cmt.size(); i++) { if (p.t3_so4_cmt[i] == cmt) { S = p.t3_so4_s[i]; } }
+    if (S != p.t3_so4_sref) { g *= t3_so4_raw(p, S) / t3_so4_raw(p, p.t3_so4_sref); }
+  }
+  return g;
+}
+// T3 (T7): MeHg / Hg(II) equilibrium dissolved-share ratio phi_M / phi_H for Kd_M = Kd_H 10^dlogkd (liq mm, kd x M)
+inline double t3_phir(double liq, double kdM, double dl) {
+  const double a = liq + kdM, b = liq + kdM * std::pow(10.0, dl);
+  return (b > 0.0) ? a / b : 1.0;
+}
 inline void diss_transport_(const Params& p, State& s, const Snap& b, const Flux& f, Acc& acc) {
   const int nb = std::min(b.nsl, MAX_SOI_LAY);
   if (nb <= 0) { return; }
@@ -1100,7 +1168,7 @@ inline void diss_transport_(const Params& p, State& s, const Snap& b, const Flux
                 : (is_moss(b.type[l]) ? std::fmax(0.0, b.dz[l]) * p.rho_moss : std::fmax(0.0, b.soil[l]) * 2.0e-3);
       ztop[l] = z; z += std::fmax(0.0, b.dz[l]);
     } }
-  if (p.t2_mehg_subst == 2) {   // phase M1: Kd-equilibrium dissolved share of the month (monthly mean liquid water)
+  if (p.t2_mehg_subst == 2 || (p.t3 == 1 && p.t3_wavail > 0.0)) {   // phase M1: Kd-equilibrium dissolved share of the month (monthly mean liquid water)
     for (int l = 0; l < MAX_SOI_LAY; l++) { s.phieq[l] = 0.0; }
     for (int l = 0; l < nb; l++) {
       const double liq = std::fmax(0.0, f.liq[l]);
@@ -1132,13 +1200,16 @@ inline void diss_transport_(const Params& p, State& s, const Snap& b, const Flux
   const bool mt = (p.t2_mehg_transport == 1 && p.mehg == 1);
   double mb0 = 0.0, mexp = 0.0, mclamp = 0.0;
   if (mt) { for (int l = 0; l < MAX_SOI_LAY; l++) { mb0 += s.mehg[l]; } }
+  const bool cl = (p.t3 == 1 && p.t3_closure == 1 && mt);   // T3: MeHg moves are THg moves (MeHg carried in the sorbed pool)
+  const bool rk = (p.t3 == 1 && p.t3_dlogkd_mehg != 0.0);  // T3 (T7): MeHg Kd offset
   const auto retain_m = [&](double x) {
-    const double xd = x * fdp; s.mehg[lm] += x - xd;
-    if (lsp < 0) { s.mehg[ld] += xd; return; }
+    const double xd = x * fdp; s.mehg[lm] += x - xd; if (cl) { s.soil[lm] += x - xd; }
+    if (lsp < 0) { s.mehg[ld] += xd; if (cl) { s.soil[ld] += xd; } return; }
     double left = xd;
-    for (int l = lm; l < lsp; l++) { if (wsp[l] > 0.0) { const double h = xd * wsp[l]; s.mehg[l] += h; left -= h; } }
-    s.mehg[lsp] += left;
+    for (int l = lm; l < lsp; l++) { if (wsp[l] > 0.0) { const double h = xd * wsp[l]; s.mehg[l] += h; if (cl) { s.soil[l] += h; } left -= h; } }
+    s.mehg[lsp] += left; if (cl) { s.soil[lsp] += left; }
   };
+  double kml[MAX_SOI_LAY] = {}, lql[MAX_SOI_LAY] = {};   // T3: the day's Kd x M and liquid water by layer
   const int nd = std::min(31, std::max(0, f.nd));
   // T2 phase 3 (hg_t2_meltroute): the month's snowmelt Hg arrives with the day's melt; the overland share of the
   // day's surface water (qover / (qover + qinfl)) is exported, the rest enters the top layer's dissolved pool
@@ -1165,6 +1236,15 @@ inline void diss_transport_(const Params& p, State& s, const Snap& b, const Flux
       }
       const double den = liq + kd * M[l];
       const double phi = (den > 0.0) ? liq / den : 0.0;
+      if (rk) { kml[l] = kd * M[l]; lql[l] = liq; }
+      if (cl) {   // T3: the dissolved pool is Hg(II) only; target phi x (THg - MeHg)
+        const double mh = std::fmin(std::fmax(0.0, s.mehg[l]), std::fmax(0.0, s.soil[l] + s.diss[l]));
+        const double dx = (phi * std::fmax(0.0, s.soil[l] + s.diss[l] - mh) - s.diss[l]) * ks;
+        s.diss[l] += dx; s.soil[l] -= dx;
+        if (s.soil[l] < mh) { const double y = std::fmin(mh - s.soil[l], std::fmax(0.0, s.diss[l])); s.soil[l] += y; s.diss[l] -= y; }
+        if (s.diss[l] < 0.0) { s.soil[l] += s.diss[l]; s.diss[l] = 0.0; }
+        continue;
+      }
       const double dx = (phi * (s.soil[l] + s.diss[l]) - s.diss[l]) * ks;
       s.diss[l] += dx; s.soil[l] -= dx;
       if (s.soil[l] < 0.0) { s.diss[l] += s.soil[l]; s.soil[l] = 0.0; }
@@ -1206,7 +1286,14 @@ inline void diss_transport_(const Params& p, State& s, const Snap& b, const Flux
         const double d0 = s.diss[l], h0 = s.soil[l] + s.diss[l], m0 = std::fmax(0.0, s.mehg[l]);
         if (d0 > 0.0 && h0 > 0.0 && m0 > 0.0) {
           const double mf = (perch && l == tb) ? p.t2_mehg_mobfac * p.t2_mehg_frzmob : p.t2_mehg_mobfac;
-          const double fm = m0 * std::fmin(1.0, mf * d0 / h0) / d0;   // mobile MeHg per unit dissolved Hg
+          double fm;
+          if (!(cl || rk)) { fm = m0 * std::fmin(1.0, mf * d0 / h0) / d0; }   // mobile MeHg per unit dissolved Hg
+          else {   // T3: Hg(II) dissolved share (closure) x phi_M / phi_H (Kd offset)
+            const double h2 = cl ? h0 - std::fmin(m0, h0) : h0;
+            double sh = (h2 > 0.0) ? d0 / h2 : 0.0;
+            if (rk) { sh *= t3_phir(lql[l], kml[l], p.t3_dlogkd_mehg); }
+            fm = m0 * std::fmin(1.0, mf * sh) / d0;
+          }
           mov[l] = fm * ov[l]; mot[l] = fm * out[l]; mla[l] = fm * lat[l];
           if (p.t2_mehg_zrun > 0.0 && l > 0 && !(ztop[l] < p.t2_mehg_zrun)) { mov[l] = 0.0; }   // phase M4 B: MeHg overland zone
         }
@@ -1219,7 +1306,7 @@ inline void diss_transport_(const Params& p, State& s, const Snap& b, const Flux
         double r = 0.0;
         if (isd) { const double h2 = s.soil[l] + s.diss[l] - ((p.mehg == 1) ? std::fmax(0.0, s.mehg[l]) : 0.0); r = p.doc_eps * std::fmax(0.0, h2) / b.soil[l]; }
         const double c3[3] = {r * f.dfl.ov[d][l], r * f.dfl.lat[d][l], r * f.dfl.out[d][l]};
-        const double m3[3] = {mt ? mov[l] : 0.0, mt ? mla[l] : 0.0, mt ? mot[l] : 0.0};
+        const double m3[3] = {(mt && !cl) ? mov[l] : 0.0, (mt && !cl) ? mla[l] : 0.0, (mt && !cl) ? mot[l] : 0.0};   // T3 closure: Hg(II) transfers only
         double* x3[3] = {&ov[l], &lat[l], &out[l]};
         for (int k = 0; k < 3; k++) {
           if (*x3[k] - m3[k] > c3[k]) { const double nx = m3[k] + c3[k]; acc.doccap += *x3[k] - nx; *x3[k] = nx; }
@@ -1230,6 +1317,12 @@ inline void diss_transport_(const Params& p, State& s, const Snap& b, const Flux
       const double h0 = s.soil[l] + s.diss[l];   // phase M1: MeHg share of the layer Hg before the day's removal
       const double rme = (p.mehg == 1 && h0 > 0.0) ? std::fmin(1.0, std::fmax(0.0, s.mehg[l]) / h0) : 0.0;
       s.diss[l] -= ov[l] + out[l] + lat[l];
+      if (cl) {   // T3: the MeHg transfers leave the layer's THg (sorbed pool first)
+        const double xm = std::fmin(mov[l] + mot[l] + mla[l], std::fmax(0.0, s.mehg[l]));
+        const double k3 = (mov[l] + mot[l] + mla[l] > 0.0) ? xm / (mov[l] + mot[l] + mla[l]) : 0.0;
+        mov[l] *= k3; mot[l] *= k3; mla[l] *= k3;
+        const double xs = std::fmin(xm, std::fmax(0.0, s.soil[l])); s.soil[l] -= xs; s.diss[l] -= xm - xs;
+      }
       if (mt) { s.mehg[l] -= mov[l] + mot[l] + mla[l]; if (s.mehg[l] < 0.0) { s.mehg[l] = 0.0; } }
       if (fcx < 1.0 && l < lm) {   // phase 5b: organic-layer export, the share 1 - f_conn retained on the flow path
         const double ro = ov[l] * (1.0 - fcx), rl = lat[l] * (1.0 - fcx);
@@ -1238,9 +1331,10 @@ inline void diss_transport_(const Params& p, State& s, const Snap& b, const Flux
       }
       acc.export_ += ov[l] + lat[l]; acc.runoff += ov[l]; acc.drain += lat[l];
       if (lm < 0 || l < lm) { acc.orgexp += ov[l] + lat[l]; }   // DOC step 1 diagnostic
+      if (cl) { acc.export_ += mov[l] + mla[l]; acc.runoff += mov[l]; acc.drain += mla[l]; if (lm < 0 || l < lm) { acc.orgexp += mov[l] + mla[l]; } }   // T3
       if (mt) { const double xm = mov[l] + mla[l]; mexp += xm; s.mehg_exp_m += xm; s.mehg_exp_y += xm; }   // phase M2: removal
       else { const double xm = rme * (ov[l] + lat[l]); s.mehg_exp_m += xm; s.mehg_exp_y += xm; }   // diagnostic only (index unchanged)
-      if (mt && l < tb) { s.mehg[l + 1] += mot[l]; }
+      if (mt && l < tb) { s.mehg[l + 1] += mot[l]; if (cl) { s.soil[l + 1] += mot[l]; if (!is_mineral(b.type[l]) && is_mineral(b.type[l + 1])) { acc.down += mot[l]; } } }
       if (l < tb) { s.diss[l + 1] += out[l]; if (!is_mineral(b.type[l]) && is_mineral(b.type[l + 1])) { acc.down += out[l]; } }
     }
   }
@@ -1259,6 +1353,11 @@ inline void diss_transport_(const Params& p, State& s, const Snap& b, const Flux
       fl[l] = k * (s.soil[l] / d0 - s.soil[l + 1] / d1);   // > 0: downward
     }
     for (int l = 0; l < tb; l++) {
+      if (cl) {   // T3: the MeHg moves with the sorbed Hg it is carried in
+        const int src = (fl[l] > 0.0) ? l : l + 1;
+        const double fmh = (s.soil[src] > 0.0) ? std::fabs(fl[l]) * std::fmin(1.0, std::fmax(0.0, s.mehg[src]) / s.soil[src]) : 0.0;
+        if (fl[l] > 0.0) { s.mehg[l] -= fmh; s.mehg[l + 1] += fmh; } else { s.mehg[l + 1] -= fmh; s.mehg[l] += fmh; }
+      }
       s.soil[l] -= fl[l]; s.soil[l + 1] += fl[l];
       if (!is_mineral(b.type[l]) && is_mineral(b.type[l + 1])) { acc.mixdown += fl[l]; }
     }
@@ -1428,6 +1527,13 @@ inline double thaw_fev(const Params& p, double zmid, double zpf) {
 inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const Flux& f) {
   if (!s.init) { return; }
   Acc acc;
+  // T3 (hg_t3_closure): the MeHg is withheld from the layer Hg for the C-driven part of the step (decay release, evasion,
+  // thaw release, internal C transfers act on Hg(II) = THg - MeHg) and put back before the transport sub-step; with a
+  // geometry change it is re-mapped with the C, MeHg of lost C goes to the pot as Hg(II)
+  const bool cl3 = (p.t3 == 1 && p.t3_closure == 1 && p.mehg == 1);
+  if (cl3) {
+    for (int l = 0; l < MAX_SOI_LAY; l++) { const double w = std::fmin(std::fmax(0.0, s.mehg[l]), std::fmax(0.0, s.soil[l])); s.mehg[l] = w; s.soil[l] -= w; }
+  }
   const bool td = (p.t2 == 1 && p.t2_diss == 1);   // T2 phase 2: explicit dissolved pool (export explicit, no f_export)
   const double f_exp = td ? 0.0 : p.f_export;
   const double rv[NUM_PFT_PART] = {p.r_leaf, p.r_stem, p.r_root};
@@ -1582,6 +1688,7 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
       if (sd[l] < 0) { give_soil[l] = std::fmin(s.soil[l], -sd[l] * rs[l] * g); s.soil[l] -= give_soil[l]; P += give_soil[l]; }
       mehg_new[l] = (h0soil[l] > 0.0) ? s.mehg[l] * (s.soil[l] / h0soil[l]) : 0.0;
     }
+    if (cl3) { for (int l = 0; l < MAX_SOI_LAY; l++) { mehg_new[l] = s.mehg[l]; } }   // T3: MeHg not lost with the Hg(II)
   } else {
     // old column (top -> bottom), take the net loss from the top
     double cc[MAX_SOI_LAY], hh[MAX_SOI_LAY], mm[MAX_SOI_LAY];
@@ -1593,6 +1700,7 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
         const double fx = (cc[l] > 0.0) ? x / cc[l] : 0.0;
         const double h = hh[l] * fx, m = mm[l] * fx;
         cc[l] -= x; hh[l] -= h; mm[l] -= m; t -= x; give_col += h; P += h;
+        if (cl3) { give_col += m; P += m; }   // T3: MeHg of the lost C -> pot (as Hg(II))
       }
       if (t > 0.0) { acc.unexpl_closs += t; }
     }
@@ -1614,7 +1722,7 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
     // leftover old material (C loss with no sink): Hg stays, in the top new layer
     double lh = 0.0, lm = 0.0;
     for (int l = 0; l <= i && l < na; l++) { lh += hh[l]; lm += mm[l]; }
-    if (nb > 0) { newh[topc] += lh; newm[topc] += lm; } else { P += lh; give_col += lh; }
+    if (nb > 0) { newh[topc] += lh; newm[topc] += lm; } else { P += lh; give_col += lh; if (cl3) { P += lm; give_col += lm; } }
     for (int l = 0; l < MAX_SOI_LAY; l++) { s.soil[l] = (l < nb) ? newh[l] : 0.0; mehg_new[l] = (l < nb) ? newm[l] : 0.0; }
     // receivers: the top excess
     R = 0.0;
@@ -1683,6 +1791,7 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
   }
   if (dep_add > 0.0) { s.soil[topc] += dep_add; }
   acc.unexpl_cgain = std::fmax(0.0, R - (cflow - std::fmin(S, cflow)));
+  if (cl3) { for (int l = 0; l < MAX_SOI_LAY; l++) { s.soil[l] += s.mehg[l]; } }   // T3: MeHg back into the layer Hg
   if (f.tr == 1 && p.transport == 1) { if (td) { diss_transport_(p, s, b, f, acc); } else { transport_(p, s, b, f, acc); } }
   s.nsl = nb;
   s.m.add(acc); s.y.add(acc); s.cum.add(acc);
@@ -1893,25 +2002,53 @@ inline void mehg_month(const Params& p, State& s, const double* a_turn, const do
                        const double* ffrz = nullptr) {
   const double km = ch4_driver ? p.k_meth_ch4 : p.k_meth_proxy;
   double prod = 0.0, hsub = 0.0, kdp = 0.0;
+  // T3: closure substrate Hg(II) = THg - MeHg; rate factor g_class x f_SO4; bioavailability blend; reductive demethylation
+  const bool cl3 = (p.t3 == 1 && p.t3_closure == 1);
+  const double g3 = t3_rate(p, s.cmt);
+  const double wa = (p.t3 == 1) ? p.t3_wavail : 0.0;
+  double phb = 0.0;
+  if (wa > 0.0) {
+    double w = 0.0;
+    for (int l = 0; l < std::min(nsl, MAX_SOI_LAY); l++) { const double hl = s.soil[l] + s.diss[l]; if (hl > 0.0) { phb += hl * s.phieq[l]; w += hl; } }
+    phb = (w > 0.0) ? phb / w : 0.0;
+  }
+  const double fr3 = (p.t3 == 1) ? p.t3_fred : 0.0; double red = 0.0, dem = 0.0;
   for (int l = 0; l < MAX_SOI_LAY; l++) {
     const double hl = s.soil[l] + s.diss[l];   // T2: layer Hg = sorbed + dissolved (diss = 0 without hg_t2_diss)
     s.mehg_prodl[l] = 0.0;
     if (l >= nsl || !(hl > 0.0)) { s.mehg[l] = 0.0; continue; }
     const double t = std::isfinite(ts[l]) ? ts[l] : p.t_ref;
+    const double m_old = s.mehg[l];
     // phase M1 (hg_t2_mehg_subst): substrate = layer Hg (0), dissolved Hg (1) or Kd-equilibrium dissolved share x Hg (2)
-    const double hs = (p.t2_mehg_subst == 1) ? std::fmin(hl, std::fmax(0.0, s.diss[l]))
-                    : (p.t2_mehg_subst == 2) ? hl * std::fmin(1.0, std::fmax(0.0, s.phieq[l])) : hl;
+    double hs;
+    if (!cl3) {
+      hs = (p.t2_mehg_subst == 1) ? std::fmin(hl, std::fmax(0.0, s.diss[l]))
+         : (p.t2_mehg_subst == 2) ? hl * std::fmin(1.0, std::fmax(0.0, s.phieq[l])) : hl;
+    } else {
+      const double h2 = hl - std::fmin(std::fmax(0.0, m_old), hl);   // T3: Hg(II)
+      hs = (p.t2_mehg_subst == 1) ? std::fmin(h2, std::fmax(0.0, s.diss[l]))
+         : (p.t2_mehg_subst == 2) ? h2 * std::fmin(1.0, std::fmax(0.0, s.phieq[l])) : h2;
+    }
     double pr = km * hs * std::fmax(0.0, a_turn[l]) * std::pow(p.q10_meth, (t - p.t_ref) / 10.0);
     if (p.t2_mehg_frz > 0) { pr *= (p.t2_mehg_frzd == 1 && ffrz != nullptr) ? ffrz[l] : mehg_frz_factor(p, t); }   // M2 item 1 / M3 daily
+    if (g3 != 1.0) { pr *= g3; }
+    if (wa > 0.0 && phb > 0.0) { pr *= (1.0 - wa) + wa * s.phieq[l] / phb; }
     s.mehg_prodl[l] = pr;
     const double kd = p.k_demeth * std::pow(p.q10_demeth, (t - p.t_ref) / 10.0);
     const double meq = pr / kd;
     s.mehg[l] = meq + (s.mehg[l] - meq) * std::exp(-kd);
     s.mehg[l] = std::fmin(std::fmax(s.mehg[l], 0.0), hl);
+    const double dl = pr - (s.mehg[l] - m_old); dem += dl;   // T3 diagnostic: gross demethylation
+    if (fr3 > 0.0 && dl > 0.0 && t > 0.0) {   // T3 (T5): reductive share to Hg(0), the escape-probability share evades
+      const double x = std::fmin(fr3 * dl * std::fmax(0.0, std::fmin(1.0, s.pesc_l[l])), std::fmax(0.0, s.soil[l] - s.mehg[l]));
+      s.soil[l] -= x; red += x;
+    }
     prod += pr;
     if (pr > 0.0) { hsub += hl; kdp += pr * kd; }   // phase M1 rate diagnostics (layer Hg of the producing layers)
   }
   s.mehg_prod_m += prod; s.mehg_prod_y += prod;
+  s.mehg_dem_m += dem; s.mehg_dem_y += dem;
+  if (red > 0.0) { Acc a; a.evasion = red; a.soilev = red; a.t3red = red; s.m.add(a); s.y.add(a); s.cum.add(a); }
   s.mehg_hsub_m += hsub; s.mehg_hsub_y += hsub; s.mehg_kdp_m += kdp; s.mehg_kdp_y += kdp;
 }
 
