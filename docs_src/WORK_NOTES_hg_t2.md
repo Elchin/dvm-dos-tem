@@ -1893,3 +1893,123 @@ runs, no code change); ledger total 10.993.**
   HPC bands).
 
 ![fig33](figures_hg_t2/hg_t2_fig33_m6_toolik_proxy.png)
+
+## 19. DOC step 1: diagnostic DOC and DOC-linked Hg export (2026-11-25/26)
+Design: `docs_src`-external `~/tem-dev/hg_t2/doc_export/DOC_EXPORT_step1_design.md` (approved "Ok": O1 scaled-Kd coupling
+only, O2 timing-only calibration, O3 dissolved-Hg export band added, budget ~0.74 core-h, hard cap 1.0; other items at
+the design defaults). Base: feat/hg-t2 at 43553cb8. Code commits f835fa76 (D1) and a21831f4 (D1b), local, not pushed.
+Binaries bins/binD1 (md5 658ebebe), bins/binD1b (md5 8d18bd25). Scripts in ~/tem-dev/hg_t2/src/doc/: patchD1.py,
+doc_block.h, testsD1.cpp, patchD1b.py, testsD1b.cpp, runD.sh, mk_doc.py (mkmk.py), ledgerDOC.py, an_doc.py, docfit.py,
+bands12.py, crit_mehg.py, plots_doc.py. Results in an2/doc/. **DOC step 1 used 0.805 of 1.0 core-h (ledger PHASE DOC step 1; total 11.798).**
+
+### 19.1 Code (all default off, bit-identical when off)
+- `hg_t2_doc` (0/1; needs hg_t2, hg_t2_diss, hg_transport). Diagnostic DOC pools (g C/m2) in the organic (shallow / deep)
+  layers, never removed from soil C. Per day of the monthly transport step: production hg_doc_fp x the month's layer
+  decomposition C (RH + CH4 production) spread over the layer's thawed days; mineralisation k = Q10^((T-10)/10) / tau10
+  (x hg_doc_frz on ice-dominated days); transport with the dissolved-Hg daily water fractions (overland in the z_runoff
+  zone, lateral drainage, vertical advection x hg_doc_vadv, cap 0.9, thawed zone only); organic export reaches the
+  stream with share hg_doc_fconn (rest "retained"); DOC entering a mineral layer is sorbed (hg_doc_minsink 1). Layer
+  concentration c = 1000 D / max(liq, 1) mg/L, clamped [hg_doc_cmin, hg_doc_cmax]. Geometry change: the pool is
+  redistributed by soil C. Restart variable hg_doc (written only with the switch on). Outputs HG_DOCPOOL, HG_DOCCONC,
+  HG_DOCPROD, HG_DOCMIN, HG_DOCEXP, HG_DOCRET, HG_DOCSINK, HG_DOCWAT, HG_DOCBAL, HG_ORGEXP (organic-layer Hg export).
+  hg_doc_dump 1: daily DOC drivers to output_dir/hg_doc_dump.txt (output only; offline fit).
+- `hg_t2_doc_hg` (0/1; needs hg_t2_doc): organic-layer Kd of the daily sorption x (c_ref / c)^hg_doc_beta. beta 0 is
+  identical to off; beta 1 with c_ref = f_C / Kd is the Akerblom epsilon = 1 limit (unit test). Moss / mineral Kd unchanged.
+  The day's c is computed in Cohort before the Hg step and carried in the transport Flux, so the spin-up record / jump stays exact.
+- D1b: `hg_doc_cref = -1`: site-normalised reference = running mean (e-folding hg_doc_crefyr, 5 yr; previous months only)
+  of the flow-weighted c of the water leaving the organic layers (HG_DOCCREF, HG_DOCCX). Needed because a global c_ref
+  moves the site mean Kd (see 19.4); with -1 the coupling changes timing, not the site mean (O2). hg_doc layout 2.
+- Unit tests: 9 new (parse / dependencies, steady state + Q10 + frozen factor, production timing, flushing / fconn / mineral
+  sink / balance, frozen immobility + random-month conservation + clamp, geometry + pack, beta 0 / off bit identity +
+  conservation + linearity, Akerblom limit, D1b running mean and cref -1 == cref X). 568/568 test cases (the 8 failing
+  non-Hg assertions are pre-existing and unchanged).
+
+### 19.2 Identity checks
+| check | runs | result |
+|---|---|---|
+| I1 switch absent (binD1, M4V1 settings) vs M4V1 | D1Q1, 8 case groups | 0 diffs (all variables) |
+| I1b same with binD1b | D4Q1 (TVC, HPC, TLK fen) | 0 diffs |
+| I2 hg_t2_doc 1, coupling off vs M4V1 | D1Q2, 8 groups | only diff: new restart variable hg_doc |
+| I3 hg_t2_doc_hg 1, beta 0 vs D1Q2 | D1Q3 (TVC, TLK fen) | 0 diffs (incl. DOC files) |
+| I4 Hg-off sub_off / 8-case prod vs upmerge binM | D1R1, D1R2 (binD1); D4R1, D4R2 (binD1b) | PASS / PASS; PASS / PASS |
+| I5 coupling on (D3P1) vs M4V1: non-Hg variables | 8 groups | 0 non-Hg diffs (C, N, water, energy identical) |
+| I6 balances | all runs | HG_BALERR <= 3e-9 ug/m2; DOC balance <= 6e-14 g C/m2 (dump) |
+| replica | docfit.py vs C++ (D1Q2 dumps, 3 sites x 900 months) | max rel. diff 1.2e-15 (fluxes), 3.4e-15 (pools) |
+
+### 19.3 D2: DOC parameters (offline fit on the D1Q2 daily drivers, Q10 = 2 fixed)
+Grid search (docfit.py, 3 grids, up to 672 sets) on the 11 DOC bands. Chosen: **hg_doc_fp 0.1, hg_doc_tau 160 d,
+hg_doc_frz 0.1, hg_doc_fconn 1** (best of the sets meeting the priority bands TVC export / freshet / stream conc and HPC
+export / freshet). C++ check (D3P1 / D4V1 DOC outputs): TVC export 2.083 (offline 2.082), May-Jun 0.418 (0.418).
+
+| site | DOC export g C/m2/yr (1-5) | May-Jun share (0.4-0.65; TLK >= 0.35) | stream conc mg/L (TVC 15-35, TLK 8-20) | pore conc JJAS mg/L (20-120) |
+|---|---|---|---|---|
+| TVC | 2.08 | 0.42 | 20.0 (May-Jun 35.6, Jul-Sep 16.1) | 190 (x) |
+| HPC | 3.22 | 0.46 | 76.1 (no band) | 252 (x) |
+| Toolik proxy | 0.68 (x) | 0.74 | 6.0 (x) | 54 |
+
+7 of 11 met. Misses are structural: Toolik organic-layer RH is 29 g C/m2/yr (TVC 197, HPC 180), so Toolik DOC export
+and concentration cannot reach the bands while TVC stays in its bands; the porewater conc (organic layers with little
+water) is about 2x the band at TVC / HPC for every set meeting the TVC freshet share (the freshet share needs the long
+tau). The default (fp 0.3, tau 10, frz 1) gave TVC May-Jun 0.19.
+
+### 19.4 D3 pilots (global c_ref) and D4 timing-only refit (all MeHg preset on; runs D3P1-3, D4A, D4B, D4V1)
+| run | coupling | THg export TVC / HPC / TLK | May-Jun TVC / HPC / TLK (0.35-0.60) | Ro TVC / HPC / TLK (0.29-0.41) | 12 bands | MeHg primary |
+|---|---|---|---|---|---|---|
+| M4V1 | none | 4.00 / 2.08 / 2.65 | 0.27 / 0.39 / 0.33 | 0.410 / 0.288 / 0.377 | 10 | 7/7 |
+| D3P1 | beta 1, c_ref 41.6 (pooled flow-weighted c) | 3.32 / 3.23 / 2.18 | 0.43 / 0.47 / 0.69 | 0.547 / 0.205 / 0.695 | 8 | 6/7 |
+| D3P2 | beta 1, c_ref 220 | 1.35 / 1.11 / 0.87 | 0.40 / 0.46 / 0.72 | 0.810 / 0.324 / 1.161 | 10 | 7/7 |
+| D3P3 | beta 0.5, c_ref 41.6 | 3.47 / 2.55 / 2.40 | 0.34 / 0.44 / 0.53 | 0.506 / 0.252 / 0.603 | 8 | 7/7 |
+| D4A | beta 1, c_ref site (-1) | 3.13 / 1.93 / 2.39 | 0.44 / 0.47 / 0.70 | 0.358 / 0.288 / 0.405 | 10 | 7/7 |
+| D4B | beta 0.6, c_ref site | 3.35 / 1.88 / 2.47 | 0.37 / 0.45 / 0.57 | 0.405 / 0.291 / 0.458 | 10 | 7/7 |
+| **D4V1** | **beta 0.6, c_ref site, kd_org 3.296, f_conn 0.582** | **3.84 / 2.26 / 2.74** | **0.36 / 0.45 / 0.57** | **0.375 / 0.281 / 0.409** | **10** | **7/7** |
+
+- The coupling works as designed: the organic-layer outflow DOC concentration peaks at the freshet (TVC May 63, Jun 38,
+  Jul-Sep 16-24 mg/L; Toolik 50 / 43 then < 10), so the lower spring Kd shifts Hg export into May-Jun.
+- A global c_ref also moves the site mean Kd by c_ref / c_site (TVC c 27, HPC 98, Toolik 21 mg/L): TVC and Toolik Ro rise
+  to 0.55-0.70, HPC Ro falls to 0.20; the TVC / HPC Ro ratio (2.0-2.7) cannot be brought back inside the bands by any
+  global parameter. Hence D1b (site-normalised c_ref, timing only).
+- D4V1: beta 0.6 (beta 1 over-shoots Toolik, 0.70), then kd_org / f_conn from the phase-5 finite-difference sensitivities
+  (F7k, F7c) to restore the mean export (TVC aimed at 3.9 to stay < 4.0). Matched the prediction (TVC 3.84 vs 3.9, TLK Ro
+  0.409 vs 0.407). Stop rule: the two remaining misses are the same as the preset (HPC Ro 0.281, HPC Rm 1.696, 0.4 % out);
+  closing HPC Ro opens Toolik Ro (kd_org moves both the same way), so no further run.
+
+### 19.5 D4V1 against every target
+| target | band | D4V1 | pass |
+|---|---|---|---|
+| THg export (V1) | 0.8-4.0 ug/m2/yr | 3.84 / 2.26 / 2.74 | yes |
+| dissolved-Hg export (O3, new) | 0.2-2.3 | 3.84 (x) / 2.26 / 2.74 (x) | HPC only (all model export is dissolved; expected) |
+| May-Jun Hg share (V2) | 0.35-0.60 | 0.364 / 0.447 / 0.569 | **yes, all three** (M4V1 0.27 / 0.39 / 0.33) |
+| DOC export (V3) | 1-5 g C/m2/yr | 2.08 / 3.22 / 0.68 | TVC, HPC |
+| DOC freshet share (V4) | TVC / HPC 0.4-0.65, TLK >= 0.35 | 0.42 / 0.46 / 0.74 | yes |
+| stream DOC (V5) | TVC 15-35, TLK 8-20 mg/L | 20.0 / 6.0 | TVC |
+| porewater DOC (V6) | 20-120 mg/L | 190 / 252 / 54 | TLK |
+| Hg:DOC of organic export (V7) | 0.2-0.45 ng/mg | 1.74 / 0.68 / 3.7 | no (model Hg export is not DOC-limited; see 19.8) |
+| 12 T2 bands (V9) | | 10/12 (HPC Ro 0.281, HPC Rm 1.696) | as M4V1 |
+| M4V1 MeHg criteria (V10) | 16.3 | TVC 0.741, HPC 0.092, ratio 8.05, fen 2.02, exports HPC 32.6 / TVC 20.5 / fen 16.5 / proxy 3.18 | 7/7 primary; proxy now > 2 |
+
+### 19.6 Warming (D5; 75 yr from copied D4V1 2024 restarts, 2080-2099; ctl vs +8 C ramp)
+| site | config | %MeHg ctl -> w8 | MeHg export May-Oct ng/m2 | THg export ug/m2/yr | evasion |
+|---|---|---|---|---|---|
+| TVC | M4V1 | 0.903 -> 2.687 | 15.7 -> 15.8 | 3.49 -> 8.08 | 5.9 -> 29.0 |
+| TVC | D4V1 | 0.893 -> 2.724 | 18.8 -> 18.2 | 3.43 -> 7.96 | 5.5 -> 28.4 |
+| HPC | M4V1 | 0.104 -> 0.011 | 24.8 -> 11.0 | 1.98 -> 2.41 | 5.8 -> 7.4 |
+| HPC | D4V1 | 0.103 -> 0.011 | 42.5 -> 23.7 | 2.20 -> 2.69 | 5.7 -> 7.2 |
+The warming response is unchanged in direction and size (THg export x2.3 TVC, x1.2 HPC; %MeHg TVC x3, HPC x0.1): with
+the site-normalised c_ref the DOC coupling follows the warmer climate's own mean DOC (5-yr running mean) and only shifts
+timing. HPC MeHg export is higher than M4V1 in both scenarios (spring dissolved Hg carries the MeHg).
+
+### 19.7 Budget
+Ledger (core-h): D1 + identity I1-I4 0.290, D3 pilots 0.142, D1b identity (D4Q1, sub_off) 0.068, D4 runs 0.141, D5 warming 0.029, D1b 8-case prod regression 0.135; total 0.805 of the 1.0 cap.
+### 19.8 Recommendation (Elchin decides; no preset change)
+- D4V1 is the first setting with all three May-Jun shares in band while keeping the 12-band count, the mean exports
+  (-4 % / +9 % / +3 %) and every primary MeHg criterion: hg_t2_doc 1, hg_doc_fp 0.1, hg_doc_tau 160, hg_doc_frz 0.1,
+  hg_t2_doc_hg 1, hg_doc_cref -1, hg_doc_beta 0.6, hg_t2_log_kd_org 3.296, hg_f_conn 0.582 (with the MeHg preset).
+- Open: dissolved-Hg band fails at TVC / Toolik (needs particulate / DOC-limited Hg export, i.e. step 2 Hg:DOC coupling);
+  Hg:DOC ratio 2-8x the observed (same cause); Toolik DOC under-production (low organic RH of the Toolik setup); porewater
+  DOC about 2x high in the thin, dry organic layers.
+- Figures: hg_t2_fig34_doc_fit.png (DOC export and stream conc climatology, D4V1), hg_t2_fig35_doc_hg_timing.png (Hg export
+  by month, M4V1 / D3P1 / D4V1), hg_t2_fig36_doc_warming.png (warming bars, M4V1 vs D4V1).
+
+![fig34](figures_hg_t2/hg_t2_fig34_doc_fit.png)
+![fig35](figures_hg_t2/hg_t2_fig35_doc_hg_timing.png)
+![fig36](figures_hg_t2/hg_t2_fig36_doc_warming.png)
