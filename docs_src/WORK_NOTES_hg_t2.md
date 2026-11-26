@@ -2530,3 +2530,43 @@ All runs use the B2F overlay plus the T3 keys named below (binT3 = binT3a c5ac8d
 ![fig50](figures_hg_t2/hg_t2_fig50_t3_p2.png)
 
 T3 core-h after P1 + P2: 0.4617, of which P1 was 0.1970 (T3C0, T3C5, T3C10, T3K) and P2 0.0983 (T3R, T3S1-3).
+
+## 26. T3 P4: W6 +8 C warming, T3K vs B2F at TVC, HPC and the Toolik fen (2026-11-26)
+
+Setup: W6 75-yr scenario from the shared spun-up state (TVC/HPC: 2000-2024 forcing recycled, +8 C linear ramp vs a
+recycled control; Toolik fen: 1951-1975 forcing recycled 3x, sc start 2024 because the projected CH4 file covers 2024-2100,
+K0 96). T3K = B2F + `hg_t3` 1 + `hg_t3_closure` 1 + k rescale (sec. 25). B2F runs use binT3 with the T3 keys absent, which
+P0 showed is bit-identical to binB. Scripts: `src/t3/chainT4*.sh`, `mk_w6t.py`, `an_w6t.py`; numbers: `an2/r/w6t_T3K.json`.
+Core-h P4: 0.0817 (ledger 0.4617 -> 0.5434).
+
+Last 20 yr (2079-2098):
+
+| run | %MeHg (act. layer JJAS) | MEHGPROD ug/m2/yr | MeHg exp May-Oct ng/m2 | ALD m | Hg(0) evasion ug/m2/yr | THg export ug/m2/yr |
+|---|---|---|---|---|---|---|
+| B2F TVC ctl | 0.898 | 1659 | 21.4 | 0.70 | 11.26 | 0.80 |
+| T3K TVC ctl | 0.892 | 1633 | 21.5 | 0.70 | 11.20 | 0.80 |
+| B2F TVC w8 | 2.509 | 26945 | 21.5 | 1.26 | 14.83 | 2.70 |
+| T3K TVC w8 | 2.252 | 23654 | 21.7 | 1.26 | 14.78 | 2.46 |
+| B2F HPC ctl | 0.1045 | 444 | 45.8 | 0.75 | 6.73 | 0.98 |
+| T3K HPC ctl | 0.1050 | 439 | 48.6 | 0.75 | 6.58 | 0.98 |
+| B2F HPC w8 | 0.0114 | 383 | 24.0 | 1.22 | 8.24 | 1.00 |
+| T3K HPC w8 | 0.0114 | 382 | 24.8 | 1.22 | 8.13 | 1.01 |
+| B2F fen ctl | 3.55 | 7673 | 213 | 0.66 | 3.01 | 0.93 |
+| T3K fen ctl | 3.50 | 7559 | 215 | 0.66 | 2.98 | 0.93 |
+| B2F fen w8 | 1.89 | 61795 | 0.035 | 4.86 | 7.14 | 1.16 |
+| T3K fen w8 | 1.88 | 60486 | 0.026 | 4.86 | 7.13 | 1.14 |
+
+- **The closure damps the TVC warming response by 10-12 %** (MEHGPROD 26945 -> 23654, %MeHg 2.51 -> 2.25, THg export
+  2.70 -> 2.46). It does this because the growing MeHg pool no longer feeds back as Hg(II) substrate. TVC May-Oct MeHg
+  export is flat under warming (21.5 -> 21.7 ng/m2) in both versions, so the extra MeHg stays in the deeper thawed soil.
+- **HPC: closure has no material effect on warming.** %MeHg falls about 9x at w8 because the active layer deepens into
+  THg-rich, low-production mineral layers (MEHGPROD changes little, 439 -> 382). MeHg export halves (48.6 -> 24.8).
+- **Toolik fen: both versions behave the same, so the collapse is hydrology, not T3.** At +8 C, ALD goes 0.66 -> 4.86 m,
+  QRUNOFF drops 219 -> 166 mm, QDRAINAGE rises 17 -> 33 mm, and the surface-runoff MeHg export goes to ~0 even though
+  production rises 8x. The control drifts upward (MEHGPROD 5040 -> 7559, export 52 -> 215 ng/m2) because CO2/CH4 rise
+  after 2024 while the climate is recycled. The fen control is therefore not a steady reference; read w8 against it only
+  for direction.
+- Fig. 51 (`figures_hg_t2/hg_t2_fig51_t3_w8.png`): annual MeHg production (top) and May-Oct MeHg export (bottom), B2F
+  dashed vs T3K solid, control grey vs w8 red.
+
+![fig51](figures_hg_t2/hg_t2_fig51_t3_w8.png)
