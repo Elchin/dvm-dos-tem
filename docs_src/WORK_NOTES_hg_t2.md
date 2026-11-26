@@ -2073,3 +2073,105 @@ CH4 run only HG_ / DOC variables change (production now CO2 only) and no C state
 when the DOC pool built in summer is mineralised.
 
 ![fig37](figures_hg_t2/hg_t2_fig37_doc_closs.png)
+
+### 20.4 S3: Hg:DOC cap (eps 1) and Hg refit (on S1A; runs S3A, S3B, S3F, S3K)
+Scoring follows E4 / E7: the Hg export is scored against the dissolved band 0.2-2.3 ug/m2/yr instead of THg band V1
+(0.8-4.0); Toolik is a timing and porewater site (its DOC-export, stream-conc and THg bands are not pass/fail).
+"12 bands (E4)" = Ro x3, Rm x3, dissolved export x3, Toolik uptake, net Hg(0), winter share.
+
+| run | change | Hg export TVC / HPC / TLK | Hg:DOC ng/mg (0.2-0.45) | Ro TVC / HPC / TLK (0.29-0.41) | Rm HPC (<= 1.69) | TLK net Hg(0) (6.5 +- 0.7) | 12 bands (E4) | MeHg primary |
+|---|---|---|---|---|---|---|---|---|
+| D4V1 | step 1 | 3.84 / 2.26 / 2.74 | 1.74 / 0.68 / 3.69 | 0.375 / 0.281 / 0.409 | 1.696 | 6.48 | 8 | 7/7 |
+| S3A | cap eps 1 | 1.50 / 1.17 / 0.87 | 0.62 / 0.34 / 0.96 | 0.832 / 0.330 / 1.187 | 1.662 | 5.94 | 10 | 7/7 |
+| S3B | + capmoss | 1.22 / 1.13 / 0.82 | 0.49 / 0.33 / 0.89 | 0.852 / 0.331 / 1.197 | 1.661 | 5.93 | 10 | 6/7 (fen export 50.3) |
+| S3F | S3A, fd x2 (0.1437) | 0.99 / 0.72 / 0.81 | 0.38 / 0.21 / 0.88 | 0.497 / 0.197 / 1.087 | 1.411 | 5.26 (x) | 7 | 7/7 |
+| S3K | S3A, log kd_org 2.996 | 1.76 / 1.24 / 0.92 | 0.75 / 0.37 / 1.04 | 0.822 / 0.335 / 1.179 | 1.682 | 5.95 | 10 | 4/7 (MeHg exports x2) |
+
+- The cap works as designed: the dissolved band is met at all three sites and Hg:DOC drops 2-4x (HPC in band).
+- R1 (design) happens: the Hg that can no longer leave stays in the organic layers until eps x Ro x F_DOC balances the
+  inputs, so Ro rises to 0.83 (TVC) and 1.19 (Toolik). With eps fixed at 1 (E2) Hg:DOC follows Ro.
+- Levers under the cap: kd_org no longer moves Ro (the flux is cap-limited) and doubles the MeHg exports, so it is not
+  used. fd (re-emission) lowers Ro at TVC and HPC with the same log slope (-0.74) and hardly at Toolik (-0.12; cold, snow).
+  The binding pair is now TVC Ro (needs fd x2.4) vs HPC Ro >= 0.29 (allows fd x1.19); Toolik net Hg(0) (slope -0.18)
+  allows about x1.17. capmoss off (S3B loses a MeHg criterion for a small gain).
+- Refit (one parameter, from the S3A / S3F log slopes): **hg_fd 0.0826** (x1.15 of the preset 0.071857), the largest step
+  that keeps HPC Ro and Toolik net Hg(0) in band.
+
+### 20.5 S4: DOC sorption hg_doc_kdoc (on S3A; runs S4K1, S4K2, S4K5) and final S5F
+| run | kdoc L/kg | pore JJAS mg/L TVC / HPC / TLK (20-120) | DOC export TVC / HPC / TLK (1-5) | DOC May-Jun TVC / HPC / TLK (0.4-0.65; TLK >= 0.35) | stream TVC (15-35) |
+|---|---|---|---|---|---|
+| S3A | 0 | 190 / 252 / 54 | 2.08 / 3.22 / 0.68 | 0.42 / 0.46 / 0.74 | 20.0 |
+| S4K1 | 1 | 148 / 192 / 31 | 2.12 / 3.15 / 0.66 | 0.41 / 0.44 / 0.68 | 20.4 |
+| S4K2 | 2 | 130 / 170 / 25 | 2.14 / 3.06 / 0.63 | 0.40 / 0.43 / 0.63 | 20.6 |
+| S4K5 | 5 | 98 / 129 / 19 | 2.15 / 2.79 / 0.55 | 0.37 / 0.40 / 0.54 | 20.7 |
+| **S5F** | 4 (+ fd 0.0826) | **106 / 140 / 21** | 2.16 / 2.88 / 0.58 | 0.375 / 0.41 / 0.56 | 20.7 |
+- Sorption lowers the summer porewater 2x while the DOC export hardly moves (the sorbed DOC is mineralised instead of
+  flushed; freshet water is not sorption-limited), so no fp refit was needed. It costs freshet share at TVC (0.42 -> 0.375).
+  kdoc 4 is the compromise: TVC and Toolik porewater in band, HPC 17 % over, TVC DOC May-Jun 6 % under. kdoc has almost no
+  effect on the Hg targets.
+
+### 20.6 Final set S5F (recommended; all new switches stay default off, no preset change)
+D4V1 + `hg_doc_c_loss 1, hg_t2_doc_hglim 1 (hg_doc_eps 1), hg_doc_kdoc 4, hg_fd 0.0826` (capmoss 0, sink 0, DON off).
+
+| target | band | TVC | HPC | Toolik proxy |
+|---|---|---|---|---|
+| Hg:DOC of export (ng/mg) | 0.2-0.45 | 0.56 (x) | 0.33 | 0.98 (x) |
+| Hg export, dissolved (ug/m2/yr) | 0.2-2.3 | 1.42 | 1.00 | 0.78 |
+| THg export V1 (not scored, E4) | 0.8-4.0 | 1.42 | 1.00 | 0.78 (under) |
+| Hg export May-Jun share | 0.35-0.60 | 0.38 | 0.43 | 0.64 (x) |
+| DOC export (g C/m2/yr) | 1-5 | 2.16 | 2.88 | 0.58 (not scored) |
+| DOC May-Jun share | 0.4-0.65 (TLK >= 0.35) | 0.375 (x) | 0.41 | 0.56 |
+| stream DOC (mg/L) | TVC 15-35, TLK 8-20 | 20.7 | 68.0 | 5.0 (not scored) |
+| porewater DOC JJAS (mg/L) | 20-120 | 106 | 140 (x) | 21 |
+| Ro | 0.29-0.41 | 0.750 (x) | 0.305 | 1.195 (x) |
+| Rm | 0.97-1.69 | 1.452 | 1.603 | 1.504 |
+| Toolik uptake / net Hg(0) / winter share | 4.1 / 6.5 +- 0.7 / 0.37 | | | 4.06 / 5.81 / 0.414 |
+| 12 bands (E4) | | 10/12 (TVC Ro, Toolik Ro); with V1 instead of the dissolved band 9/12 | | |
+| MeHg primary | | 7/7: TVC 0.80 %, HPC 0.093 %, ratio 8.6, fen 2.24 %, exports HPC 37.0 / TVC 42.5 / fen 45.6 ng/m2 | | |
+| HG_BALERR | | 6e-10 | 1e-9 | 2e-9 |
+
+C (last 20 yr, g C/m2/yr; NEE = RECO - GPP; GPP / NPP / SOC / N identical to D4V1):
+| site | RHSOM D4V1 -> S5F | NEE D4V1 -> S5F | DOCLOST | closure C resid mean / max annual |
+|---|---|---|---|---|
+| TVC | 225.62 -> 223.65 (-1.97) | 19.98 -> 18.01 | 2.16 | -0.0002 / 0.003 (pass) |
+| HPC | 181.54 -> 179.10 (-2.45) | -8.90 -> -11.35 | 2.88 | 0.0005 / 0.004 (pass) |
+| Toolik proxy | 53.44 -> 52.83 (-0.62) | 14.95 -> 14.33 | 0.58 | |
+| Toolik ch4 | 53.54 -> 52.91 (-0.63) | 14.63 -> 14.00 | 0.60 | |
+
+### 20.7 Warming (W6; 75 yr from copied S5F 2024 restarts, last 20 yr; ctl vs +8 C ramp)
+| site | config | %MeHg ctl -> w8 | MeHg export May-Oct ng/m2 | Hg export ug/m2/yr | evasion | NEE g C/m2/yr | DOCLOST |
+|---|---|---|---|---|---|---|---|
+| TVC | D4V1 | 0.893 -> 2.724 | 18.8 -> 18.1 | 3.43 -> 7.96 | 5.5 -> 28.4 | 3.1 -> 199.9 | |
+| TVC | S5F | 0.935 -> 2.061 | 39.1 -> 40.5 | 1.30 -> 3.54 | 10.0 -> 31.4 | 0.9 -> 197.7 | 2.30 -> 2.49 |
+| HPC | D4V1 | 0.103 -> 0.011 | 42.5 -> 23.7 | 2.20 -> 2.69 | 5.7 -> 7.2 | -1.0 -> 7.4 | |
+| HPC | S5F | 0.104 -> 0.011 | 46.7 -> 24.2 | 0.99 -> 1.01 | 6.8 -> 8.9 | -3.4 -> 5.4 | 2.85 -> 2.38 |
+- The Hg export response keeps its direction but is capped by DOC: TVC x2.7 (D4V1 x2.3, from a 2.6x lower base), HPC
+  x1.02 (D4V1 x1.2; HPC DOC export falls with warming). The withheld Hg leaves as evasion instead (TVC ctl 10 vs 5.5).
+  TVC %MeHg rises less (x2.2 vs x3.1). The NEE shift from the C loss is a constant offset of about -2 g C/m2/yr.
+
+### 20.8 Checks and budget
+| check | result |
+|---|---|
+| Hg-off 8-case prod, binS2 vs c7e8c77d (binD1b) | PASS |
+| D4V1 settings with the new switches absent (S0Q1) vs D4V1 | 0 diffs, all stages |
+| C loss on (S1A) vs D4V1 | only RHSOM / RECO (+ new files) differ |
+| closure.py C / N / water, S1A, S3A, S5F (TVC, HPC) | pass (C resid <= 0.0005 mean, 0.0043 max annual) |
+| unit tests | 571/571 cases (8 known may-fail assertions) |
+| binary = committed code | md5 of the working-tree diff used for binS2 == md5 of the commit's code diff (2966c77b) |
+| rules | <= 4 processes, -j2 build, 75-yr segments, no parameters/ edits, restarts copied (mk_w6c), nothing deleted, no push, no GCS |
+
+Runs: 52 (8 prod + S0Q1 4 + S1A 4 + S3A/B 8 + S4K1/2/5, S3F, S3K 20 + S5F 4 + W6 4). Core-h (ledger, src/doc2/ledgerS2.py):
+S0 0.113, S1 0.047, S3a 0.095, S4a + probes 0.239, S5F 0.048, W6 0.029; **step 2 total 0.572 of the 1.0 cap (~0.69
+planned)**; ledger total 12.370.
+
+### 20.9 Open items
+1. TVC and Toolik Ro (and so Hg:DOC) stay high: with eps 1 a single fd cannot lower TVC Ro without pushing HPC Ro below
+   band. Options: site/temperature dependence of re-emission, eps > 1 (E2 alternative), or a particulate path that also
+   removes organic Hg (would also restore THg band V1).
+2. Toolik Hg May-Jun share 0.64: the cap removes more of the summer export (low DOC flux in Jul-Sep).
+3. Toolik DOC under-production (unchanged; E7).
+4. HPC porewater 140 mg/L with kdoc 4; a higher kdoc costs the TVC freshet share.
+5. Daily split C outputs and the RTS RH history use RHSOM before the DOC adjustment.
+
+![fig38](figures_hg_t2/hg_t2_fig38_doc_hgcap.png)
+![fig39](figures_hg_t2/hg_t2_fig39_doc_kdoc.png)
