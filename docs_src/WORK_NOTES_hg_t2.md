@@ -2175,3 +2175,88 @@ planned)**; ledger total 12.370.
 
 ![fig38](figures_hg_t2/hg_t2_fig38_doc_hgcap.png)
 ![fig39](figures_hg_t2/hg_t2_fig39_doc_kdoc.png)
+
+## 21. Re-emission fix R: canopy light x soil-air factor on hg_fd (HG_REEMISSION_fix_design.md)
+
+### 21.1 Code (commit 0096a403; all new switches default off, need hg_t2 = 1 and hg_t2_evasion = 1)
+fev_layer x G, G = g_light x g_air(layer) x g_T(layer), clamped to 1 - hg_f_export (clamp only when a switch is on):
+- `hg_t2_ev_light` (0/1), `hg_ev_wl` (0.8, [0,1]), `hg_ev_tauref` (1.0): g_light = (1 - wl) + wl x tau / tauref,
+  tau = exp(-sum_p klai_p LAI_p vegcov_p) over the vascular PFTs (chtlu.nonvascular == 0) of the month (Cohort.cpp).
+  Woody debris gets g_light (and g_T with the air T) only.
+- `hg_t2_ev_air` (0/1), `hg_ev_air_b` (1.0, [0,3]), `hg_ev_dref` (0.14): g_air = (D / Dref)^b, D = eps^(10/3) / phi^2
+  (Millington-Quirk), eps = phi - theta_liq - theta_ice from the monthly layer liq / ice and porosity.
+- `hg_ev_q10` (1 = off, [1,20]), `hg_ev_tref` (2.5 C): g_T = q10^((T - tref) / 10). Coded, not used (decision).
+- Outputs (when on): HG_SOILEV0 (re-emission with G = 1; G_eff = HG_SOILEV / HG_SOILEV0), HG_GTRANS (tau; yearly = sum of
+  the monthly values). Run scripts: ~/tem-dev/hg_t2/src/reem/ (runR.sh, mk_r.py, prodR.sh, ledgerR.py, scoreR.py, gtr.py,
+  dair.py, plots_r.py, chainR0/R1/R1w.sh).
+- Unit tests (4 new cases): parse defaults / ranges / dependencies; factor shapes (g_light linear, 1 at tauref; MQ D, 0 when
+  the pores are full; g_T); neutral settings (wl 0, b 0, q10 1) and ignored inputs are bitwise = off; layer sum of
+  rel x fev x G, clamp, HG_SOILEV0, exact balance; geometry change (G-weighted pot). 575/575 cases (8 known may-fail).
+
+### 21.2 Checks (R0)
+| check | result |
+|---|---|
+| S5F settings with the new switches absent (R0I, binR) vs S5F (binS2) | 0 diffs, all 8 stage groups |
+| Hg-off 8-case prod, binR vs binS2 (R0P) | PASS |
+| R1B vs S5F | only Hg variables differ (HG*, MEHG*, hg_state); all C / N / water outputs bitwise identical |
+| closure.py C / N / water, R1B (TVC, HPC) | pass (C resid mean -0.0002 / 0.0005, max annual 0.003 / 0.004), = S5F |
+| HG_BALERR max (ug/m2) R1A / R1B | <= 2.8e-9 (TVC 5e-10, HPC 1e-9, Toolik 2-3e-9) |
+| binary = committed code | binR (md5 f7b91e6a) built by src/build.sh at clean HEAD 0096a403 (dirty = 0) |
+
+### 21.3 Actual canopy transmission and effective G (last 20 yr)
+| site | tau mean (JJA, min) | design estimate | G_eff R1A (light x air, wl 0.8, b 1) | G_eff R1B (light only, wl 1) | g_air inferred (R1A) |
+|---|---|---|---|---|---|
+| TVC (CMT51) | 0.862 (0.869, 0.806) | 0.80 | 1.584 | 0.858 | 1.78 |
+| HPC (CMT01) | 0.350 (0.367, 0.284) | 0.17 | 1.414 | 0.361 | 2.95 |
+| Toolik proxy (CMT06) | 0.975 (0.980, 0.899) | 0.97 | 1.184 | 0.972 | 1.21 |
+| Toolik ch4 | 0.974 | | 1.260 | 0.971 | |
+
+The soil-air factor does not do what the design assumed: the re-emitted Hg comes from decomposition, which is dominated at
+every site by the dry fibric layers (MQ D 0.29-0.45, above Dref) while the wet humic layers (D 0.002-0.06; Toolik theta_liq
+0.70) decompose little. So g_air is largest at HPC (wrong direction) and only 1.5x TVC/Toolik (fig 41). The design's
+depth-weighted JJAS moisture (Toolik D_rel 0.044) is not the decay-weighted one.
+
+### 21.4 Runs and targets (R score = E4 12 bands minus Toolik Ro; Toolik Ro and Hg:DOC reported only)
+| target | band | S5F | R1A light x air, fd 0.24 | R1B light only, wl 1, fd 0.223 |
+|---|---|---|---|---|
+| Ro TVC / HPC / TLK (ro) | 0.29-0.41 | 0.750 (x) / 0.305 / 1.195 | 0.202 (x) / 0.091 (x) / 0.928 | **0.378 / 0.298** / 1.013 |
+| Rm TVC / HPC / TLK | 0.97-1.69 | 1.452 / 1.603 / 1.504 | 1.212 / 1.186 / 1.456 | 1.292 / 1.589 / 1.471 |
+| Hg:DOC TVC / HPC / TLK (ro) | 0.2-0.45 | 0.56 (x) / 0.33 / 0.98 | 0.16 (x) / 0.10 (x) / 0.75 | **0.29 / 0.32** / 0.83 |
+| dissolved export TVC / HPC / TLK | 0.2-2.3 | 1.42 / 1.00 / 0.78 | 0.56 / 0.34 / 0.65 | 0.84 / 0.98 / 0.69 |
+| Hg May-Jun share TVC / HPC / TLK (ro) | 0.35-0.60 | 0.38 / 0.43 / 0.64 | 0.50 / 0.40 / 0.67 | 0.43 / 0.43 / 0.66 |
+| Toolik stomatal + sink0 - soilev - snowred | | 3.99 + 4.19 - 0.95 - 1.42 | - 2.54 | - 2.12 |
+| Toolik net Hg(0) | 5.8-7.2 | 5.81 | 4.22 (x) | 4.65 (x) |
+| Toolik winter share / uptake | 0.30-0.44 / 3.7-4.5 | 0.414 / 4.06 | 0.569 (x) / 4.06 | 0.517 (x) / 4.06 |
+| R score (11) / E4 12-band | | 10 / 10 | 7 / 7 | 9 / 9 |
+| MeHg primary (7) | | 7/7 | 6/7 (HPC %MeHg 0.080) | 7/7 (TVC 0.75 %, HPC 0.093 %, ratio 8.0, fen 2.21 %, exports HPC 36.2 / TVC 22.0 / fen 38.5 ng/m2) |
+
+A one-box model Ro = I / (k_ev + k_o) with k_ev scaled by fd x G_eff predicts R1A and R1B within 5 % (R1B predicted
+0.394 / 0.316 / net Hg(0) 4.66). With it, no hg_fd / wl / b (/ dref) meets TVC Ro <= 0.41, HPC Ro >= 0.29 and Toolik net
+Hg(0) >= 5.8 together: net Hg(0) = 6.76 - soilev and S5F is already at 5.81, so Toolik re-emission cannot rise at all,
+while TVC needs x2.2-2.7. Toolik is open ground (tau 0.975 > TVC 0.862) with a fibric layer as dry as TVC's, so neither
+factor separates them (TVC/Toolik G ratio: light 0.88, air at b 1 1.47; b >= 2.6 needed, which breaks TVC/HPC). The R2
+refit and the R3 final set were therefore not run: the choice needs a decision (21.6).
+
+### 21.5 Warming (W6, R1B; 75 yr from copied R1B 2024 restarts, last 20 yr; ctl -> +8 C ramp)
+| site | config | %MeHg | MeHg export May-Oct ng/m2 | Hg export ug/m2/yr | evasion |
+|---|---|---|---|---|---|
+| TVC | S5F | 0.935 -> 2.061 | 39.1 -> 40.5 | 1.30 -> 3.54 | 10.0 -> 31.4 |
+| TVC | R1B | 0.896 -> 2.552 | 20.3 -> 20.3 | 0.77 -> 2.62 | 11.4 -> 33.2 |
+| HPC | S5F | 0.104 -> 0.011 | 46.7 -> 24.2 | 0.99 -> 1.01 | 6.8 -> 8.9 |
+| HPC | R1B | 0.105 -> 0.011 | 45.7 -> 23.9 | 0.98 -> 1.00 | 6.7 -> 8.2 |
+- Same directions; TVC Hg export x3.4 (S5F x2.7) from a lower base, %MeHg x2.8 (x2.2). C identical to S5F (NEE as 20.7).
+
+### 21.6 Status, options and future work
+- Not adopted: no final set (S5F stays the recommended set; all R switches default off).
+- Options: (a) keep S5F; (b) R1B (light only) if Toolik net Hg(0) / winter share also become reported-only (TVC/HPC Ro and
+  Hg:DOC all in band, MeHg 7/7; Toolik net Hg(0) 4.65); (c) a Toolik-specific limiter of re-emission (CMT table hg_fd_cmt,
+  the design's benchmark; not coded) or a different Toolik constraint.
+- Future work: Toolik C recalibration (vascular LAI ~0.15, DOC under-production E7, Ro 1.0-1.2) before Toolik Ro / Hg:DOC
+  can be scored again. The soil-air factor would need a decay-layer moisture signal that differs between sites; as built it
+  should stay off.
+- Budget (src/reem/ledgerR.py, base 12.3705): R0 identity + R1A 0.095, prod 0.068, R1B 0.049, W6 R1B 0.030; **R total 0.242
+  of the 0.7 cap (~0.5 planned)**. Runs: 8 prod + R0I/R1A/R1B 12 + W6 4 = 24. Rules: <= 4 processes, -j2 build, 75-yr
+  segments, no parameters/ edits, restarts copied (mk_w6c), nothing deleted, no push, no GCS.
+
+![fig40](figures_hg_t2/hg_t2_fig40_reem.png)
+![fig41](figures_hg_t2/hg_t2_fig41_reem_air.png)
