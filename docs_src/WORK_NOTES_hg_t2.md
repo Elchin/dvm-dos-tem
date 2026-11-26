@@ -2309,3 +2309,109 @@ Budget: no new runs (re-scoring and plots only); R total stays 0.242 core-h of t
 
 ![fig40](figures_hg_t2/hg_t2_fig40_reem.png)
 ![fig42](figures_hg_t2/hg_t2_fig42_reem_score.png)
+
+## 23. Depth-dependent evasion, option B: built and tested; candidate overlay B2F (R1B stays the baseline)
+
+**Approved by Elchin (2026-11-26):** build option B of the design note (evasion_depth/EVASION_DEPTH_design.md) with
+O1 CH4-module tortuosity, O2 Lref fixed at 0.3 m and only fd refit, O3 thaw release 0.16 x P, O4 accept B as the lower
+bound and benchmark option A (thaw_evz 0.3) as the upper sensitivity, O5 present-day differences <= 1e-6 relative accepted
+for the thaw part, O6 no option C. Cap 0.45 core-h (own ledger line, PHASE EVD B).
+
+### 23.1 Code (commit fb1d502c; all default off)
+- `hg_t2_ev_diff 1` (needs hg_t2 and t2_evasion; excludes hg_t2_ev_air): the escape probability of Hg(0) released by decay
+  in soil layer l is P_l = exp(-(sum_{j<l} dz_j/L_j + dz_l/(2 L_l))), L = sqrt(Deff/k), with
+  Deff = hg_ev_d0 (T/296.15 K)^1.81 tau(eps) + hg_ev_dwh tau(theta) (gas + dissolved paths, eps = phi - theta_liq - theta_ice),
+  tau(x) = 0.66 x (x/phi)^3 (hg_ev_tort 1, the CH4-module form; 0 = Millington-Quirk) and k = Deff_ref / hg_ev_lref^2 at the
+  reference fibric layer (phi 0.95, theta 0.35, eps 0.6, 5 C). P replaces exp(-z/ev_z): re-emission fraction
+  fd (1 - f_snow) [T > 0] x P x g_light. Woody debris P = 1. A layer with Deff = 0 (ice-filled) has optical depth 1e3.
+  Defaults: hg_ev_lref 0.3 m, hg_ev_d0 1.31e-5 m2/s, hg_ev_dwh 4e-9 m2/s.
+- `hg_t2_ev_diff_thaw 1` (needs ev_diff and thawrel; excludes hg_t2_thaw_evz > 0): thaw-released Hg re-emits
+  hg_f_thaw_evade (0.16) x P_l, measured from the surface, instead of the flat 0.16.
+- Outputs HG_EVPESC (decay-weighted P) and HG_EVPESCL (P by layer); HG_SOILEV0 is also written when ev_diff is on.
+- Unit tests (test_hg_tracer.cpp, 4 new cases, 63 assertions): parse and validation; Deff formula, L = lref at the
+  reference layer, ice blocking, MQ variant; the step (off = bitwise, homogeneous P = exp(-z/0.3), woody debris P = 1, ice
+  blocks, wetter gives less, light x P, frozen layer, Hg balance); thaw (thaw evasion = s0 x 0.16 x exp(-0.30/0.3), thaw export
+  unchanged, balance). The full suite has 579/579 cases; the 8 failing assertions are the known may-fail ones, the same as with binR.
+
+### 23.2 Identity (binB, md5 abd371cf)
+- B0I (R1B settings, B switches absent) vs R1B (binR): 0 differing variables in all 8 run sets (TVC / HPC spin + main,
+  Toolik proxy / ch4 sp + tr).
+- Hg-off 8-case production (prodB.sh B0P, binB vs binR runs of out/R0P_B): RESULT PASS.
+- B2F vs R1B: only Hg outputs (and the restarts that carry Hg) differ; C / N / water bitwise equal and closure passes
+  (an_c.py).
+
+### 23.3 Probe and fd refit
+- B1A (R1B + ev_diff + ev_diff_thaw, fd 0.223): TVC Ro 0.3889, HPC 0.2914. Unlike the read-only estimate (x0.91 / x0.76),
+  the effective re-emission changed little and the other way at HPC (one-box k_ev,B / k_ev,R1B = 0.966 TVC, 1.033 HPC).
+  The model's Hg release is weighted towards the top 10 cm more than the SOC x Q10 proxy, and there B's P is at or above
+  exp(-z/0.3) (fig 43). Decay-weighted P: TVC 0.43, HPC 0.63, Toolik 0.56.
+- The one-box refit for balanced margins gives fd x0.965, so **hg_fd 0.215** (B2F). Predicted TVC 0.401 / HPC 0.300;
+  the run gave 0.402 / 0.299.
+
+| target | band | R1B (baseline) | B1A (fd 0.223) | **B2F (fd 0.215)** |
+|---|---|---|---|---|
+| Ro TVC / HPC | 0.29-0.41 | 0.378 / 0.298 | 0.389 / 0.291 | **0.402 / 0.299** |
+| Rm TVC / HPC / Toolik | 0.97-1.69 | 1.292 / 1.589 / 1.471 | 1.298 / 1.577 / 1.478 | 1.304 / 1.591 / 1.480 |
+| dissolved export TVC / HPC / Toolik | 0.2-2.3 | 0.84 / 0.98 / 0.69 | 0.85 / 0.96 / 0.71 | 0.87 / 0.98 / 0.71 |
+| Toolik uptake | 3.7-4.5 | 4.06 | 4.06 | 4.06 |
+| **scored (9)** | | **9/9** | 9/9 | **9/9** |
+| Hg:DOC TVC / HPC (goal) | 0.2-0.45 | 0.29 / 0.32 | 0.30 / 0.31 | 0.31 / 0.32 |
+| Hg May-Jun share TVC / HPC (goal) | 0.35-0.60 | 0.43 / 0.43 | 0.43 / 0.42 | 0.43 / 0.43 |
+| Toolik Ro (report-only) | 0.29-0.41 | 1.013 | 1.050 | 1.058 |
+| Toolik Hg:DOC (report-only) | 0.2-0.45 | 0.83 | 0.85 | 0.86 |
+| Toolik net Hg(0) (report-only) | 5.8-7.2 | 4.65 | 4.95 | 5.00 |
+| Toolik winter share (report-only) | 0.30-0.44 | 0.517 | 0.485 | 0.480 |
+| Toolik May-Jun share (report-only) | 0.35-0.60 | 0.66 | 0.65 | 0.65 |
+| Toolik soil re-emission (ug/m2/yr) | | 2.12 | 1.81 | 1.76 |
+| MeHg primary | 7 | 7/7 | 7/7 | 7/7 (TVC 0.751 %, HPC 0.093 %, ratio 8.08, fen 2.22 %; exports HPC 36.3 / TVC 23.2 / fen 40.6 ng/m2) |
+| HG_BALERR max (ug/m2) | | 2.5e-9 | 3.5e-9 | 3.3e-9 |
+
+The smallest Ro margin is about the same as R1B's (B2F: TVC 0.008 below the top and HPC 0.009 above the bottom; R1B: HPC
+0.008), so B does not widen the TVC / HPC window. The report-only Toolik items move towards their bands: net Hg(0)
+4.65 -> 5.00, winter share 0.517 -> 0.480.
+
+### 23.4 Soil-gas check (fig 43; prof.py; JJAS, last 20 yr; C/C_atm = P by reciprocity)
+
+| site | P at 5 / 10 / 20 / 40 cm (B2F) | mean 5-40 cm, B2F | R1B exp(-z/0.3) mean |
+|---|---|---|---|
+| TVC | 0.85 / 0.74 / 0.39 / 1e-4 | 0.50 | 0.58 |
+| HPC | 0.90 / 0.63 / 0.25 / 0.06 | 0.46 | 0.58 |
+| Toolik | 0.86 / 0.67 / 0.11 / 1e-4 | **0.41** | 0.58 |
+| Toolik observed (Obrist et al. 2017; Jiskra et al. 2019) | 40 cm wells most depleted, some below detection | **0.49** (0.54 / 1.1 ng/m3) | |
+
+B gets the observed shape: near-zero at 40 cm under the wet humic layers, where today's law still gives 0.26. Its 5-40 cm
+mean (0.41) is slightly below the observed 0.49 (R1B: 0.58 is slightly above). The two bracket the observations, which is
+consistent with the design's bracket (Lref 0.3 -> 0.40, 0.5 -> 0.46 from the proxy).
+
+### 23.5 Warming, TVC +8 C ramp (W6, 75 yr from copied 2024 restarts; last 20 yr, ug Hg/m2/yr; fig 44)
+
+| TVC w8 | R1B (flat 0.16) | option A: R1B + thaw_evz 0.3 (upper sensitivity) | **B2F (0.16 x P)** |
+|---|---|---|---|
+| total Hg(0) evasion | 33.2 | 21.4 | **14.8** |
+| thaw-layer evasion | 17.1 | 5.31 | **2e-35 (~0)** |
+| thaw-layer export | 1.60 | 1.62 | 1.63 |
+| dissolved Hg export | 2.62 | 2.63 | 2.70 |
+| %MeHg active layer (ctl -> w8) | 0.90 -> 2.55 | -> 2.55 | 0.90 -> 2.51 |
+
+- Under B, thaw layers below the old permafrost table (~0.75 m and deeper) lie under wet humic / mineral layers with
+  P(0.46 m) ~ 0 in August, so the thaw-released Hg(0) is retained in the soil (sink and sorption) and not re-emitted. This is the
+  accepted lower bound (O4). Option A at evz 0.3 (5.3) is the upper sensitivity, and R1B's flat 0.16 (17.1) is the old upper bound.
+- HPC w8 does not thaw below its old maximum: thaw evasion is 0 in all three runs, and B2F equals R1B to within 0.5 % (evasion 8.24 vs
+  8.20, %MeHg 0.105 -> 0.011 in both).
+- The option A benchmark (W6_R1BA3_TVC_w8) is R1B's 2024 restart (copied) with hg_t2_thaw_evz 0.3 added for the warming run
+  only; zpf is restart state. Present-day differences from evz in the spin-up are below 1e-6 (design note §3 A), so this matches a full evz run.
+
+### 23.6 Candidate overlay and status
+- **config/hg_t2_overlay_B2F.json** = R1B + `hg_t2_ev_diff 1, hg_t2_ev_diff_thaw 1, hg_fd 0.215` (hg_ev_lref 0.3,
+  hg_ev_tort 1 defaults). Needs a binary at fb1d502c or later. **R1B stays the recommended baseline** until Elchin decides
+  whether to adopt B2F. Present-day scores are equivalent (9/9, MeHg 7/7). B2F adds the soil-gas shape and makes the
+  thaw-evasion term moisture-aware and depth-consistent with the ordinary term.
+- Scripts: src/evd/ (runB.sh, prodB.sh, ledgerB.py, mk_b.py, mk_w6x.py, prof.py, plots_b.py, chainB0.sh, chainB1.sh,
+  chainB1w.sh). chainB1 stopped at `warm` because the site / scenario pairs were unquoted; mk_w6c failed on its arguments before
+  creating anything. chainB1w redid W6 + option A.
+- Budget: 0.248 core-h of the 0.45 cap (PHASE EVD B line in LEDGER.txt): identity var + B1A probe 0.095, prod 0.068,
+  B2F 0.048, W6 B2F x4 0.031, option A W6 0.007.
+
+![fig43](figures_hg_t2/hg_t2_fig43_evd_profile.png)
+![fig44](figures_hg_t2/hg_t2_fig44_evd_w8.png)
+![fig45](figures_hg_t2/hg_t2_fig45_evd_score.png)
