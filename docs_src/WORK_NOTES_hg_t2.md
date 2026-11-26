@@ -2310,7 +2310,7 @@ Budget: no new runs (re-scoring and plots only); R total stays 0.242 core-h of t
 ![fig40](figures_hg_t2/hg_t2_fig40_reem.png)
 ![fig42](figures_hg_t2/hg_t2_fig42_reem_score.png)
 
-## 23. Depth-dependent evasion, option B: built and tested; candidate overlay B2F (R1B stays the baseline)
+## 23. Depth-dependent evasion, option B: built and tested; B2F adopted as the recommended overlay (2026-11-26)
 
 **Approved by Elchin (2026-11-26):** build option B of the design note (evasion_depth/EVASION_DEPTH_design.md) with
 O1 CH4-module tortuosity, O2 Lref fixed at 0.3 m and only fd refit, O3 thaw release 0.16 x P, O4 accept B as the lower
@@ -2415,3 +2415,11 @@ consistent with the design's bracket (Lref 0.3 -> 0.40, 0.5 -> 0.46 from the pro
 ![fig43](figures_hg_t2/hg_t2_fig43_evd_profile.png)
 ![fig44](figures_hg_t2/hg_t2_fig44_evd_w8.png)
 ![fig45](figures_hg_t2/hg_t2_fig45_evd_score.png)
+
+### 23.x Decision (2026-11-26)
+
+Elchin Jafarov adopted B2F (`config/hg_t2_overlay_B2F.json`: R1B + `hg_t2_ev_diff 1`, `hg_t2_ev_diff_thaw 1`, `hg_fd 0.215`)
+as the recommended hg_t2 overlay, replacing R1B (section 22). R1B and S5F overlays stay in config/ for reference. Scoring rules
+are unchanged from section 22 (9 scored bands; Toolik Ro, Hg:DOC, net Hg(0), winter share and May-Jun share report-only).
+B2F: 9/9, MeHg 7/7; TVC +8 C thaw-layer evasion ~0 (R1B 17.1, option A thaw_evz 0.3 as upper sensitivity 5.31 ug/m2/yr).
+Code defaults are unchanged (all switches default off). Docs-only commit; no runs.
