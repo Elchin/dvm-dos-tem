@@ -2796,6 +2796,7 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
       layered("HGDISS", h.diss);
       layered("MEHGSOIL", h.mehg);
       layered("MEHGPRODL", h.mehg_prodl);   // phase M2: MeHg production of the month by layer
+      if (md.hg.t2_ev_diff == 1) { layered("HG_EVPESCL", h.pesc_l); }   // B: escape probability by layer (month)
       if (md.hg.t2_doc == 1) {   // DOC step 1: diagnostic DOC (g C/m2 per month / year; pools end of month; HG_DOCWAT mm)
         const hgtr::DocState & dc = cohort.hgdoc;
         layered("HG_DOCPOOL", dc.d);
@@ -2835,7 +2836,8 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
       scalar("HG_PHOTORED", h.m.photored, h.y.photored);
       scalar("HG_RUNOFF", h.m.runoff, h.y.runoff);
       scalar("HG_SOILEV", h.m.soilev, h.y.soilev);   // T2 phase 3
-      if (hgtr::ev_gon(md.hg)) { scalar("HG_SOILEV0", h.m.soilev0, h.y.soilev0); }   // re-emission fix R: G = 1
+      if (hgtr::ev_gon(md.hg) || md.hg.t2_ev_diff == 1) { scalar("HG_SOILEV0", h.m.soilev0, h.y.soilev0); }   // re-emission fix R: G = 1; B: today's depth law
+      if (md.hg.t2_ev_diff == 1) { scalar("HG_EVPESC", (h.m.pn > 0.0) ? h.m.pw / h.m.pn : 0.0, (h.y.pn > 0.0) ? h.y.pw / h.y.pn : 0.0); }   // B
       if (md.hg.t2_ev_light == 1) { scalar("HG_GTRANS", h.m.gtrans, h.y.gtrans); }  // R: ground transmission (sum of months)
       scalar("HG_SINK0", h.m.sink0, h.y.sink0);
       scalar("HG_STOMATAL", h.m.stomatal, h.y.stomatal);

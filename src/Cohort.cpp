@@ -699,7 +699,7 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
             }
             f.gtrans = std::exp(-x);
           }
-          if (md->hg.t2_ev_air == 1) {   // re-emission fix R: monthly layer liquid / ice (mm) and porosity (soil-air factor)
+          if (md->hg.t2_ev_air == 1 || md->hg.t2_ev_diff == 1) {   // re-emission fix R / evasion B: monthly layer liquid / ice (mm) and porosity
             auto ps = [](double v) { return (std::isfinite(v) && v > 0.0 && v < 1.0e5) ? v : 0.0; };
             for (int il = 0; il < std::min(cd.m_soil.numsl, MAX_SOI_LAY); il++) {
               f.liq[il] = ps(edall->m_sois.liq[il]); f.ice[il] = ps(edall->m_sois.ice[il]); f.por[il] = ps(cd.m_soil.por[il]);

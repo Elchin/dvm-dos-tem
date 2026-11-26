@@ -236,3 +236,5 @@ DOCRHADJ,DOC step 2: RHSOM change by the DOC partition (-(production - mineralis
 HG_DOCCAP,DOC step 2: Hg(II) withheld by the Hg:DOC export cap (hg_t2_doc_hglim = 1),ug/m2/time,,,invalid,invalid,invalid,invalid,double,
 HG_SOILEV0,Re-emission fix R: soil re-emission with the factor G = 1 (HG_SOILEV / HG_SOILEV0 = effective G),ug/m2/time,,,invalid,invalid,invalid,invalid,double,
 HG_GTRANS,Re-emission fix R: vascular-canopy ground transmission (monthly value; yearly = sum of the months),-,,,invalid,invalid,invalid,invalid,double,
+HG_EVPESC,Evasion B: decay-weighted Hg(0) escape probability of the thawed layers (hg_t2_ev_diff),-,,,invalid,invalid,invalid,invalid,double,
+HG_EVPESCL,Evasion B: Hg(0) escape probability by layer (= soil-air Hg(0) / GEM of a source-free column),-,,,invalid,invalid,invalid,invalid,double,

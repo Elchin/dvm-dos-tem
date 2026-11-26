@@ -2060,3 +2060,99 @@ TEST_CASE("R step with a geometry change: G-weighted pot; HG_SOILEV0 with G = 1;
   CHECK(s.m.soilev0 == doctest::Approx(t.m.soilev).epsilon(1e-12));
   std::remove(T2DEP);
 }
+
+// ---- depth-dependent evasion B (hg_t2_ev_diff / hg_t2_ev_diff_thaw; EVASION_DEPTH_design.md, WORK_NOTES_hg_t2 section 23) ----
+namespace {
+void bref(hgtr::Flux& f, const hgtr::Snap& a, int n) {   // every layer at the reference state (phi 0.95, theta 0.35, eps 0.6, 5 C)
+  for (int l = 0; l < n; l++) { f.por[l] = 0.95; f.liq[l] = 350.0 * a.dz[l]; f.ice[l] = 0.0; f.ts[l] = 5.0; }
+}
+}
+TEST_CASE("B parse: evasion-depth switches default off, ranges, dependencies and exclusions") {
+  hgtr::Params p0 = t2params(); (void)p0;
+  hgtr::Params q; CHECK(hgtr::parse(ms0(), q) == "");
+  CHECK(q.t2_ev_diff == 0); CHECK(q.t2_ev_diff_thaw == 0); CHECK(q.ev_lref == 0.3); CHECK(q.ev_d0 == 1.31e-5); CHECK(q.ev_dwh == 4.0e-9); CHECK(q.ev_tort == 1);
+  Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_t2"] = 1; m["hg_dep_file"] = T2DEP;
+  hgtr::Params r;
+  Json::Value a = m; a["hg_t2_ev_diff"] = 1; a["hg_t2_ev_diff_thaw"] = 1; a["hg_ev_lref"] = 0.5; a["hg_ev_tort"] = 0; a["hg_ev_d0"] = 1.2e-5; a["hg_ev_dwh"] = 0.0;
+  REQUIRE(hgtr::parse(a, r) == ""); CHECK(r.t2_ev_diff == 1); CHECK(r.t2_ev_diff_thaw == 1); CHECK(r.ev_lref == 0.5); CHECK(r.ev_tort == 0); CHECK(r.ev_d0 == 1.2e-5); CHECK(r.ev_dwh == 0.0);
+  Json::Value b = m; b["hg_t2_evasion"] = 0; b["hg_t2_ev_diff"] = 1; CHECK(hgtr::parse(b, r) != "");             // needs evasion
+  Json::Value t1 = ms0(); t1["hg_tracer"] = 1; t1["hg_t2_ev_diff"] = 1; CHECK(hgtr::parse(t1, r) != "");        // needs hg_t2
+  Json::Value c = m; c["hg_t2_ev_diff"] = 1; c["hg_t2_ev_air"] = 1; CHECK(hgtr::parse(c, r) != "");            // excludes ev_air
+  Json::Value d = m; d["hg_t2_ev_diff_thaw"] = 1; CHECK(hgtr::parse(d, r) != "");                              // needs ev_diff
+  Json::Value e = m; e["hg_t2_ev_diff"] = 1; e["hg_t2_ev_diff_thaw"] = 1; e["hg_t2_thawrel"] = 0; CHECK(hgtr::parse(e, r) != "");
+  Json::Value g = m; g["hg_t2_ev_diff"] = 1; g["hg_t2_ev_diff_thaw"] = 1; g["hg_t2_thaw_evz"] = 0.3; CHECK(hgtr::parse(g, r) != "");   // excludes thaw_evz
+  Json::Value h = m; h["hg_t2_ev_diff"] = 1; h["hg_ev_lref"] = 0.0; CHECK(hgtr::parse(h, r) != "");
+  Json::Value i = m; i["hg_t2_ev_diff"] = 1; i["hg_ev_tort"] = 2; CHECK(hgtr::parse(i, r) != "");
+  std::remove(T2DEP);
+}
+TEST_CASE("B physics: Deff (CH4-module / MQ tortuosity, gas + dissolved), L = lref at the reference layer, ice and water block") {
+  hgtr::Params p = rparams(); p.t2_ev_diff = 1;
+  const double tg = 0.66 * 0.6 * std::pow(0.6 / 0.95, 3.0), tw = 0.66 * 0.35 * std::pow(0.35 / 0.95, 3.0);
+  const double dref = 1.31e-5 * std::pow(278.15 / 296.15, 1.81) * tg + 4.0e-9 * tw;
+  CHECK(hgtr::ev_deff(p, 0.95, 350.0, 0.0, 1.0, 5.0) == doctest::Approx(dref).epsilon(1e-14));
+  const double k = hgtr::ev_kref(p);
+  CHECK(std::sqrt(dref / k) == doctest::Approx(0.3).epsilon(1e-14));
+  CHECK(hgtr::ev_tau(p, k, 0.95, 35.0, 0.0, 0.1, 5.0) == doctest::Approx(0.1 / 0.3).epsilon(1e-12));   // dz / L at the reference
+  CHECK(hgtr::ev_deff(p, 0.95, 500.0, 0.0, 1.0, 5.0) < hgtr::ev_deff(p, 0.95, 300.0, 0.0, 1.0, 5.0));    // wetter: slower
+  CHECK(hgtr::ev_deff(p, 0.95, 300.0, 200.0, 1.0, 5.0) < hgtr::ev_deff(p, 0.95, 300.0, 0.0, 1.0, 5.0));  // ice: slower
+  CHECK(hgtr::ev_deff(p, 0.95, 350.0, 0.0, 1.0, 15.0) > hgtr::ev_deff(p, 0.95, 350.0, 0.0, 1.0, 5.0));   // warmer: faster
+  CHECK(hgtr::ev_deff(p, 0.95, 0.0, 950.0, 1.0, -2.0) == 0.0); CHECK(hgtr::ev_tau(p, k, 0.95, 0.0, 950.0, 1.0, -2.0) == 1.0e3);  // frozen: blocked
+  CHECK(hgtr::ev_deff(p, 0.95, 950.0, 0.0, 1.0, 5.0) == doctest::Approx(4.0e-9 * 0.66 * 0.95).epsilon(1e-12));   // saturated: dissolved path only
+  CHECK(hgtr::ev_deff(p, 0.0, 10.0, 0.0, 1.0, 5.0) == 0.0);
+  hgtr::Params mq = p; mq.ev_tort = 0;
+  CHECK(hgtr::ev_deff(mq, 0.95, 350.0, 0.0, 1.0, 5.0) == doctest::Approx(1.31e-5 * std::pow(278.15 / 296.15, 1.81) * std::pow(0.6, 10.0 / 3.0) / 0.9025 + 4.0e-9 * std::pow(0.35, 10.0 / 3.0) / 0.9025).epsilon(1e-14));
+}
+TEST_CASE("B step: off / ignored inputs bitwise = today; homogeneous reference column P = exp(-z/lref); ice blocks below; light x P; balance") {
+  hgtr::Snap a = column(4); hgtr::Snap b = a; b.soil[0] -= 10.0; b.soil[1] -= 6.0; b.soil[3] -= 10.0; b.wd -= 2.0;
+  hgtr::Flux f = rflux(); bref(f, a, 4);
+  hgtr::Params p = rparams();
+  hgtr::State s0; hgtr::initialize(p, s0, a); const double h0 = s0.soil[0], h1 = s0.soil[1], h3 = s0.soil[3], hw = s0.wd; hgtr::step(p, s0, a, b, f);
+  hgtr::Params o = p; o.ev_lref = 0.1; o.ev_tort = 0; o.ev_d0 = 2e-5; o.ev_dwh = 0.0;     // B parameters with the switch off: ignored
+  hgtr::State s1; hgtr::initialize(o, s1, a); hgtr::step(o, s1, a, b, f); CHECK(rsame(s0, s1)); CHECK(s1.m.pn == 0.0);
+  // on: fev = fd x exp(-z_mid / lref) for a homogeneous reference column
+  hgtr::Params q = p; q.t2_ev_diff = 1;
+  hgtr::State s; hgtr::initialize(q, s, a); hgtr::step(q, s, a, b, f);
+  double e = 0.0, e0 = 0.0, z = 0.0; const double hl[4] = {h0, h1, 0.0, h3};
+  for (int l = 0; l < 4; l++) {
+    const double d = a.dz[l], rel = f.decomp[l] * hl[l] / a.soil[l];
+    e += rel * q.fd * std::exp(-(z + 0.5 * d) / 0.3); e0 += rel * q.fd * std::exp(-(z + 0.5 * d) / q.ev_z);
+    CHECK(s.pesc_l[l] == doctest::Approx(std::exp(-(z + 0.5 * d) / 0.3)).epsilon(1e-12)); z += d;
+  }
+  const double relw = f.decomp_wd * hw / a.wd;
+  e += relw * q.fd; e0 += relw * q.fd;                                                          // woody debris: P = 1
+  CHECK(s.m.soilev == doctest::Approx(e).epsilon(1e-12)); CHECK(s.m.soilev0 == doctest::Approx(e0).epsilon(1e-12));
+  CHECK(s.m.pn > 0.0); CHECK(s.m.pw / s.m.pn < 1.0);
+  CHECK(s.m.evasion - s.m.soilev == doctest::Approx(s0.m.evasion - s0.m.soilev).epsilon(1e-12));
+  CHECK(std::fabs(s.balance_error()) < 1e-13 * s.total());
+  // an ice-filled layer 1 blocks the layers below it; layer 0 is unchanged
+  hgtr::Flux fi = f; fi.ice[1] = 0.95 * 1000.0 * a.dz[1]; fi.liq[1] = 0.0;
+  hgtr::State si; hgtr::initialize(q, si, a); hgtr::step(q, si, a, b, fi);
+  CHECK(si.pesc_l[0] == doctest::Approx(s.pesc_l[0]).epsilon(1e-14)); CHECK(si.pesc_l[2] < 1e-200); CHECK(si.pesc_l[3] < 1e-200);
+  CHECK(si.m.soilev < s.m.soilev); CHECK(std::fabs(si.balance_error()) < 1e-13 * si.total());
+  // wetter column: less re-emission
+  hgtr::Flux fw = f; for (int l = 0; l < 4; l++) { fw.liq[l] = 700.0 * a.dz[l]; }
+  hgtr::State sw; hgtr::initialize(q, sw, a); hgtr::step(q, sw, a, b, fw); CHECK(sw.m.soilev < s.m.soilev);
+  // with the R1B light factor: fev x g_light (woody debris too)
+  hgtr::Params ql = q; ql.t2_ev_light = 1; ql.ev_wl = 1.0;
+  hgtr::State sl; hgtr::initialize(ql, sl, a); hgtr::step(ql, sl, a, b, f);
+  CHECK(sl.m.soilev == doctest::Approx(e * hgtr::ev_glight(ql, f.gtrans)).epsilon(1e-12));
+  // frozen layer: no re-emission from it, and it still sets P for the layers below
+  hgtr::Flux ff = f; ff.ts[1] = -1.0;
+  hgtr::State sf; hgtr::initialize(q, sf, a); hgtr::step(q, sf, a, b, ff); CHECK(sf.m.soilev < s.m.soilev);
+  std::remove(T2DEP);
+}
+TEST_CASE("B thaw: hg_t2_ev_diff_thaw re-emits f_thaw_evade x P (from the surface); export unchanged; off = today; balance") {
+  hgtr::Params p = t2dparams(); p.t2_evasion = 1; p.t2_thawrel = 1;
+  hgtr::Snap a = column(6);
+  hgtr::Flux f = t2flux(1.0, 0.0, 0.0, 0.0, 0.0, 0.2); bref(f, a, 6);
+  f.decomp[4] = 5.0;                                                                            // one thaw layer (z_mid 0.30 m)
+  hgtr::Snap b = a; b.soil[4] = a.soil[4] - 5.0;
+  auto run = [&](const hgtr::Params& x) { hgtr::State s; hgtr::initialize(x, s, a); s.zpf = 0.25; s.h_init = s.total(); hgtr::step(x, s, a, b, f); return s; };
+  hgtr::Params q = p; q.t2_ev_diff = 1; hgtr::Params r = q; r.t2_ev_diff_thaw = 1;
+  hgtr::State s0 = run(p), sq = run(q), sr = run(r);
+  CHECK(s0.m.thawev > 0.0); CHECK(sq.m.thawev == doctest::Approx(s0.m.thawev).epsilon(1e-14));   // ordinary B alone keeps the thaw law
+  CHECK(sr.m.thawev == doctest::Approx(s0.m.thawev * std::exp(-0.30 / 0.3)).epsilon(1e-12));     // 0.16 x P(z_mid 0.30)
+  CHECK(sr.m.thawex == doctest::Approx(s0.m.thawex).epsilon(1e-14));
+  CHECK(std::fabs(sr.balance_error()) < 1e-13 * sr.total()); CHECK(sr.total() > s0.total());
+  std::remove(T2DEP);
+}

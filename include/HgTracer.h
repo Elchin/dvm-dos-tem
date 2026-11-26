@@ -191,6 +191,19 @@
 //   hg_ev_q10 != 1: g_T = hg_ev_q10^((T_layer - hg_ev_tref) / 10) (optional; not used in the calibrated set).
 //   HG_SOILEV0 = re-emission with G = 1 (G_eff = HG_SOILEV / HG_SOILEV0); HG_GTRANS = tau (sum of the monthly values).
 //   Coefficients come from vegetation, water and temperature only: the step stays affine and exactly conservative.
+// Depth-dependent evasion B (docs: ~/tem-dev/hg_t2/evasion_depth/EVASION_DEPTH_design.md, WORK_NOTES_hg_t2 section 23),
+// default off (bit-identical); hg_t2_ev_diff = 1 needs hg_t2_evasion = 1 and excludes hg_t2_ev_air:
+//   Hg(0) made in layer l diffuses to the surface or is lost to a first-order soil sink k (oxidation / sorption; soil air
+//   is depleted in Hg(0): Obrist et al. 2014 ES&T 48:2242, 2017 Nature 547:201). Monthly steady state, layered (WKB):
+//   escape P_l = exp(-(sum_{j<l} dz_j / L_j + dz_l / (2 L_l))), L = sqrt(Deff / k), measured from the surface;
+//   Deff = hg_ev_d0 (T/296.15 K)^1.81 tau(eps) + hg_ev_dwh tau(theta) (gas + dissolved path; D0 Koster van Groos et al.
+//   2014, Dw / H Kuss et al. 2009 / Andersson et al. 2008), tau(x) = 0.66 x (x / phi)^3 (the CH4 module's form, hg_ev_tort
+//   1; 0 = Millington-Quirk x^(10/3) / phi^2), eps = phi - theta_liq - theta_ice (ice blocks). k = Deff_ref / hg_ev_lref^2
+//   at a reference fibric layer (phi 0.95, theta 0.35, eps 0.6, 5 C). The ordinary re-emitted fraction becomes
+//   hg_fd (1 - f_snow) [T > 0] P_l x g_light (replaces exp(-z / hg_ev_z); woody debris P = 1). hg_t2_ev_diff_thaw = 1
+//   (needs hg_t2_ev_diff and hg_t2_thawrel; excludes hg_t2_thaw_evz): thaw layers re-emit hg_f_thaw_evade x P_l.
+//   Outputs: HG_SOILEV0 (today's law), HG_EVPESC (decay-weighted P), HG_EVPESCL (P by layer = soil-air Hg(0) / GEM of a
+//   source-free column, by reciprocity). Coefficients from water, ice, T and geometry only: the step stays affine.
 //   All new coefficients come from water, snow, geometry and type only: the step stays affine and exactly conservative.
 // T2 phase 5c (docs_src/HG_T2_design.md section 20, WORK_NOTES_hg_t2 section 8), needs hg_t2_xpath = 1:
 //   hg_t2_deeproute = 1: the share hg_f_deep of the Hg retained on the flow path (1 - hg_f_conn of the organic-layer
@@ -391,6 +404,13 @@ struct Params {
   double ev_dref = 0.14;        // hg_ev_dref: reference relative diffusivity (HPC S5F organic layers)
   double ev_q10 = 1.0;          // hg_ev_q10 (1 = off)
   double ev_tref = 2.5;         // hg_ev_tref (C)
+  // depth-dependent evasion B (default off; see the header comment)
+  int    t2_ev_diff = 0;        // hg_t2_ev_diff
+  double ev_lref = 0.3;         // hg_ev_lref (m): diffusion-reaction length at the reference layer (soil-gas profiles)
+  double ev_d0 = 1.31e-5;       // hg_ev_d0 (m2/s at 296.15 K): Hg(0) in air (Koster van Groos et al. 2014)
+  double ev_dwh = 4.0e-9;       // hg_ev_dwh (m2/s): Dw / H, dissolved path (Kuss et al. 2009; H ~0.3)
+  int    ev_tort = 1;           // hg_ev_tort: 1 = 0.66 x (x / phi)^3 (CH4 module), 0 = Millington-Quirk
+  int    t2_ev_diff_thaw = 0;   // hg_t2_ev_diff_thaw
   bool   dep_comp    = false; // the deposition file has components (hg2_wet / hg2_dry / hg0_soil columns)
   std::vector<double> dep_w, dep_d2, dep_d0, dep_s0;   // components per row (ug/m2/yr)
 };
@@ -553,7 +573,8 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_doc_beta", &p.doc_beta, 0, 3}, {"hg_doc_cref", &p.doc_cref, -1, 1e6}, {"hg_doc_crefyr", &p.doc_crefyr, 0.1, 100},
             {"hg_doc_eps", &p.doc_eps, 0, 1e30}, {"hg_doc_kdoc", &p.doc_kdoc, 0, 1e6},
             {"hg_ev_wl", &p.ev_wl, 0, 1}, {"hg_ev_tauref", &p.ev_tauref, 1e-6, 1}, {"hg_ev_air_b", &p.ev_air_b, 0, 3},
-            {"hg_ev_dref", &p.ev_dref, 1e-6, 1}, {"hg_ev_q10", &p.ev_q10, 1, 20}, {"hg_ev_tref", &p.ev_tref, -50, 50}};
+            {"hg_ev_dref", &p.ev_dref, 1e-6, 1}, {"hg_ev_q10", &p.ev_q10, 1, 20}, {"hg_ev_tref", &p.ev_tref, -50, 50},
+            {"hg_ev_lref", &p.ev_lref, 1e-3, 10}, {"hg_ev_d0", &p.ev_d0, 1e-7, 1e-3}, {"hg_ev_dwh", &p.ev_dwh, 0, 1e-6}};
   struct I { const char* k; int* v; int lo, hi; };
   I is[] = {{"hg_tracer", &p.tracer, 0, 1}, {"hg_mehg", &p.mehg, 0, 1}, {"hg_mehg_driver", &p.mehg_driver, 0, 1},
             {"hg_spinup", &p.spinup, 0, 1}, {"hg_transport", &p.transport, 0, 1}, {"hg_spinup_cycle", &p.spinup_cycle, 1, 50}, {"hg_spinup_closure", &p.spinup_closure, 0, 2}, {"hg_tr_year0", &p.tr_year0, -100000, 100000},
@@ -572,7 +593,8 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_t2_doc", &p.t2_doc, 0, 1}, {"hg_t2_doc_hg", &p.t2_doc_hg, 0, 1}, {"hg_doc_minsink", &p.doc_minsink, 0, 1}, {"hg_doc_dump", &p.doc_dump, 0, 1},
             {"hg_doc_c_loss", &p.doc_c_loss, 0, 1}, {"hg_doc_c_sink", &p.doc_c_sink, 0, 0}, {"hg_doc_n_loss", &p.doc_n_loss, 0, 0},
             {"hg_t2_doc_hglim", &p.t2_doc_hglim, 0, 1}, {"hg_doc_capmoss", &p.doc_capmoss, 0, 1},
-            {"hg_t2_ev_light", &p.t2_ev_light, 0, 1}, {"hg_t2_ev_air", &p.t2_ev_air, 0, 1}};
+            {"hg_t2_ev_light", &p.t2_ev_light, 0, 1}, {"hg_t2_ev_air", &p.t2_ev_air, 0, 1},
+            {"hg_t2_ev_diff", &p.t2_ev_diff, 0, 1}, {"hg_ev_tort", &p.ev_tort, 0, 1}, {"hg_t2_ev_diff_thaw", &p.t2_ev_diff_thaw, 0, 1}};
   for (const std::string& key : ms.getMemberNames()) {
     if (key.rfind("hg_", 0) != 0) { continue; }
     bool known = false;
@@ -668,6 +690,10 @@ inline std::string parse(const Json::Value& ms, Params& p) {
   if ((p.t2_ev_light == 1 || p.t2_ev_air == 1 || p.ev_q10 != 1.0) && !(p.t2 == 1 && p.t2_evasion == 1)) {
     return "model_settings.hg_t2_ev_light / hg_t2_ev_air / hg_ev_q10 != 1 need hg_t2 = 1 and hg_t2_evasion = 1";
   }
+  if (p.t2_ev_diff == 1 && !(p.t2 == 1 && p.t2_evasion == 1)) { return "model_settings.hg_t2_ev_diff = 1 needs hg_t2 = 1 and hg_t2_evasion = 1"; }
+  if (p.t2_ev_diff == 1 && p.t2_ev_air == 1) { return "model_settings.hg_t2_ev_diff and hg_t2_ev_air exclude each other"; }
+  if (p.t2_ev_diff_thaw == 1 && !(p.t2_ev_diff == 1 && p.t2_thawrel == 1)) { return "model_settings.hg_t2_ev_diff_thaw = 1 needs hg_t2_ev_diff = 1 and hg_t2_thawrel = 1"; }
+  if (p.t2_ev_diff_thaw == 1 && p.t2_thaw_evz > 0.0) { return "model_settings.hg_t2_ev_diff_thaw and hg_t2_thaw_evz > 0 exclude each other"; }
   return "";
 }
 
@@ -738,6 +764,7 @@ struct Acc {
   double orgexp = 0;   // DOC step 1: export from the organic layers (part of export_, after the flow-path retention; diagnostic)
   double doccap = 0;   // DOC step 2: Hg(II) withheld by the Hg:DOC cap (stays dissolved in the layer; diagnostic)
   double soilev0 = 0, gtrans = 0;   // R: re-emission with G = 1 (diagnostic), ground transmission (sum of monthly values)
+  double pw = 0, pn = 0;   // B: decay-weighted escape probability sum(decomp x P) / sum(decomp) of thawed layers (diagnostic)
   void clear() { *this = Acc(); }
   void add(const Acc& o) {
     uptake += o.uptake; dep += o.dep; evasion += o.evasion; export_ += o.export_; fire += o.fire;
@@ -747,7 +774,7 @@ struct Acc {
     soilev += o.soilev; sink0 += o.sink0; stomatal += o.stomatal; meltrun += o.meltrun;
     ash += o.ash; partic += o.partic; wash += o.wash;
     thawev += o.thawev; thawex += o.thawex;
-    orgexp += o.orgexp; doccap += o.doccap; soilev0 += o.soilev0; gtrans += o.gtrans;
+    orgexp += o.orgexp; doccap += o.doccap; soilev0 += o.soilev0; gtrans += o.gtrans; pw += o.pw; pn += o.pn;
   }
   double net() const { return uptake + dep - evasion - export_ - fire + spin; }   // spin: spin-up jump
 };
@@ -772,6 +799,7 @@ struct State {
   double mehg_hsub_m = 0.0, mehg_hsub_y = 0.0, mehg_kdp_m = 0.0, mehg_kdp_y = 0.0, mehg_exp_m = 0.0, mehg_exp_y = 0.0;
   double phieq[MAX_SOI_LAY] = {};
   double mehg_prodl[MAX_SOI_LAY] = {};
+  double pesc_l[MAX_SOI_LAY] = {};   // B (hg_t2_ev_diff): escape probability by layer of the month (diagnostic, not in the restart)
   double mehg_tbal_m = 0.0, mehg_tbal_y = 0.0;   // phase M2 item 2: transport-step MeHg balance error (ug/m2; 0 when off)   // phase M2: MeHg production of the month by layer (ug/m2; diagnostic, not in the restart)
   int spun = 0;           // spin-up: 0 not done, 1 done, 2 gave up (geometry never repeated)
   int spin_tries = 0;
@@ -1295,6 +1323,27 @@ inline double ev_gair(const Params& p, double dms) {
   return std::pow(dms / p.ev_dref, p.ev_air_b);
 }
 inline double ev_gtemp(const Params& p, double t) { return (p.ev_q10 != 1.0) ? std::pow(p.ev_q10, (t - p.ev_tref) / 10.0) : 1.0; }
+// Depth-dependent evasion B: tortuosity factor of a pore phase with volume fraction x in porosity phi
+inline double ev_tortf(const Params& p, double x, double phi) {
+  if (!(x > 0.0) || !(phi > 0.0)) { return 0.0; }
+  return (p.ev_tort == 1) ? 0.66 * x * std::pow(x / phi, 3.0) : std::pow(x, 10.0 / 3.0) / (phi * phi);
+}
+// effective Hg(0) diffusivity of a layer (m2/s): gas path + dissolved path (liq / ice in mm, dz in m, T in C); 0 = blocked
+inline double ev_deff(const Params& p, double por, double liq, double ice, double dz, double tc) {
+  if (!(por > 0.0) || !(dz > 0.0)) { return 0.0; }
+  const double ph = std::fmin(1.0, por);
+  const double th = std::fmin(ph, std::fmax(0.0, liq) / (1000.0 * dz));
+  const double e = std::fmax(0.0, ph - th - std::fmax(0.0, ice) / (1000.0 * dz));
+  const double tk = std::fmax(200.0, tc + 273.15);
+  return p.ev_d0 * std::pow(tk / 296.15, 1.81) * ev_tortf(p, e, ph) + p.ev_dwh * ev_tortf(p, th, ph);
+}
+// soil Hg(0) sink rate k (1/s) from hg_ev_lref at the reference layer (phi 0.95, theta 0.35, eps 0.6, 5 C)
+inline double ev_kref(const Params& p) { return ev_deff(p, 0.95, 350.0, 0.0, 1.0, 5.0) / (p.ev_lref * p.ev_lref); }
+// optical depth dz / L of a layer (a blocked layer: 1e3)
+inline double ev_tau(const Params& p, double k, double por, double liq, double ice, double dz, double tc) {
+  const double d = ev_deff(p, por, liq, ice, dz, tc);
+  return (d > 0.0) ? std::fmax(0.0, dz) * std::sqrt(k / d) : 1.0e3;
+}
 
 // T2 phase-1 surface part of a BGC step (f.t2 = 1): foliar uptake per PFT (returned in fol, ug/m2), snowpack, ground
 // deposition; returns the Hg to add to the top C soil layer (deposition + melt release). Linear in Hg.
@@ -1388,15 +1437,23 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
   double fev[MAX_SOI_LAY]; double fev_wd = p.f_evade;
   double fev0[MAX_SOI_LAY]; double fev0_wd = p.f_evade;   // R: the same with G = 1 (diagnostic HG_SOILEV0)
   for (int l = 0; l < MAX_SOI_LAY; l++) { fev[l] = p.f_evade; fev0[l] = p.f_evade; }
+  double pesc[MAX_SOI_LAY]; for (int l = 0; l < MAX_SOI_LAY; l++) { pesc[l] = 1.0; }   // B: escape probability by layer
   if (ev3) {
     const double fsn = (p.t2_snow == 1) ? std::fmin(1.0, std::fmax(0.0, f.swe) / p.swe_full) : 0.0;
     const bool gon = ev_gon(p); const double gl = gon ? ev_glight(p, f.gtrans) : 1.0;
+    const bool dif = (p.t2_ev_diff == 1); const double kk = dif ? ev_kref(p) : 0.0; double tcum = 0.0;
     double z = 0.0;
     for (int l = 0; l < na; l++) {
       const double d = std::fmax(0.0, a.dz[l]); fev[l] = fev_layer(p, fsn, z + 0.5 * d, f.ts[l]); fev0[l] = fev[l];
-      if (gon && fev[l] > 0.0) { fev[l] = std::fmin(1.0 - f_exp, fev[l] * gl * ev_gair(p, ev_dms(f.por[l], f.liq[l], f.ice[l], d)) * ev_gtemp(p, f.ts[l])); }
+      if (dif) {
+        const double t = ev_tau(p, kk, f.por[l], f.liq[l], f.ice[l], d, f.ts[l]); pesc[l] = std::exp(-(tcum + 0.5 * t)); tcum += t; s.pesc_l[l] = pesc[l];
+        fev[l] = (f.ts[l] > 0.0) ? p.fd * (1.0 - fsn) * pesc[l] : 0.0;
+        if (f.ts[l] > 0.0) { acc.pw += std::fmax(0.0, f.decomp[l]) * pesc[l]; acc.pn += std::fmax(0.0, f.decomp[l]); }
+      }
+      if ((gon || dif) && fev[l] > 0.0) { fev[l] = std::fmin(1.0 - f_exp, fev[l] * gl * ev_gair(p, ev_dms(f.por[l], f.liq[l], f.ice[l], d)) * ev_gtemp(p, f.ts[l])); }
       z += d;
     }
+    if (dif) { for (int l = na; l < MAX_SOI_LAY; l++) { s.pesc_l[l] = 0.0; } }
     fev_wd = fev_layer(p, fsn, 0.0, f.ta); fev0_wd = fev_wd;
     if (gon && fev_wd > 0.0) { fev_wd = std::fmin(1.0 - f_exp, fev_wd * gl * ev_gtemp(p, f.ta)); }
     if (p.t2_ev_light == 1) { acc.gtrans += f.gtrans; }
@@ -1409,7 +1466,8 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
   if (thr) {
     double z = 0.0;
     for (int l = 0; l < na; l++) {
-      if (z >= s.zpf && f.ts[l] > 0.0 && f.decomp[l] > 0.0) { thl[l] = true; thany = true; fev[l] = thaw_fev(p, z + 0.5 * std::fmax(0.0, a.dz[l]), s.zpf); fev0[l] = fev[l]; fxl[l] = p.f_thaw_export; }
+      if (z >= s.zpf && f.ts[l] > 0.0 && f.decomp[l] > 0.0) { thl[l] = true; thany = true; fev[l] = thaw_fev(p, z + 0.5 * std::fmax(0.0, a.dz[l]), s.zpf); fev0[l] = fev[l]; fxl[l] = p.f_thaw_export;
+        if (p.t2_ev_diff_thaw == 1) { fev[l] = p.f_thaw_evade * pesc[l]; } }   // B: thaw release escapes from depth
       z += std::fmax(0.0, a.dz[l]);
     }
   }
