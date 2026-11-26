@@ -2472,3 +2472,61 @@ Fig. 47 shows the B2F (= T3 at defaults) JJAS %MeHg and gross-production profile
 peaks at 1.5 % in the top 5 cm and is about 0.1 % below; the Toolik fen peaks at 6.7 % at about 20 cm. This is the MeHg that
 the closure takes out of the Hg(II) substrate. Up to 7 % of the layer THg at the fen peak means up to 7 % less substrate
 there, so closure is a small first-order effect on %MeHg.
+
+## 25. T3 P1-P2: closure, MeHg Kd-offset scan, k rescale; f_red and sulfate sensitivities (2026-11-26)
+
+All runs use the B2F overlay plus the T3 keys named below (binT3 = binT3a c5ac8d70, n <= 75, 4 processes). Scores:
+`src/reem/scoreR.py` (9 bands), `src/doc2/crit_mehg.py` (7 MeHg primary). Results are in `an2/r/score_T1.txt`,
+`score_T2.txt`, `mehg_T1.txt` and `mehg_T2.txt`.
+
+### 25.1 Closure (T3C0 = B2F + `hg_t3` 1 + `hg_t3_closure` 1)
+
+| run | TVC %MeHg | HPC %MeHg | ratio | fen %MeHg | exp HPC / TVC / fen (ng/m2 May-Oct) | 9 bands | MeHg 7 | TVC Ro |
+|---|---|---|---|---|---|---|---|---|
+| B2F | 0.7512 | 0.09296 | 8.08 | 2.223 | 36.3 / 23.2 / 40.6 | 9/9 | 7/7 | 0.4021 |
+| T3C0 closure | 0.7467 | 0.09339 | 8.00 | 2.137 | 38.0 / 23.3 / 40.6 | 9/9 | 7/7 | 0.4025 |
+| T3C5 + dlogkd -0.5 | 0.7466 | 0.0932 | 8.01 | 2.137 | **118 / 72 / 127** | 9/9 | 4/7 | 0.4021 |
+| T3C10 + dlogkd -1.0 | 0.7461 | 0.09265 | 8.05 | 2.137 | **355 / 214 / 388** | 9/9 | 4/7 | 0.4009 |
+| **T3K** closure + k rescale | 0.7473 | 0.09345 | 8.00 | 2.220 | 38.1 / 23.3 / 42.2 | 9/9 | 7/7 | 0.4025 |
+| T3R = T3K + f_red 1e-3 | 0.7467 | 0.09329 | 8.01 | 2.220 | 37.9 / 23.2 / 42.1 | 9/9 | 7/7 | 0.4012 |
+
+- **The closure is a small first-order change, as fig. 47 predicts.** Hg(II) substrate drops by the local MeHg share, which
+  lowers TVC by 0.6 % and the fen by 3.9 %. HPC rises 0.5 %: under closure the MeHg is no longer lost in proportion to the
+  Hg(II) decay release. The THg balance error stays at 4e-10 to 3e-9 ug/m2 at every site. All 9 bands stay in, so no
+  hg_fd refit was needed. The TVC Ro top-edge margin is 0.0075, against 0.0079 for B2F.
+- **Kd offset (T7): no dlogkd < 0 passes the MeHg export bands**, so the stop rule keeps dlogkd = 0.
+  - A smaller MeHg Kd multiplies the mobile share by up to 10^-dlogkd, giving MeHg exports x3.1-3.3 at -0.5 and x9.2-9.8
+    at -1.0, above 50 ng/m2 at all three sites.
+  - %MeHg barely moves (< 0.7 %). With k_d = 0.1 /d the pool turns over in about 10 days, so export draws on production,
+    not the stock.
+  - Under closure the MeHg export is THg export, so the THg dissolved export rises as well: TVC 0.875 -> 1.061, HPC
+    0.983 -> 1.291 ug/m2/yr at -1.0, still inside 0.2-2.3.
+- **k rescale (T9, linear):** k_m,proxy = 99.9 x sqrt((0.7512/0.7467)(0.09296/0.09339)) = 99.97 and k_m,ch4 =
+  6079 x 2.223/2.137 = 6324. T3K restores the fen to 2.220 % (B2F 2.223); TVC and HPC were already within 0.6 %. Both
+  new k's are within 4 % of M4V1.
+
+**T3K is the adopted T3 configuration:** B2F + `hg_t3` 1, `hg_t3_closure` 1, `hg_t2_k_meth_proxy` 99.97,
+`hg_t2_k_meth_ch4` 6324, with dlogkd 0, f_red 0 and sulfate off. It scores 9/9 and 7/7.
+
+### 25.2 P2 sensitivities (report-only, not adopted)
+
+- **f_red 1e-3 (T3R):** the evaded reductive-demethylation Hg(0) `HG_T3RED` is 0.24 (TVC) and 0.13 (HPC) ug/m2/yr. It is
+  smaller than the design's read-only 1.84 because only thawed layers count and only the escape share P_l evades. Total
+  evasion rises 1.8 % (TVC 11.11 -> 11.31) and 1.6 % (HPC 6.83 -> 6.94); TVC Ro moves 0.4025 -> 0.4012. The scores hold
+  (9/9, 7/7). Evasion is linear in f_red, so 1e-2 would add about 2.4 / 1.3 ug/m2/yr. f_red stays 0 (T5).
+- **Sulfate at the Toolik fen (T3S1-3, CH4 driver only):** fen %MeHg is linear in f_SO4, at 0.80 % / 2.22 % / 2.98 % /
+  2.01 % for S = 0.02 / 0.1 (S_ref) / 0.4 / 2.0 mM (f = 0.35 / 1 / 1.36 / 0.90).
+  - S = 0.02 and S = 0.4 leave the 1.6-2.4 % band; at S = 0.4 the fen export is 57 ng/m2, also out.
+  - The factor is not fitted (T6). Using it would need a measured Toolik pore-water sulfate, and k_m,ch4 would have to be
+    refit against it.
+- **CMT class map and landscape mixing (T8):** the Toolik fen and upland are both CMT06, so g_class cannot split them. The
+  fen/upland contrast comes from the driver (CH4 vs proxy): upland %MeHg is 0.118 % and the fen 2.22 %, a factor 19; May-Oct
+  exports are 7.6 and 42.2 ng/m2.
+  - The landscape mean is the area-weighted post-processing mix f_fen E_fen + (1 - f_fen) E_upland.
+  - As an illustration only, f_fen 0.1 / 0.3 gives 11.1 / 18.0 ng/m2. No Toolik fen-area fraction was taken from data.
+
+![fig48](figures_hg_t2/hg_t2_fig48_t3_closure_kd.png)
+![fig49](figures_hg_t2/hg_t2_fig49_t3_score.png)
+![fig50](figures_hg_t2/hg_t2_fig50_t3_p2.png)
+
+T3 core-h after P1 + P2: 0.4617, of which P1 was 0.1970 (T3C0, T3C5, T3C10, T3K) and P2 0.0983 (T3R, T3S1-3).
