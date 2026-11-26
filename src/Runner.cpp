@@ -2835,6 +2835,8 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
       scalar("HG_PHOTORED", h.m.photored, h.y.photored);
       scalar("HG_RUNOFF", h.m.runoff, h.y.runoff);
       scalar("HG_SOILEV", h.m.soilev, h.y.soilev);   // T2 phase 3
+      if (hgtr::ev_gon(md.hg)) { scalar("HG_SOILEV0", h.m.soilev0, h.y.soilev0); }   // re-emission fix R: G = 1
+      if (md.hg.t2_ev_light == 1) { scalar("HG_GTRANS", h.m.gtrans, h.y.gtrans); }  // R: ground transmission (sum of months)
       scalar("HG_SINK0", h.m.sink0, h.y.sink0);
       scalar("HG_STOMATAL", h.m.stomatal, h.y.stomatal);
       scalar("HG_MELTRUN", h.m.meltrun, h.y.meltrun);

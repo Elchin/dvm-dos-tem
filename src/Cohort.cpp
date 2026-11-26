@@ -691,6 +691,20 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
           f.dep_wet = (md->hg.t2_wetprec == 1 && py > 0.0) ? dv.wet * std::fmax(0.0, edall->m_a2l.prec) / py : dv.wet / 12.0;
           f.dep_dry2 = dv.dry2 / 12.0; f.dep_dry0 = dv.dry0 / 12.0; f.dep_soil0 = dv.soil0 / 12.0;
           for (int ip = 0; ip < NUM_PFT; ip++) { f.lai[ip] = cd.m_veg.lai[ip]; f.vegcov[ip] = cd.m_veg.vegcov[ip]; }
+          if (md->hg.t2_ev_light == 1) {   // re-emission fix R: vascular-canopy ground transmission exp(-sum klai LAI vegcov)
+            double x = 0.0;
+            for (int ip = 0; ip < NUM_PFT; ip++) {
+              const double lai = cd.m_veg.lai[ip], cov = cd.m_veg.vegcov[ip];
+              if (chtlu.nonvascular[ip] == 0 && std::isfinite(lai) && lai > 0.0 && std::isfinite(cov) && cov > 0.0) { x += chtlu.klai[ip] * lai * cov; }
+            }
+            f.gtrans = std::exp(-x);
+          }
+          if (md->hg.t2_ev_air == 1) {   // re-emission fix R: monthly layer liquid / ice (mm) and porosity (soil-air factor)
+            auto ps = [](double v) { return (std::isfinite(v) && v > 0.0 && v < 1.0e5) ? v : 0.0; };
+            for (int il = 0; il < std::min(cd.m_soil.numsl, MAX_SOI_LAY); il++) {
+              f.liq[il] = ps(edall->m_sois.liq[il]); f.ice[il] = ps(edall->m_sois.ice[il]); f.por[il] = ps(cd.m_soil.por[il]);
+            }
+          }
           f.swe = edall->m_snws.swesum; f.melt = edall->m_snw2soi.melt; f.sublim = edall->m_snw2a.sublim;
           f.sw = edall->m_a2l.nirr; f.cosz = hgtr::cosz24(this->lat, hgtr::mid_doy(currmind)); f.ndays = hgtr::days_in(currmind);
           if (md->hg.t2_foliar == 2 || md->hg.t2_evasion == 1) {   // T2 phase 3: GPP by PFT, air T, CO2, layer T

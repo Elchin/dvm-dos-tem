@@ -180,6 +180,17 @@
 //     (no DOC there: their Hg(II) leaves only with the MeHg). The cap is a min, so the step is no longer linear in Hg.
 //   hg_doc_kdoc (L/kg OM, needs hg_t2_doc = 1): DOC sorption to organic matter; only the dissolved share liq / (liq + kdoc M)
 //     (M = soil C x 2e-3 kg OM) moves and sets the concentration; mineralisation acts on the whole pool.
+// Re-emission fix R (docs: ~/tem-dev/hg_t2/doc_export/HG_REEMISSION_fix_design.md, WORK_NOTES_hg_t2 section 21), all need
+// hg_t2_evasion = 1, default off (bit-identical): the re-emitted fraction of decay-released Hg (fev_layer) is multiplied by
+//   G = g_light x g_air(layer) x g_T(layer), clamped to 1 - hg_f_export:
+//   hg_t2_ev_light = 1: g_light = (1 - hg_ev_wl) + hg_ev_wl x tau / hg_ev_tauref, tau = exp(-sum_p klai_p LAI_p vegcov_p) over
+//     the vascular PFTs (nonvascular = 0) of the month (canopy shading of the ground: Choi & Holsen 2009 Environ Pollut 157:592;
+//     photo-reduction drives soil Hg(0) emission: Moore & Carpi 2005 JGR 110 D24302). Woody debris: g_light only.
+//   hg_t2_ev_air = 1: g_air = (D / hg_ev_dref)^hg_ev_air_b, D = eps^(10/3) / phi^2 (Millington & Quirk 1961), eps = phi -
+//     theta_liq - theta_ice of the layer (monthly liq / ice, porosity): wet and frozen layers re-emit less (soil-air diffusion).
+//   hg_ev_q10 != 1: g_T = hg_ev_q10^((T_layer - hg_ev_tref) / 10) (optional; not used in the calibrated set).
+//   HG_SOILEV0 = re-emission with G = 1 (G_eff = HG_SOILEV / HG_SOILEV0); HG_GTRANS = tau (sum of the monthly values).
+//   Coefficients come from vegetation, water and temperature only: the step stays affine and exactly conservative.
 //   All new coefficients come from water, snow, geometry and type only: the step stays affine and exactly conservative.
 // T2 phase 5c (docs_src/HG_T2_design.md section 20, WORK_NOTES_hg_t2 section 8), needs hg_t2_xpath = 1:
 //   hg_t2_deeproute = 1: the share hg_f_deep of the Hg retained on the flow path (1 - hg_f_conn of the organic-layer
@@ -371,6 +382,15 @@ struct Params {
   double doc_eps = 1.0;         // hg_doc_eps: Hg(II):DOC of the leaving water / layer Hg(II):C (-)
   int    doc_capmoss = 0;       // hg_doc_capmoss
   double doc_kdoc = 0.0;        // hg_doc_kdoc: DOC sorption coefficient (L/kg OM)
+  // re-emission fix R (default off; see the header comment)
+  int    t2_ev_light = 0;       // hg_t2_ev_light
+  double ev_wl = 0.8;           // hg_ev_wl: light-driven share of the re-emission at tau = hg_ev_tauref
+  double ev_tauref = 1.0;       // hg_ev_tauref: reference ground transmission (open ground)
+  int    t2_ev_air = 0;         // hg_t2_ev_air
+  double ev_air_b = 1.0;        // hg_ev_air_b: exponent of the relative soil-air diffusivity
+  double ev_dref = 0.14;        // hg_ev_dref: reference relative diffusivity (HPC S5F organic layers)
+  double ev_q10 = 1.0;          // hg_ev_q10 (1 = off)
+  double ev_tref = 2.5;         // hg_ev_tref (C)
   bool   dep_comp    = false; // the deposition file has components (hg2_wet / hg2_dry / hg0_soil columns)
   std::vector<double> dep_w, dep_d2, dep_d0, dep_s0;   // components per row (ug/m2/yr)
 };
@@ -531,7 +551,9 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_doc_fp", &p.doc_fp, 0, 10}, {"hg_doc_tau", &p.doc_tau, 1e-3, 1e5}, {"hg_doc_q10", &p.doc_q10, 1, 10}, {"hg_doc_frz", &p.doc_frz, 0, 1},
             {"hg_doc_vadv", &p.doc_vadv, 0, 1}, {"hg_doc_fconn", &p.doc_fconn, -1, 1}, {"hg_doc_cmin", &p.doc_cmin, 1e-6, 1e4}, {"hg_doc_cmax", &p.doc_cmax, 1e-3, 1e6},
             {"hg_doc_beta", &p.doc_beta, 0, 3}, {"hg_doc_cref", &p.doc_cref, -1, 1e6}, {"hg_doc_crefyr", &p.doc_crefyr, 0.1, 100},
-            {"hg_doc_eps", &p.doc_eps, 0, 1e30}, {"hg_doc_kdoc", &p.doc_kdoc, 0, 1e6}};
+            {"hg_doc_eps", &p.doc_eps, 0, 1e30}, {"hg_doc_kdoc", &p.doc_kdoc, 0, 1e6},
+            {"hg_ev_wl", &p.ev_wl, 0, 1}, {"hg_ev_tauref", &p.ev_tauref, 1e-6, 1}, {"hg_ev_air_b", &p.ev_air_b, 0, 3},
+            {"hg_ev_dref", &p.ev_dref, 1e-6, 1}, {"hg_ev_q10", &p.ev_q10, 1, 20}, {"hg_ev_tref", &p.ev_tref, -50, 50}};
   struct I { const char* k; int* v; int lo, hi; };
   I is[] = {{"hg_tracer", &p.tracer, 0, 1}, {"hg_mehg", &p.mehg, 0, 1}, {"hg_mehg_driver", &p.mehg_driver, 0, 1},
             {"hg_spinup", &p.spinup, 0, 1}, {"hg_transport", &p.transport, 0, 1}, {"hg_spinup_cycle", &p.spinup_cycle, 1, 50}, {"hg_spinup_closure", &p.spinup_closure, 0, 2}, {"hg_tr_year0", &p.tr_year0, -100000, 100000},
@@ -549,7 +571,8 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_t2_mehg_preset", &p.t2_mehg_preset, 0, 1},
             {"hg_t2_doc", &p.t2_doc, 0, 1}, {"hg_t2_doc_hg", &p.t2_doc_hg, 0, 1}, {"hg_doc_minsink", &p.doc_minsink, 0, 1}, {"hg_doc_dump", &p.doc_dump, 0, 1},
             {"hg_doc_c_loss", &p.doc_c_loss, 0, 1}, {"hg_doc_c_sink", &p.doc_c_sink, 0, 0}, {"hg_doc_n_loss", &p.doc_n_loss, 0, 0},
-            {"hg_t2_doc_hglim", &p.t2_doc_hglim, 0, 1}, {"hg_doc_capmoss", &p.doc_capmoss, 0, 1}};
+            {"hg_t2_doc_hglim", &p.t2_doc_hglim, 0, 1}, {"hg_doc_capmoss", &p.doc_capmoss, 0, 1},
+            {"hg_t2_ev_light", &p.t2_ev_light, 0, 1}, {"hg_t2_ev_air", &p.t2_ev_air, 0, 1}};
   for (const std::string& key : ms.getMemberNames()) {
     if (key.rfind("hg_", 0) != 0) { continue; }
     bool known = false;
@@ -642,6 +665,9 @@ inline std::string parse(const Json::Value& ms, Params& p) {
   if (p.t2_doc_hglim == 1 && p.t2_doc != 1) { return "model_settings.hg_t2_doc_hglim = 1 needs hg_t2_doc = 1"; }
   if (p.doc_capmoss == 1 && p.t2_doc_hglim != 1) { return "model_settings.hg_doc_capmoss = 1 needs hg_t2_doc_hglim = 1"; }
   if (p.doc_kdoc > 0.0 && p.t2_doc != 1) { return "model_settings.hg_doc_kdoc > 0 needs hg_t2_doc = 1"; }
+  if ((p.t2_ev_light == 1 || p.t2_ev_air == 1 || p.ev_q10 != 1.0) && !(p.t2 == 1 && p.t2_evasion == 1)) {
+    return "model_settings.hg_t2_ev_light / hg_t2_ev_air / hg_ev_q10 != 1 need hg_t2 = 1 and hg_t2_evasion = 1";
+  }
   return "";
 }
 
@@ -695,6 +721,7 @@ struct Flux {
   double d_cdoc[31][MAX_SOI_LAY] = {};      // the day's DOC concentration by layer (mg C/L; 0 = not a DOC layer)
   double cref_eff = 0.0;                    // D1b (hg_doc_cref = -1): the month's site reference concentration (0 = none yet)
   int    dhg_on = 0;                        // DOC step 2 (hg_t2_doc_hglim = 1, transport step): dfl set
+  double gtrans = 1.0;                      // R (hg_t2_ev_light, BGC step): vascular-canopy ground transmission (-)
   DocFlow dfl;                              // DOC step 2: the day's DOC fluxes by layer
 };
 
@@ -710,6 +737,7 @@ struct Acc {
                                                              // stomatal uptake (part of foliar), melt Hg exported with the melt overland flow (part of runoff)
   double orgexp = 0;   // DOC step 1: export from the organic layers (part of export_, after the flow-path retention; diagnostic)
   double doccap = 0;   // DOC step 2: Hg(II) withheld by the Hg:DOC cap (stays dissolved in the layer; diagnostic)
+  double soilev0 = 0, gtrans = 0;   // R: re-emission with G = 1 (diagnostic), ground transmission (sum of monthly values)
   void clear() { *this = Acc(); }
   void add(const Acc& o) {
     uptake += o.uptake; dep += o.dep; evasion += o.evasion; export_ += o.export_; fire += o.fire;
@@ -719,7 +747,7 @@ struct Acc {
     soilev += o.soilev; sink0 += o.sink0; stomatal += o.stomatal; meltrun += o.meltrun;
     ash += o.ash; partic += o.partic; wash += o.wash;
     thawev += o.thawev; thawex += o.thawex;
-    orgexp += o.orgexp; doccap += o.doccap;
+    orgexp += o.orgexp; doccap += o.doccap; soilev0 += o.soilev0; gtrans += o.gtrans;
   }
   double net() const { return uptake + dep - evasion - export_ - fire + spin; }   // spin: spin-up jump
 };
@@ -1250,6 +1278,23 @@ inline double ground_sink_snow(const Params& p, const Flux& f, double fs) {
 inline double fev_layer(const Params& p, double fsnow, double zm, double ts) {
   return (ts > 0.0) ? p.fd * (1.0 - fsnow) * std::exp(-std::fmax(0.0, zm) / p.ev_z) : 0.0;
 }
+// Re-emission fix R: factors of G (each 1 when its switch is off)
+inline bool ev_gon(const Params& p) { return p.t2_ev_light == 1 || p.t2_ev_air == 1 || p.ev_q10 != 1.0; }
+inline double ev_glight(const Params& p, double tau) {
+  return (p.t2_ev_light == 1) ? (1.0 - p.ev_wl) + p.ev_wl * std::fmin(1.0, std::fmax(0.0, tau)) / p.ev_tauref : 1.0;
+}
+// relative soil-air diffusivity eps^(10/3) / phi^2 of a layer (liq / ice in mm, dz in m); -1 = not available
+inline double ev_dms(double por, double liq, double ice, double dz) {
+  if (!(por > 0.0) || !(dz > 0.0)) { return -1.0; }
+  const double ph = std::fmin(1.0, por);
+  const double e = std::fmax(0.0, ph - std::fmax(0.0, liq) / (1000.0 * dz) - std::fmax(0.0, ice) / (1000.0 * dz));
+  return std::pow(e, 10.0 / 3.0) / (ph * ph);
+}
+inline double ev_gair(const Params& p, double dms) {
+  if (p.t2_ev_air != 1 || dms < 0.0 || p.ev_air_b == 0.0) { return 1.0; }
+  return std::pow(dms / p.ev_dref, p.ev_air_b);
+}
+inline double ev_gtemp(const Params& p, double t) { return (p.ev_q10 != 1.0) ? std::pow(p.ev_q10, (t - p.ev_tref) / 10.0) : 1.0; }
 
 // T2 phase-1 surface part of a BGC step (f.t2 = 1): foliar uptake per PFT (returned in fol, ug/m2), snowpack, ground
 // deposition; returns the Hg to add to the top C soil layer (deposition + melt release). Linear in Hg.
@@ -1341,12 +1386,20 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
   // T2 phase 3 (hg_t2_evasion, BGC step): re-emitted fraction of decay-released Hg by layer, woody debris, the pot
   const bool ev3 = (f.t2 == 1 && p.t2 == 1 && p.t2_evasion == 1);
   double fev[MAX_SOI_LAY]; double fev_wd = p.f_evade;
-  for (int l = 0; l < MAX_SOI_LAY; l++) { fev[l] = p.f_evade; }
+  double fev0[MAX_SOI_LAY]; double fev0_wd = p.f_evade;   // R: the same with G = 1 (diagnostic HG_SOILEV0)
+  for (int l = 0; l < MAX_SOI_LAY; l++) { fev[l] = p.f_evade; fev0[l] = p.f_evade; }
   if (ev3) {
     const double fsn = (p.t2_snow == 1) ? std::fmin(1.0, std::fmax(0.0, f.swe) / p.swe_full) : 0.0;
+    const bool gon = ev_gon(p); const double gl = gon ? ev_glight(p, f.gtrans) : 1.0;
     double z = 0.0;
-    for (int l = 0; l < na; l++) { const double d = std::fmax(0.0, a.dz[l]); fev[l] = fev_layer(p, fsn, z + 0.5 * d, f.ts[l]); z += d; }
-    fev_wd = fev_layer(p, fsn, 0.0, f.ta);
+    for (int l = 0; l < na; l++) {
+      const double d = std::fmax(0.0, a.dz[l]); fev[l] = fev_layer(p, fsn, z + 0.5 * d, f.ts[l]); fev0[l] = fev[l];
+      if (gon && fev[l] > 0.0) { fev[l] = std::fmin(1.0 - f_exp, fev[l] * gl * ev_gair(p, ev_dms(f.por[l], f.liq[l], f.ice[l], d)) * ev_gtemp(p, f.ts[l])); }
+      z += d;
+    }
+    fev_wd = fev_layer(p, fsn, 0.0, f.ta); fev0_wd = fev_wd;
+    if (gon && fev_wd > 0.0) { fev_wd = std::fmin(1.0 - f_exp, fev_wd * gl * ev_gtemp(p, f.ta)); }
+    if (p.t2_ev_light == 1) { acc.gtrans += f.gtrans; }
   }
   // T2 phase 6b (hg_t2_thawrel): layers (start geometry) below the permafrost reference depth that are thawed this month
   // (layer T > 0 C; frozen-soil decomposition below zpf re-sorbs as before) release at the thaw fractions
@@ -1356,7 +1409,7 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
   if (thr) {
     double z = 0.0;
     for (int l = 0; l < na; l++) {
-      if (z >= s.zpf && f.ts[l] > 0.0 && f.decomp[l] > 0.0) { thl[l] = true; thany = true; fev[l] = thaw_fev(p, z + 0.5 * std::fmax(0.0, a.dz[l]), s.zpf); fxl[l] = p.f_thaw_export; }
+      if (z >= s.zpf && f.ts[l] > 0.0 && f.decomp[l] > 0.0) { thl[l] = true; thany = true; fev[l] = thaw_fev(p, z + 0.5 * std::fmax(0.0, a.dz[l]), s.zpf); fev0[l] = fev[l]; fxl[l] = p.f_thaw_export; }
       z += std::fmax(0.0, a.dz[l]);
     }
   }
@@ -1391,7 +1444,7 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
     hp[k] = &s.wd; r[k] = ratio_(s.wd, a.wd);
     const double rel = std::fmin(s.wd, std::fmax(0.0, f.decomp_wd) * r[k]);
     acc.evasion += rel * fev_wd; acc.export_ += rel * f_exp; s.wd -= rel * (fev_wd + f_exp);
-    if (ev3) { acc.soilev += rel * fev_wd; }
+    if (ev3) { acc.soilev += rel * fev_wd; acc.soilev0 += rel * fev0_wd; }
     dint[k] = b.wd - a.wd + f.decomp_wd;
     k++;
   }
@@ -1401,6 +1454,7 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
   double rs[MAX_SOI_LAY] = {};      // Hg:C at the start of the step
   double pot_decomp = f.pot_decomp, lateral = f.lateral;
   double fev_pot = p.f_evade;       // T2 phase 3: re-emitted fraction of the pot's decomposition
+  double fev0_pot = p.f_evade;      // R: the same with G = 1 (diagnostic)
   double fxp_pot = f_exp, thev_pot = 0.0, thex_pot = 0.0;   // T2 phase 6b: exported fraction of the pot, thaw shares
   double soilnet = 0.0;             // different geometry: net soil C change (after the external fluxes)
   double h0soil[MAX_SOI_LAY];
@@ -1411,7 +1465,7 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
       double rel = std::fmin(s.soil[l], std::fmax(0.0, f.decomp[l]) * rs[l]);
       const double frl = fev[l] + fxl[l];
       acc.evasion += rel * fev[l]; acc.export_ += rel * fxl[l]; s.soil[l] -= rel * frl;
-      if (ev3) { acc.soilev += rel * fev[l]; }
+      if (ev3) { acc.soilev += rel * fev[l]; acc.soilev0 += rel * fev0[l]; }
       if (thl[l]) { acc.thawev += rel * fev[l]; acc.thawex += rel * fxl[l]; }
       if (td) { const double dv = std::fmin(s.soil[l], rel * (1.0 - frl)); s.soil[l] -= dv; s.diss[l] += dv; }   // T2: released Hg -> dissolved
       if (p.f_leach > 0.0) {
@@ -1427,9 +1481,9 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
     for (int l = 0; l < na; l++) { c0 += a.soil[l]; dec += f.decomp[l]; doc += f.doc[l]; }
     for (int l = 0; l < nb; l++) { c1 += b.soil[l]; }
     if (ev3 && dec + std::fmax(0.0, f.pot_decomp) > 0.0) {   // phase 3: decomposition-weighted re-emission of the pot
-      double w = std::fmax(0.0, f.pot_decomp) * p.f_evade;
-      for (int l = 0; l < na; l++) { w += std::fmax(0.0, f.decomp[l]) * fev[l]; }
-      fev_pot = w / (dec + std::fmax(0.0, f.pot_decomp));
+      double w = std::fmax(0.0, f.pot_decomp) * p.f_evade, w0 = w;
+      for (int l = 0; l < na; l++) { w += std::fmax(0.0, f.decomp[l]) * fev[l]; w0 += std::fmax(0.0, f.decomp[l]) * fev0[l]; }
+      fev_pot = w / (dec + std::fmax(0.0, f.pot_decomp)); fev0_pot = w0 / (dec + std::fmax(0.0, f.pot_decomp));
     }
     if (thany && dec + std::fmax(0.0, f.pot_decomp) > 0.0) {   // phase 6b: thaw layers' shares of the pot
       const double dt = dec + std::fmax(0.0, f.pot_decomp);
@@ -1526,7 +1580,7 @@ inline void step(const Params& p, State& s, const Snap& a, const Snap& b, const 
       if (ga > 0.0) { ash = hb * p.fire_ash * gs / ga; }
     }
     acc.fire += hb - ash; acc.ash += ash; acc.evasion += hd * fev_pot;
-    if (ev3) { acc.soilev += hd * fev_pot; }
+    if (ev3) { acc.soilev += hd * fev_pot; acc.soilev0 += hd * fev0_pot; }
     if (thany) { acc.thawev += hd * thev_pot; if (!rts4) { acc.thawex += hd * thex_pot; } }
     if (rts4) {   // phase 4: the slumped material leaves as particulate export, with the Hg of its respired C not re-emitted
       const double xp = hl + hd * (1.0 - fev_pot);

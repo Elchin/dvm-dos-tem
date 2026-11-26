@@ -1949,3 +1949,114 @@ TEST_CASE("S2 Hg:DOC cap: off, dhg_on 0 or eps huge bit-identical; eps 1 caps Hg
   hgtr::State m0; d1hg(m0, bm); hgtr::State m1 = m0; hgtr::diss_transport_(pl, m0, bm, f1, m0.m); hgtr::diss_transport_(pc, m1, bm, f1, m1.m);
   CHECK(m1.m.export_ < m0.m.export_);
 }
+
+// ---- re-emission fix R (hg_t2_ev_light / hg_t2_ev_air / hg_ev_q10; HG_REEMISSION_fix_design.md, WORK_NOTES_hg_t2 section 21) ----
+namespace {
+hgtr::Params rparams() { hgtr::Params p = t2params(); p.t2_evasion = 1; p.t2_foliar = 0; p.fd = 0.25; return p; }
+hgtr::Flux rflux() {
+  hgtr::Flux f = t2flux(0, 0, 0, 0, 0, 0.3);
+  f.decomp[0] = 10.0; f.decomp[1] = 6.0; f.decomp[3] = 10.0; f.decomp_wd = 2.0;
+  for (int l = 0; l < 4; l++) { f.ts[l] = 6.0 - l; f.por[l] = (l < 2) ? 0.95 : 0.8; f.liq[l] = 10.0 + 8.0 * l; f.ice[l] = (l == 3) ? 5.0 : 0.0; }
+  f.ta = 7.0; f.gtrans = 0.6;
+  return f;
+}
+bool rsame(const hgtr::State& a, const hgtr::State& b) {
+  for (int l = 0; l < MAX_SOI_LAY; l++) { if (a.soil[l] != b.soil[l]) return false; }
+  return a.wd == b.wd && a.m.evasion == b.m.evasion && a.m.soilev == b.m.soilev && a.m.export_ == b.m.export_ && a.total() == b.total();
+}
+}
+TEST_CASE("R parse: re-emission switches default off, ranges and dependencies") {
+  hgtr::Params p0 = t2params(); (void)p0;
+  hgtr::Params q; CHECK(hgtr::parse(ms0(), q) == "");
+  CHECK(q.t2_ev_light == 0); CHECK(q.t2_ev_air == 0); CHECK(q.ev_q10 == 1.0); CHECK(!hgtr::ev_gon(q));
+  CHECK(q.ev_wl == 0.8); CHECK(q.ev_tauref == 1.0); CHECK(q.ev_air_b == 1.0); CHECK(q.ev_dref == 0.14); CHECK(q.ev_tref == 2.5);
+  Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_t2"] = 1; m["hg_dep_file"] = T2DEP;
+  hgtr::Params r;
+  Json::Value a = m; a["hg_t2_evasion"] = 1; a["hg_t2_ev_light"] = 1; a["hg_ev_wl"] = 0.7; a["hg_ev_tauref"] = 0.9; a["hg_t2_ev_air"] = 1;
+  a["hg_ev_air_b"] = 1.5; a["hg_ev_dref"] = 0.1; a["hg_ev_q10"] = 2.0; a["hg_ev_tref"] = 4.0;
+  REQUIRE(hgtr::parse(a, r) == ""); CHECK(r.t2_ev_light == 1); CHECK(r.t2_ev_air == 1); CHECK(r.ev_wl == 0.7); CHECK(r.ev_tauref == 0.9);
+  CHECK(r.ev_air_b == 1.5); CHECK(r.ev_dref == 0.1); CHECK(r.ev_q10 == 2.0); CHECK(r.ev_tref == 4.0); CHECK(hgtr::ev_gon(r));
+  Json::Value b = m; b["hg_t2_evasion"] = 0; b["hg_t2_ev_light"] = 1; CHECK(hgtr::parse(b, r) != "");   // needs hg_t2_evasion
+  Json::Value c = m; c["hg_t2_evasion"] = 0; c["hg_t2_ev_air"] = 1; CHECK(hgtr::parse(c, r) != "");
+  Json::Value d = m; d["hg_t2_evasion"] = 0; d["hg_ev_q10"] = 2.0; CHECK(hgtr::parse(d, r) != "");
+  Json::Value b2 = m; b2["hg_t2_ev_light"] = 1; b2["hg_t2_ev_air"] = 1; REQUIRE(hgtr::parse(b2, r) == ""); CHECK(r.t2_evasion == 1);   // T2 preset: evasion on
+  Json::Value t1 = ms0(); t1["hg_tracer"] = 1; t1["hg_t2_ev_light"] = 1; CHECK(hgtr::parse(t1, r) != "");          // needs hg_t2
+  Json::Value e = m; e["hg_t2_evasion"] = 1; e["hg_t2_ev_light"] = 1; e["hg_ev_wl"] = 1.2; CHECK(hgtr::parse(e, r) != "");
+  Json::Value g = m; g["hg_t2_evasion"] = 1; g["hg_t2_ev_air"] = 1; g["hg_ev_air_b"] = 4.0; CHECK(hgtr::parse(g, r) != "");
+  Json::Value h = m; h["hg_t2_evasion"] = 1; h["hg_ev_q10"] = 0.5; CHECK(hgtr::parse(h, r) != "");
+  Json::Value i = m; i["hg_t2_evasion"] = 1; i["hg_t2_ev_light"] = 1; i["hg_ev_tauref"] = 0.0; CHECK(hgtr::parse(i, r) != "");
+  Json::Value k = m; k["hg_t2_evasion"] = 1; k["hg_t2_ev_light"] = 2; CHECK(hgtr::parse(k, r) != "");
+  std::remove(T2DEP);
+}
+TEST_CASE("R factors: g_light linear in tau (1 at tauref), g_air = (D/Dref)^b (Millington-Quirk; 0 when water-filled), g_T Q10") {
+  hgtr::Params p = rparams();
+  CHECK(hgtr::ev_glight(p, 0.3) == 1.0); CHECK(hgtr::ev_gair(p, 0.01) == 1.0); CHECK(hgtr::ev_gtemp(p, 15.0) == 1.0);   // all off
+  p.t2_ev_light = 1; p.t2_ev_air = 1; p.ev_q10 = 2.0;
+  CHECK(hgtr::ev_glight(p, 1.0) == doctest::Approx(1.0)); CHECK(hgtr::ev_glight(p, 0.0) == doctest::Approx(0.2));
+  CHECK(hgtr::ev_glight(p, 0.5) == doctest::Approx(0.6)); CHECK(hgtr::ev_glight(p, 0.4) < hgtr::ev_glight(p, 0.8));
+  CHECK(hgtr::ev_glight(p, 1.5) == doctest::Approx(1.0));                                          // tau clamped to [0, 1]
+  p.ev_tauref = 0.5; CHECK(hgtr::ev_glight(p, 0.5) == doctest::Approx(1.0)); p.ev_tauref = 1.0;
+  const double D = hgtr::ev_dms(0.9, 300.0, 0.0, 1.0);                                          // eps 0.6
+  CHECK(D == doctest::Approx(std::pow(0.6, 10.0 / 3.0) / 0.81).epsilon(1e-14));
+  CHECK(hgtr::ev_dms(0.9, 600.0, 300.0, 1.0) < 1e-40); CHECK(hgtr::ev_dms(0.9, 700.0, 300.0, 1.0) == 0.0);   // water + ice fill the pores
+  CHECK(hgtr::ev_dms(0.0, 1.0, 0.0, 0.1) < 0.0); CHECK(hgtr::ev_gair(p, -1.0) == 1.0);           // not available: 1
+  CHECK(hgtr::ev_gair(p, p.ev_dref) == doctest::Approx(1.0)); CHECK(hgtr::ev_gair(p, 0.0) == 0.0);
+  CHECK(hgtr::ev_gair(p, hgtr::ev_dms(0.9, 100.0, 0.0, 1.0)) > hgtr::ev_gair(p, hgtr::ev_dms(0.9, 400.0, 0.0, 1.0)));   // wetter: less
+  CHECK(hgtr::ev_gair(p, hgtr::ev_dms(0.9, 200.0, 0.0, 1.0)) > hgtr::ev_gair(p, hgtr::ev_dms(0.9, 200.0, 200.0, 1.0)));  // ice: less
+  p.ev_air_b = 2.0; CHECK(hgtr::ev_gair(p, 0.07) == doctest::Approx(0.25)); p.ev_air_b = 0.0; CHECK(hgtr::ev_gair(p, 0.0) == 1.0);
+  CHECK(hgtr::ev_gtemp(p, 2.5) == doctest::Approx(1.0)); CHECK(hgtr::ev_gtemp(p, 12.5) == doctest::Approx(2.0));
+}
+TEST_CASE("R step: switches off or neutral (wl 0, b 0, q10 1) bitwise = S5F path; on: layer fev x G, clamp, exact balance, HG_SOILEV0") {
+  hgtr::Snap a = column(4); hgtr::Snap b = a; b.soil[0] -= 10.0; b.soil[1] -= 6.0; b.soil[3] -= 10.0; b.wd -= 2.0;
+  const hgtr::Flux f = rflux();
+  hgtr::Params p = rparams();
+  hgtr::State s0; hgtr::initialize(p, s0, a); const double h0 = s0.soil[0], h1 = s0.soil[1], h3 = s0.soil[3], hw = s0.wd; hgtr::step(p, s0, a, b, f);
+  CHECK(s0.m.soilev0 == s0.m.soilev);                                                          // off: G = 1
+  CHECK(s0.m.gtrans == 0.0);
+  hgtr::Flux f2 = f; f2.gtrans = 0.1; for (int l = 0; l < 4; l++) { f2.liq[l] = 99.0; f2.por[l] = 0.3; }   // inputs ignored when off
+  hgtr::State s1; hgtr::initialize(p, s1, a); hgtr::step(p, s1, a, b, f2); CHECK(rsame(s0, s1));
+  hgtr::Params n = p; n.t2_ev_light = 1; n.ev_wl = 0.0; n.t2_ev_air = 1; n.ev_air_b = 0.0;      // neutral settings
+  hgtr::State s2; hgtr::initialize(n, s2, a); hgtr::step(n, s2, a, b, f); CHECK(rsame(s0, s2)); CHECK(s2.m.gtrans == f.gtrans);
+  // on: re-emission = sum over layers of rel x fev x G
+  hgtr::Params q = p; q.t2_ev_light = 1; q.t2_ev_air = 1; q.ev_q10 = 2.0;
+  hgtr::State s; hgtr::initialize(q, s, a); hgtr::step(q, s, a, b, f);
+  const double gl = hgtr::ev_glight(q, f.gtrans);
+  double e = 0.0, e0 = 0.0, z = 0.0; const double hl[4] = {h0, h1, 0.0, h3};
+  for (int l = 0; l < 4; l++) {
+    const double d = a.dz[l], rel = f.decomp[l] * hl[l] / a.soil[l];
+    const double fv = q.fd * std::exp(-(z + 0.5 * d) / q.ev_z);
+    const double G = gl * hgtr::ev_gair(q, hgtr::ev_dms(f.por[l], f.liq[l], f.ice[l], d)) * hgtr::ev_gtemp(q, f.ts[l]);
+    e += rel * std::fmin(1.0 - q.f_export, fv * G); e0 += rel * fv; z += d;
+  }
+  const double relw = f.decomp_wd * hw / a.wd;
+  e += relw * std::fmin(1.0 - q.f_export, q.fd * gl * hgtr::ev_gtemp(q, f.ta)); e0 += relw * q.fd;
+  CHECK(s.m.soilev == doctest::Approx(e).epsilon(1e-12)); CHECK(s.m.soilev0 == doctest::Approx(e0).epsilon(1e-12));
+  CHECK(s0.m.soilev == doctest::Approx(e0).epsilon(1e-12));
+  CHECK(s.m.evasion - s.m.soilev == doctest::Approx(s0.m.evasion - s0.m.soilev).epsilon(1e-12));   // other evasion terms unchanged
+  CHECK(std::fabs(s.balance_error()) < 1e-13 * s.total());
+  // light only, darker canopy: less re-emission; clamp at 1 - f_export with a large G
+  hgtr::Params l1 = p; l1.t2_ev_light = 1; hgtr::Flux fd = f; fd.gtrans = 0.2;
+  hgtr::State sl; hgtr::initialize(l1, sl, a); hgtr::step(l1, sl, a, b, f); hgtr::State sd; hgtr::initialize(l1, sd, a); hgtr::step(l1, sd, a, b, fd);
+  CHECK(sd.m.soilev < sl.m.soilev); CHECK(sl.m.soilev < s0.m.soilev); CHECK(sl.m.soilev0 == doctest::Approx(s0.m.soilev0).epsilon(1e-14));
+  hgtr::Params big = p; big.fd = 0.9; big.ev_q10 = 20.0; big.ev_tref = -40.0;
+  hgtr::State sb; hgtr::initialize(big, sb, a); hgtr::step(big, sb, a, b, f);
+  double relsum = relw; for (int l = 0; l < 4; l++) { relsum += f.decomp[l] * hl[l] / a.soil[l]; }
+  CHECK(sb.m.soilev == doctest::Approx(relsum * (1.0 - big.f_export)).epsilon(1e-12)); CHECK(sb.wd >= 0.0);
+  CHECK(std::fabs(sb.balance_error()) < 1e-13 * sb.total());
+  // saturated / frozen pore space: no re-emission from that layer
+  hgtr::Params ai = p; ai.t2_ev_air = 1; hgtr::Flux fw = f; for (int l = 0; l < 4; l++) { fw.liq[l] = 1000.0 * a.dz[l]; }
+  hgtr::State sw; hgtr::initialize(ai, sw, a); hgtr::step(ai, sw, a, b, fw);
+  CHECK(sw.m.soilev == doctest::Approx(relw * p.fd).epsilon(1e-12));                           // only the woody debris re-emits
+  std::remove(T2DEP);
+}
+TEST_CASE("R step with a geometry change: G-weighted pot; HG_SOILEV0 with G = 1; exact balance") {
+  hgtr::Params p = rparams(); p.t2_foliar = 1; p.t2_ev_light = 1; p.t2_ev_air = 1;
+  hgtr::State s; hgtr::Snap a = column(4); hgtr::initialize(p, s, a);
+  hgtr::Snap b = a; b.nsl = 5; for (int l = 0; l < 5; l++) { b.soil[l] = (a.soil[0] + a.soil[1] + a.soil[2] + a.soil[3] - 40.0) / 5.0; b.dz[l] = 0.06; b.type[l] = (l < 2) ? 1 : 3; }
+  hgtr::Flux f = t2flux(1, 1, 0, 0, 0, 0.3); f.decomp[0] = 20.0; f.ts[0] = 4.0; f.gtrans = 0.3; f.por[0] = 0.95; f.liq[0] = 35.0;   // wet: G < 1
+  hgtr::step(p, s, a, b, f);
+  CHECK(s.m.soilev > 0.0); CHECK(s.m.soilev < s.m.soilev0); CHECK(std::fabs(s.balance_error()) < 1e-13 * s.total());
+  hgtr::Params o = p; o.t2_ev_light = 0; o.t2_ev_air = 0; hgtr::State t; hgtr::initialize(o, t, a); hgtr::step(o, t, a, b, f);
+  CHECK(s.m.soilev0 == doctest::Approx(t.m.soilev).epsilon(1e-12));
+  std::remove(T2DEP);
+}

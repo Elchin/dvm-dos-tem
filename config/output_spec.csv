@@ -234,3 +234,5 @@ DOCLOST,DOC step 2: DOC C lost from the column (export + retained; hg_doc_c_loss
 DOCPOOLC,DOC step 2: DOC pool counted as ecosystem C (hg_doc_c_loss = 1; C-closure term),g/m2,,,invalid,invalid,invalid,invalid,double,
 DOCRHADJ,DOC step 2: RHSOM change by the DOC partition (-(production - mineralised - sunk); hg_doc_c_loss = 1),g/m2/time,,,invalid,invalid,invalid,invalid,double,
 HG_DOCCAP,DOC step 2: Hg(II) withheld by the Hg:DOC export cap (hg_t2_doc_hglim = 1),ug/m2/time,,,invalid,invalid,invalid,invalid,double,
+HG_SOILEV0,Re-emission fix R: soil re-emission with the factor G = 1 (HG_SOILEV / HG_SOILEV0 = effective G),ug/m2/time,,,invalid,invalid,invalid,invalid,double,
+HG_GTRANS,Re-emission fix R: vascular-canopy ground transmission (monthly value; yearly = sum of the months),-,,,invalid,invalid,invalid,invalid,double,
