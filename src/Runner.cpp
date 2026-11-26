@@ -2796,6 +2796,19 @@ void Runner::output_netCDF(std::map<std::string, OutputSpec> &netcdf_outputs, in
       layered("HGDISS", h.diss);
       layered("MEHGSOIL", h.mehg);
       layered("MEHGPRODL", h.mehg_prodl);   // phase M2: MeHg production of the month by layer
+      if (md.hg.t2_doc == 1) {   // DOC step 1: diagnostic DOC (g C/m2 per month / year; pools end of month; HG_DOCWAT mm)
+        const hgtr::DocState & dc = cohort.hgdoc;
+        layered("HG_DOCPOOL", dc.d);
+        layered("HG_DOCCONC", dc.conc_m);
+        scalar("HG_DOCPROD", dc.prod_m, dc.prod_y);
+        scalar("HG_DOCMIN", dc.min_m, dc.min_y);
+        scalar("HG_DOCEXP", dc.exp_m, dc.exp_y);
+        scalar("HG_DOCRET", dc.ret_m, dc.ret_y);
+        scalar("HG_DOCSINK", dc.sink_m, dc.sink_y);
+        scalar("HG_DOCWAT", dc.wat_m, dc.wat_y);
+        scalar("HG_DOCBAL", dc.bal_m, dc.bal_y);
+        scalar("HG_ORGEXP", h.m.orgexp, h.y.orgexp);
+      }
       scalar("HGVEG", h.vegtot(), h.vegtot());
       scalar("HGDEAD", h.deadtot(), h.deadtot());
       scalar("HG_UPTAKE", h.m.uptake, h.y.uptake);

@@ -159,6 +159,13 @@
 //   hg_t2_mehg_preset (phase M5, default 0 = off; needs hg_mehg = 1 and hg_t2 = 1): 1 = the absent MeHg settings take the
 //     phase-M4 calibrated MeHg-on values (Params::t2_mehg_preset_, run M4V1; WORK_NOTES_hg_t2 sections 16-17), applied after
 //     the hg_t2 preset; explicit settings still win, and preset options whose prerequisite was switched off follow it.
+//   hg_t2_doc (DOC step 1, default 0 = off; needs hg_t2 = 1, hg_t2_diss = 1, hg_transport = 1): 1 = diagnostic DOC pools in
+//     the organic layers (DocState, doc_geom / doc_days; outputs HG_DOC*), never removed from soil C, no Hg effect alone.
+//     Parameters hg_doc_fp, hg_doc_tau, hg_doc_q10, hg_doc_frz, hg_doc_vadv, hg_doc_fconn, hg_doc_minsink, hg_doc_cmin,
+//     hg_doc_cmax; hg_doc_dump = 1 writes the daily DOC drivers to output_dir/hg_doc_dump.txt (tr / sc stages; output only).
+//   hg_t2_doc_hg (DOC step 1, default 0; needs hg_t2_doc = 1): 1 = the organic-layer Kd of the dissolved-Hg sorption is
+//     scaled by (hg_doc_cref / c_DOC)^hg_doc_beta with the day's DOC concentration (beta 0 = identical to off).
+//     docs_src/DOC_EXPORT_step1_design.md, WORK_NOTES_hg_t2 section 19.
 //   All new coefficients come from water, snow, geometry and type only: the step stays affine and exactly conservative.
 // T2 phase 5c (docs_src/HG_T2_design.md section 20, WORK_NOTES_hg_t2 section 8), needs hg_t2_xpath = 1:
 //   hg_t2_deeproute = 1: the share hg_f_deep of the Hg retained on the flow path (1 - hg_f_conn of the organic-layer
@@ -327,6 +334,20 @@ struct Params {
   double t2_mehg_frzmob = 1.0;  // hg_t2_mehg_frzmob: C, MeHg mobile-share factor in the thawed layer on a frozen layer (1 = off)
   // phase M5: MeHg-on preset (M4V1 values, t2_mehg_preset_); 0 off (default)
   int    t2_mehg_preset = 0;    // hg_t2_mehg_preset
+  // DOC step 1 (default off): diagnostic DOC and the DOC-scaled organic Kd (see DocState)
+  int    t2_doc = 0;            // hg_t2_doc
+  int    t2_doc_hg = 0;         // hg_t2_doc_hg
+  double doc_fp = 0.3;          // hg_doc_fp: DOC production share of the layer decomposition C (-)
+  double doc_tau = 10.0;        // hg_doc_tau: DOC mineralisation time at 10 C (d)
+  double doc_q10 = 2.0;         // hg_doc_q10
+  double doc_frz = 1.0;         // hg_doc_frz: mineralisation factor on ice-dominated days
+  double doc_vadv = 1.0;        // hg_doc_vadv: DOC vertical advection factor
+  double doc_fconn = 1.0;       // hg_doc_fconn: organic DOC export share reaching the stream (-1 = the Hg flow-path share)
+  int    doc_minsink = 1;       // hg_doc_minsink: 1 = DOC entering a mineral layer is sorbed (sink)
+  double doc_cmin = 1.0, doc_cmax = 1000.0;   // hg_doc_cmin / hg_doc_cmax: DOC concentration clamp (mg C/L)
+  double doc_beta = 0.0;        // hg_doc_beta: Kd scaling exponent (0 = no effect)
+  double doc_cref = 220.0;      // hg_doc_cref: reference DOC concentration (mg C/L)
+  int    doc_dump = 0;          // hg_doc_dump: 1 = daily DOC driver dump (output only)
   bool   dep_comp    = false; // the deposition file has components (hg2_wet / hg2_dry / hg0_soil columns)
   std::vector<double> dep_w, dep_d2, dep_d0, dep_s0;   // components per row (ug/m2/yr)
 };
@@ -483,7 +504,10 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_t2_r_stem", &p.t2_r_stem, 0, 1e3}, {"hg_t2_r_root", &p.t2_r_root, 0, 1e3}, {"hg_t2_k_meth_proxy", &p.t2_k_meth_proxy, 0, 1e9},
             {"hg_t2_k_meth_ch4", &p.t2_k_meth_ch4, 0, 1e9}, {"hg_f_thaw_evade", &p.f_thaw_evade, 0, 1}, {"hg_f_thaw_export", &p.f_thaw_export, 0, 1},
             {"hg_t2_mehg_frz_t0", &p.t2_mehg_frz_t0, -20, 20}, {"hg_t2_mehg_frz_dt", &p.t2_mehg_frz_dt, 1e-3, 20},
-            {"hg_t2_mehg_mobfac", &p.t2_mehg_mobfac, 0, 100}, {"hg_t2_mehg_zrun", &p.t2_mehg_zrun, 0, 1}, {"hg_t2_mehg_frzmob", &p.t2_mehg_frzmob, 0, 1}, {"hg_t2_thaw_evz", &p.t2_thaw_evz, 0, 100}};
+            {"hg_t2_mehg_mobfac", &p.t2_mehg_mobfac, 0, 100}, {"hg_t2_mehg_zrun", &p.t2_mehg_zrun, 0, 1}, {"hg_t2_mehg_frzmob", &p.t2_mehg_frzmob, 0, 1}, {"hg_t2_thaw_evz", &p.t2_thaw_evz, 0, 100},
+            {"hg_doc_fp", &p.doc_fp, 0, 10}, {"hg_doc_tau", &p.doc_tau, 1e-3, 1e5}, {"hg_doc_q10", &p.doc_q10, 1, 10}, {"hg_doc_frz", &p.doc_frz, 0, 1},
+            {"hg_doc_vadv", &p.doc_vadv, 0, 1}, {"hg_doc_fconn", &p.doc_fconn, -1, 1}, {"hg_doc_cmin", &p.doc_cmin, 1e-6, 1e4}, {"hg_doc_cmax", &p.doc_cmax, 1e-3, 1e6},
+            {"hg_doc_beta", &p.doc_beta, 0, 3}, {"hg_doc_cref", &p.doc_cref, 1e-3, 1e6}};
   struct I { const char* k; int* v; int lo, hi; };
   I is[] = {{"hg_tracer", &p.tracer, 0, 1}, {"hg_mehg", &p.mehg, 0, 1}, {"hg_mehg_driver", &p.mehg_driver, 0, 1},
             {"hg_spinup", &p.spinup, 0, 1}, {"hg_transport", &p.transport, 0, 1}, {"hg_spinup_cycle", &p.spinup_cycle, 1, 50}, {"hg_spinup_closure", &p.spinup_closure, 0, 2}, {"hg_tr_year0", &p.tr_year0, -100000, 100000},
@@ -498,7 +522,8 @@ inline std::string parse(const Json::Value& ms, Params& p) {
             {"hg_t2_mehg_subst", &p.t2_mehg_subst, 0, 2}, {"hg_t2_mehg_frz", &p.t2_mehg_frz, 0, 2},
             {"hg_t2_mehg_transport", &p.t2_mehg_transport, 0, 1}, {"hg_t2_mehg_lag", &p.t2_mehg_lag, 0, 1},
             {"hg_t2_mehg_frzd", &p.t2_mehg_frzd, 0, 1}, {"hg_t2_mehg_satd", &p.t2_mehg_satd, 0, 1},
-            {"hg_t2_mehg_preset", &p.t2_mehg_preset, 0, 1}};
+            {"hg_t2_mehg_preset", &p.t2_mehg_preset, 0, 1},
+            {"hg_t2_doc", &p.t2_doc, 0, 1}, {"hg_t2_doc_hg", &p.t2_doc_hg, 0, 1}, {"hg_doc_minsink", &p.doc_minsink, 0, 1}, {"hg_doc_dump", &p.doc_dump, 0, 1}};
   for (const std::string& key : ms.getMemberNames()) {
     if (key.rfind("hg_", 0) != 0) { continue; }
     bool known = false;
@@ -580,6 +605,11 @@ inline std::string parse(const Json::Value& ms, Params& p) {
   if (p.f_thaw_evade + p.f_thaw_export > 1.0) { return "model_settings.hg_f_thaw_evade + hg_f_thaw_export must be <= 1"; }
   if (p.t2_snowsink == 1 && !(p.t2 == 1 && p.t2_evasion == 1)) { return "model_settings.hg_t2_snowsink = 1 needs hg_t2 = 1 and hg_t2_evasion = 1"; }
   if (p.t2 == 1 && !p.dep_comp) { return "model_settings.hg_t2 = 1 needs an hg_dep_file with hg2_wet / hg2_dry / hg0_soil columns"; }
+  if (p.t2_doc == 1 && !(p.t2 == 1 && p.t2_diss == 1 && p.transport == 1)) { return "model_settings.hg_t2_doc = 1 needs hg_t2 = 1, hg_t2_diss = 1 and hg_transport = 1"; }
+  if (p.t2_doc_hg == 1 && p.t2_doc != 1) { return "model_settings.hg_t2_doc_hg = 1 needs hg_t2_doc = 1"; }
+  if (p.doc_dump == 1 && p.t2_doc != 1) { return "model_settings.hg_doc_dump = 1 needs hg_t2_doc = 1"; }
+  if (p.doc_fconn < 0.0 && p.doc_fconn != -1.0) { return "model_settings.hg_doc_fconn must be -1 or in [0, 1]"; }
+  if (p.doc_cmax < p.doc_cmin) { return "model_settings.hg_doc_cmax must be >= hg_doc_cmin"; }
   return "";
 }
 
@@ -627,6 +657,8 @@ struct Flux {
   double d_melt[31] = {};
   double rain = 0.0;                        // T2 phase 4 (hg_wash, BGC step): the month's rainfall (mm)
   int    year = 0;                          // T2 phase 6b (transport step): calendar year (permafrost reference, thaw_track)
+  int    cdoc_on = 0;                       // DOC step 1 (hg_t2_doc_hg = 1, transport step): d_cdoc set
+  double d_cdoc[31][MAX_SOI_LAY] = {};      // the day's DOC concentration by layer (mg C/L; 0 = not a DOC layer)
 };
 
 struct Acc {
@@ -639,6 +671,7 @@ struct Acc {
                                          // canopy wash-off (part of dep)
   double soilev = 0, sink0 = 0, stomatal = 0, meltrun = 0;   // T2 phase 3: soil re-emission (part of evasion), ground Hg(0) sink (part of dep),
                                                              // stomatal uptake (part of foliar), melt Hg exported with the melt overland flow (part of runoff)
+  double orgexp = 0;   // DOC step 1: export from the organic layers (part of export_, after the flow-path retention; diagnostic)
   void clear() { *this = Acc(); }
   void add(const Acc& o) {
     uptake += o.uptake; dep += o.dep; evasion += o.evasion; export_ += o.export_; fire += o.fire;
@@ -648,6 +681,7 @@ struct Acc {
     soilev += o.soilev; sink0 += o.sink0; stomatal += o.stomatal; meltrun += o.meltrun;
     ash += o.ash; partic += o.partic; wash += o.wash;
     thawev += o.thawev; thawex += o.thawex;
+    orgexp += o.orgexp;
   }
   double net() const { return uptake + dep - evasion - export_ - fire + spin; }   // spin: spin-up jump
 };
@@ -689,6 +723,148 @@ struct State {
 
 inline bool is_mineral(int type) { return type >= 3; }   // CohortData m_soil.type: 0 moss, 1 shallow, 2 deep, 3 mineral
 inline bool is_moss(int type) { return type == 0; }
+
+// ---- DOC step 1 (hg_t2_doc; docs_src/DOC_EXPORT_step1_design.md, WORK_NOTES_hg_t2 section 19) -------------------------
+// Diagnostic DOC pools (g C/m2) in the organic (shallow / deep) layers: production = hg_doc_fp x the month's layer
+// decomposition C (RH + CH4 production; spread over the layer's thawed days), first-order mineralisation
+// (hg_doc_tau at 10 C, hg_doc_q10, x hg_doc_frz on ice-dominated days), transport with the T2 daily water fractions of
+// the dissolved Hg (overland, lateral drainage, vertical advection x hg_doc_vadv; capped at 0.9 per day; thawed zone
+// only). The DOC C is never removed from soil C (diagnostic only). Organic-layer export reaches the stream with share
+// fconn (hg_doc_fconn; -1 = the Hg flow-path share), the rest is "retained" (booked, leaves the pools); with
+// hg_doc_minsink = 1 DOC entering a mineral layer is sorbed (sink). The day's concentration c = 1000 D / max(liq, 1)
+// (mg C/L, clamped to [hg_doc_cmin, hg_doc_cmax]) drives the coupling hg_t2_doc_hg (organic Kd x (cref / c)^beta).
+const int DOC_NSTATE = 2 + 2 * MAX_SOI_LAY;   // restart hg_doc: init flag (1), nsl, dz[], d[]
+struct DocState {
+  bool init = false;
+  int nsl = 0;
+  double dz[MAX_SOI_LAY] = {}, d[MAX_SOI_LAY] = {};   // pool geometry (m), DOC pool by layer (g C/m2)
+  // diagnostics of the month (_m) / year (_y), g C/m2 (wat: mm); not in the restart
+  double prod_m = 0, min_m = 0, exp_m = 0, ret_m = 0, sink_m = 0, wat_m = 0, bal_m = 0;
+  double prod_y = 0, min_y = 0, exp_y = 0, ret_y = 0, sink_y = 0, wat_y = 0, bal_y = 0;
+  double conc_m[MAX_SOI_LAY] = {};   // month-mean concentration by DOC layer (mg C/L)
+  double tot() const { double s = 0; for (int i = 0; i < MAX_SOI_LAY; i++) s += d[i]; return s; }
+};
+inline bool doc_layer(const Snap& b, int l) { return (b.type[l] == 1 || b.type[l] == 2) && b.soil[l] > 1.0e-9; }
+inline bool doc_frozen(const Flux& f, int d, int l) { return f.d_ice[d][l] > 0.5 && f.d_ice[d][l] > f.d_liq[d][l]; }   // as the thawed zone
+inline double doc_fconn(const Params& p, const Snap& b) {
+  const int nb = std::min(b.nsl, MAX_SOI_LAY);
+  int lm = -1; for (int l = 0; l < nb; l++) { if (is_mineral(b.type[l])) { lm = l; break; } }
+  if (p.doc_fconn >= 0.0) { return p.doc_fconn; }
+  return (p.t2_xpath == 1 && lm > 0) ? p.f_conn : 1.0;
+}
+// Start of the month: clear the month (and at currmind 0 the year) diagnostics; first call initialises empty pools; a
+// changed layer geometry redistributes the whole pool over the DOC layers by soil C (none left: booked as sink).
+inline void doc_geom(DocState& s, const Snap& b, int currmind) {
+  s.prod_m = s.min_m = s.exp_m = s.ret_m = s.sink_m = s.wat_m = s.bal_m = 0.0;
+  if (currmind == 0) { s.prod_y = s.min_y = s.exp_y = s.ret_y = s.sink_y = s.wat_y = s.bal_y = 0.0; }
+  for (int l = 0; l < MAX_SOI_LAY; l++) { s.conc_m[l] = 0.0; }
+  const int nb = std::min(std::max(b.nsl, 0), MAX_SOI_LAY);
+  if (!s.init) {
+    for (int l = 0; l < MAX_SOI_LAY; l++) { s.d[l] = 0.0; }
+    s.init = true;
+  } else {
+    bool same = (s.nsl == b.nsl);
+    for (int l = 0; same && l < nb; l++) { if (s.dz[l] != b.dz[l]) { same = false; } }
+    if (!same) {
+      const double T = s.tot(); double W = 0.0;
+      for (int l = 0; l < nb; l++) { if (doc_layer(b, l)) { W += b.soil[l]; } }
+      for (int l = 0; l < MAX_SOI_LAY; l++) { s.d[l] = 0.0; }
+      if (W > 0.0) {
+        double left = T; int last = -1;
+        for (int l = 0; l < nb; l++) { if (doc_layer(b, l)) { const double h = T * b.soil[l] / W; s.d[l] = h; left -= h; last = l; } }
+        s.d[last] += left;
+      } else { s.sink_m += T; s.sink_y += T; }   // no DOC layer left: the pool is lost (booked as sink)
+    }
+  }
+  s.nsl = b.nsl;
+  for (int l = 0; l < MAX_SOI_LAY; l++) { s.dz[l] = (l < nb) ? b.dz[l] : 0.0; if (l >= nb) { s.d[l] = 0.0; } }
+}
+// The month's days: rh = the month's layer decomposition C (g C/m2), ts = daily layer T (C); cday (optional) receives
+// the day's concentration by layer (0 for non-DOC layers). bal_m = change of the pools - (prod - min - exp - ret - sink).
+inline void doc_days(const Params& p, DocState& s, const Snap& b, const Flux& f, const double* rh,
+                     const double (*ts)[MAX_SOI_LAY], double (*cday)[MAX_SOI_LAY]) {
+  const int nb = std::min(std::max(b.nsl, 0), MAX_SOI_LAY);
+  const int nd = std::min(31, std::max(0, f.nd));
+  const double t0 = s.tot();
+  double prod = 0, mn = 0, ex = 0, rt = 0, sk = 0, wat = 0;
+  int lm = -1; for (int l = 0; l < nb; l++) { if (is_mineral(b.type[l])) { lm = l; break; } }
+  const double fc = doc_fconn(p, b);
+  double ztop[MAX_SOI_LAY] = {}, pm[MAX_SOI_LAY] = {}; int nth[MAX_SOI_LAY] = {};
+  { double z = 0.0; for (int l = 0; l < nb; l++) { ztop[l] = z; z += std::fmax(0.0, b.dz[l]); } }
+  for (int l = 0; l < nb; l++) {
+    if (doc_layer(b, l)) { pm[l] = p.doc_fp * std::fmax(0.0, rh[l]); }
+    for (int d = 0; d < nd; d++) { if (!doc_frozen(f, d, l)) { nth[l]++; } }
+  }
+  if (cday) { for (int d = 0; d < 31; d++) for (int l = 0; l < MAX_SOI_LAY; l++) { cday[d][l] = 0.0; } }
+  if (nd == 0) { for (int l = 0; l < nb; l++) { s.d[l] += pm[l]; prod += pm[l]; } }
+  for (int d = 0; d < nd; d++) {
+    for (int l = 0; l < nb; l++) {
+      if (pm[l] > 0.0) {   // production: spread over the thawed days (evenly over the month if none)
+        const double x = (nth[l] > 0) ? (doc_frozen(f, d, l) ? 0.0 : pm[l] / nth[l]) : pm[l] / nd;
+        s.d[l] += x; prod += x;
+      }
+      if (s.d[l] > 0.0) {   // mineralisation
+        const double T = (ts != nullptr && std::isfinite(ts[d][l])) ? ts[d][l] : 10.0;
+        double k = std::pow(p.doc_q10, (T - 10.0) / 10.0) / p.doc_tau;
+        if (doc_frozen(f, d, l)) { k *= p.doc_frz; }
+        const double x = s.d[l] * (1.0 - std::exp(-k));
+        s.d[l] -= x; mn += x;
+      }
+      if (doc_layer(b, l)) {
+        const double c = std::fmin(p.doc_cmax, std::fmax(p.doc_cmin, 1000.0 * s.d[l] / std::fmax(1.0, f.d_liq[d][l])));
+        if (cday) { cday[d][l] = c; }
+        s.conc_m[l] += c / nd;
+      }
+    }
+    // transport: the thawed zone and the water fractions of diss_transport_
+    int tb = -1; double Z = 0.0, D = 0.0;
+    for (int l = 0; l < nb; l++) {
+      if (doc_frozen(f, d, l)) { break; }
+      tb = l; Z += std::fmax(0.0, b.dz[l]); D += std::fmax(0.0, f.d_drain[d][l]);
+    }
+    if (tb < 0 || !(Z > 0.0)) { continue; }
+    const double qo = std::fmax(0.0, f.dq_over[d]);
+    double fo = 0.0; int nz = 0;
+    if (qo > 0.0) {
+      double lz = 0.0;
+      for (int l = 0; l <= tb; l++) { if (l == 0 || ztop[l] < p.z_runoff) { lz += std::fmax(0.0, f.d_liq[d][l]); nz = l + 1; } }
+      fo = qo / (qo + lz); wat += qo;
+    }
+    const double qi = std::fmax(0.0, f.dq_in[d]);
+    double ov[MAX_SOI_LAY] = {}, out[MAX_SOI_LAY] = {}, lat[MAX_SOI_LAY] = {}, z = 0.0, Dc = 0.0;
+    for (int l = 0; l <= tb; l++) {
+      z += std::fmax(0.0, b.dz[l]); const double dl = std::fmax(0.0, f.d_drain[d][l]); Dc += dl;
+      if (!is_mineral(b.type[l])) { wat += dl; }
+      const double qv = (l < tb) ? std::fmax(0.0, (qi - D) * (1.0 - z / Z) + (D - Dc)) : 0.0;
+      const double liq = std::fmax(0.0, f.d_liq[d][l]);
+      double fv = 0.0, fl = 0.0, fr = (l < nz) ? fo : 0.0;
+      if (liq > 1.0e-9) { fv = p.doc_vadv * qv / liq; fl = dl / liq; }
+      const double ft = fv + fl + fr;
+      if (ft > 0.9) { fv *= 0.9 / ft; fl *= 0.9 / ft; fr *= 0.9 / ft; }
+      ov[l] = fr * s.d[l]; out[l] = fv * s.d[l]; lat[l] = fl * s.d[l];
+    }
+    for (int l = 0; l <= tb; l++) {
+      s.d[l] -= ov[l] + out[l] + lat[l];
+      const double e = ov[l] + lat[l];
+      if (lm < 0 || l < lm) { const double r = e * (1.0 - fc); rt += r; ex += e - r; } else { ex += e; }
+      if (l < tb) {
+        if (is_mineral(b.type[l + 1]) && p.doc_minsink == 1) { sk += out[l]; } else { s.d[l + 1] += out[l]; }
+      }
+    }
+  }
+  s.prod_m += prod; s.min_m += mn; s.exp_m += ex; s.ret_m += rt; s.sink_m += sk; s.wat_m += wat;
+  s.prod_y += prod; s.min_y += mn; s.exp_y += ex; s.ret_y += rt; s.sink_y += sk; s.wat_y += wat;
+  const double bal = (s.tot() - t0) - (prod - mn - ex - rt - sk);
+  s.bal_m += bal; s.bal_y += bal;
+}
+inline void doc_pack(const DocState& s, double* v) {
+  v[0] = s.init ? 1.0 : 0.0; v[1] = s.nsl;
+  for (int l = 0; l < MAX_SOI_LAY; l++) { v[2 + l] = s.dz[l]; v[2 + MAX_SOI_LAY + l] = s.d[l]; }
+}
+inline void doc_unpack(DocState& s, const double* v) {
+  s = DocState(); s.init = (v[0] == 1.0); s.nsl = (int)v[1];
+  for (int l = 0; l < MAX_SOI_LAY; l++) { s.dz[l] = v[2 + l]; s.d[l] = v[2 + MAX_SOI_LAY + l]; }
+}
 
 // Initialize Hg from C x RHgC (soil by layer type; vegetation, standing dead and woody debris at the
 // tissue ratios: leaf ratio for standing dead and woody debris).
@@ -867,7 +1043,11 @@ inline void diss_transport_(const Params& p, State& s, const Snap& b, const Flux
     // sorption in every layer toward the Kd equilibrium of the day's liquid water
     for (int l = 0; l < nb; l++) {
       const double liq = std::fmax(0.0, f.d_liq[d][l]);
-      const double den = liq + (is_mineral(b.type[l]) ? kdm : ((b.type[l] == 2) ? kdh : kdo)) * M[l];
+      double kd = is_mineral(b.type[l]) ? kdm : ((b.type[l] == 2) ? kdh : kdo);
+      if (f.cdoc_on == 1 && p.t2_doc_hg == 1 && !is_mineral(b.type[l]) && f.d_cdoc[d][l] > 0.0) {   // DOC step 1: DOC-scaled organic Kd
+        kd *= std::pow(p.doc_cref / f.d_cdoc[d][l], p.doc_beta);
+      }
+      const double den = liq + kd * M[l];
       const double phi = (den > 0.0) ? liq / den : 0.0;
       const double dx = (phi * (s.soil[l] + s.diss[l]) - s.diss[l]) * ks;
       s.diss[l] += dx; s.soil[l] -= dx;
@@ -927,6 +1107,7 @@ inline void diss_transport_(const Params& p, State& s, const Snap& b, const Flux
         if (mt) { const double mr = (mov[l] + mla[l]) * (1.0 - fcx); mov[l] *= fcx; mla[l] *= fcx; retain_m(mr); }
       }
       acc.export_ += ov[l] + lat[l]; acc.runoff += ov[l]; acc.drain += lat[l];
+      if (lm < 0 || l < lm) { acc.orgexp += ov[l] + lat[l]; }   // DOC step 1 diagnostic
       if (mt) { const double xm = mov[l] + mla[l]; mexp += xm; s.mehg_exp_m += xm; s.mehg_exp_y += xm; }   // phase M2: removal
       else { const double xm = rme * (ov[l] + lat[l]); s.mehg_exp_m += xm; s.mehg_exp_y += xm; }   // diagnostic only (index unchanged)
       if (mt && l < tb) { s.mehg[l + 1] += mot[l]; }

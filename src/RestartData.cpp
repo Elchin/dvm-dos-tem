@@ -278,6 +278,7 @@ void RestartData::reinitValue() {
   write_tk_state = false; has_tk_state = false;   // RTS (thermokarst)
   write_hg_state = false; has_hg_state = false;   // Hg tracer
   write_hg_thaw = false; has_hg_thaw = false; hg_thaw[0] = -1.0; hg_thaw[1] = -1.0;   // Hg tracer T2 phase 6b
+  write_hg_doc = false; has_hg_doc = false;   // DOC step 1
   tk_drainage_type = MISSING_I; tk_init = MISSING_I; tk_exinit = MISSING_I; tk_subsidence = MISSING_D;
   for (int il = 0; il < MAX_SOI_LAY; il++) { tk_exice[il] = MISSING_D; }
   has_tk_rg_state = false;
@@ -610,6 +611,16 @@ void RestartData::read_px_hg_vars(const std::string& fname, const int rowidx, co
       has_hg_thaw = std::isfinite(hg_thaw[0]) && std::isfinite(hg_thaw[1]) && hg_thaw[0] != MISSING_D && hg_thaw[1] != MISSING_D;
     }
   }
+  has_hg_doc = false;   // DOC step 1: optional hg_doc
+  if (nc_inq_varid(ncid, "hg_doc", &v) == NC_NOERR) {
+    temutil::nc( nc_inq_vardimid(ncid, v, d) );
+    temutil::nc( nc_inq_dimlen(ncid, d[2], &len) );
+    if (len == (size_t)HG_DOCN) {
+      size_t s3[3] = {(size_t)rowidx, (size_t)colidx, 0}; size_t c3[3] = {1, 1, (size_t)HG_DOCN};
+      temutil::nc( nc_get_vara_double(ncid, v, s3, c3, &hg_doc[0]) );
+      has_hg_doc = (hg_doc[0] == 1.0);
+    }
+  }
   temutil::nc( nc_close(ncid) );
 }
 
@@ -649,6 +660,21 @@ void RestartData::write_px_hg_vars(const std::string& fname, const int rowidx, c
     }
     size_t c3t[3] = {1, 1, 2};
     temutil::nc( nc_put_vara_double(ncid, vt, s3, c3t, &hg_thaw[0]) );
+  }
+  if (write_hg_doc) {   // DOC step 1
+    int vd;
+    if (nc_inq_varid(ncid, "hg_doc", &vd) != NC_NOERR) {
+      int dv; temutil::nc( nc_inq_varid(ncid, "DZsoil", &dv) );
+      int d3[3]; temutil::nc( nc_inq_vardimid(ncid, dv, d3) );
+      temutil::nc( nc_redef(ncid) );
+      int dd; if (nc_inq_dimid(ncid, "hgdoc", &dd) != NC_NOERR) { temutil::nc( nc_def_dim(ncid, "hgdoc", HG_DOCN, &dd) ); }
+      int d3d[3] = {d3[0], d3[1], dd};
+      temutil::nc( nc_def_var(ncid, "hg_doc", NC_DOUBLE, 3, d3d, &vd) );
+      temutil::nc( nc_put_att_double(ncid, vd, "_FillValue", NC_DOUBLE, 1, &MISSING_D) );
+      temutil::nc( nc_enddef(ncid) );
+    }
+    size_t c3d[3] = {1, 1, (size_t)HG_DOCN};
+    temutil::nc( nc_put_vara_double(ncid, vd, s3, c3d, &hg_doc[0]) );
   }
   temutil::nc( nc_close(ncid) );
 #endif

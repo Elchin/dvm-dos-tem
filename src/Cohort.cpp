@@ -674,6 +674,7 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
         }
       }
       f.decomp_wd = bdall->m_soi2a.rhwdeb;
+      if (md->hg.t2_doc == 1) { for (int il = 0; il < MAX_SOI_LAY; il++) { hg_doc_rh[il] = f.decomp[il]; } }   // DOC step 1
       {   // deposition: hg_dep_file series (calendar year from the stage) or the constant hg_dep_soil
         const hgtr::DepVal dv = hgtr::dep_at(md->hg, hg_cal_year(yrcnt, stage), currmind + 1);
         f.dep_soil = dv.rate / 12.0; f.veg_scale = dv.veg_scale;
@@ -774,6 +775,25 @@ void Cohort::updateMonthly(const int & yrcnt, const int & currmind,
       }
     }
     ft.year = hg_cal_year(yrcnt, stage);   // T2 phase 6b (thaw_track)
+    if (md->hg.t2_doc == 1 && md->hg.t2_diss == 1) {   // DOC step 1: diagnostic DOC of the month (C unchanged); concentrations for the Kd
+      hgtr::doc_geom(hgdoc, hg_a, currmind);
+      const bool dump = (md->hg.doc_dump == 1 && (stage == "tr-run" || stage == "sc-run"));
+      hgtr::DocState d0; if (dump) { d0 = hgdoc; }
+      hgtr::doc_days(md->hg, hgdoc, hg_a, ft, hg_doc_rh, hg_dts, ft.d_cdoc);
+      ft.cdoc_on = (md->hg.t2_doc_hg == 1) ? 1 : 0;
+      if (dump) {   // output only: the month's DOC drivers and results (offline fit, src/doc in the work tree notes)
+        std::ofstream o(md->output_dir + "hg_doc_dump.txt", std::ios::app); o.precision(17);
+        const int nb = std::min(hg_a.nsl, MAX_SOI_LAY);
+        o << "M " << ft.year << " " << currmind << " " << ft.nd << " " << nb << " " << hgtr::doc_fconn(md->hg, hg_a) << "\n";
+        for (int l = 0; l < nb; l++) { o << "L " << l << " " << hg_a.type[l] << " " << hg_a.soil[l] << " " << hg_a.dz[l] << " " << hg_doc_rh[l] << " " << d0.d[l] << "\n"; }
+        for (int id = 0; id < ft.nd; id++) {
+          o << "D " << id << " " << ft.dq_over[id] << " " << ft.dq_in[id] << "\n";
+          for (int l = 0; l < nb; l++) { o << "W " << id << " " << l << " " << ft.d_liq[id][l] << " " << ft.d_ice[id][l] << " " << ft.d_drain[id][l] << " " << hg_dts[id][l] << "\n"; }
+        }
+        o << "E " << hgdoc.prod_m << " " << hgdoc.min_m << " " << hgdoc.exp_m << " " << hgdoc.ret_m << " " << hgdoc.sink_m << " " << hgdoc.wat_m << " " << hgdoc.bal_m << "\n";
+        for (int l = 0; l < nb; l++) { o << "P " << l << " " << hgdoc.d[l] << " " << hgdoc.conc_m[l] << "\n"; }
+      }
+    }
     hgtr::thaw_track(md->hg, hg, hg_a, ft);
     hg_do_step(hg_a, hg_a, ft);
   }
@@ -1404,7 +1424,7 @@ void Cohort::updateMonthly_Env(const int & currmind, const int & dinmcurr) {
     if (md->hg.tracer == 1 && md->hg.t2 == 1 && md->hg.t2_diss == 1 && id >= 0 && id < 31) {   // T2 phase 2: Hg-only copy
       for (int il = 0; il < std::min(cd.m_soil.numsl, MAX_SOI_LAY); il++) { hg_dliq[id][il] = edall->d_sois.liq[il]; hg_dice[id][il] = edall->d_sois.ice[il]; }
       for (int il = std::min(cd.m_soil.numsl, MAX_SOI_LAY); il < MAX_SOI_LAY; il++) { hg_dliq[id][il] = 0.0; hg_dice[id][il] = 0.0; }
-      if (md->hg.t2_mehg_frzd == 1 || md->hg.t2_mehg_satd == 1) {   // phase M3/M4: daily layer T (and water table) for the daily factors (Hg-only copy)
+      if (md->hg.t2_mehg_frzd == 1 || md->hg.t2_mehg_satd == 1 || md->hg.t2_doc == 1) {   // phase M3/M4 (and DOC step 1): daily layer T (and water table) for the daily factors (Hg-only copy)
         hg_dwt[id] = edall->d_sois.watertab;
         for (int il = 0; il < MAX_SOI_LAY; il++) { hg_dts[id][il] = (il < std::min(cd.m_soil.numsl, MAX_SOI_LAY) && std::isfinite(edall->d_sois.ts[il])) ? edall->d_sois.ts[il] : 0.0; }
         hg_dnd = id + 1;
@@ -2301,6 +2321,8 @@ void Cohort::set_state_from_restartdata() {
     hgtr::unpack(hg, restartdata.hg_state, cd.m_soil.numsl);
     if (restartdata.has_hg_thaw) { hg.zmax = restartdata.hg_thaw[0]; hg.zpf = restartdata.hg_thaw[1]; }   // T2 phase 6b
   }
+  hgdoc = hgtr::DocState();   // DOC step 1: optional hg_doc (else empty pools at the first DOC month)
+  if (md->hg.tracer == 1 && md->hg.t2_doc == 1 && restartdata.has_hg_doc) { hgtr::doc_unpack(hgdoc, restartdata.hg_doc); }
 
   //  FIX: how to handle ground?? and snwstate_dim?? Looks like it is
   //  used for both m_snow and d_snow and y_snow??? which to update???
@@ -2342,6 +2364,9 @@ void Cohort::set_restartdata_from_state() {
     hgtr::pack(hg, restartdata.hg_state);
     if (md->hg.t2 == 1 && (md->hg.t2_deepspread == 1 || md->hg.t2_thawrel == 1)) {   // T2 phase 6b: thaw state (only with a switch on)
       restartdata.write_hg_thaw = true; restartdata.hg_thaw[0] = hg.zmax; restartdata.hg_thaw[1] = hg.zpf;
+    }
+    if (md->hg.t2 == 1 && md->hg.t2_doc == 1 && hgdoc.init) {   // DOC step 1: DOC pools (only with hg_t2_doc = 1)
+      restartdata.write_hg_doc = true; hgtr::doc_pack(hgdoc, restartdata.hg_doc);
     }
   }
   if (md->thermokarst == 1) {   // RTS state (written only when thermokarst = 1)

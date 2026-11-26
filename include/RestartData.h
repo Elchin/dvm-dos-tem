@@ -113,6 +113,11 @@ public :
   // hg_t2_deepspread or hg_t2_thawrel = 1, read when present (with hg_state)
   bool write_hg_thaw = false, has_hg_thaw = false;
   double hg_thaw[2] = {-1.0, -1.0};
+  // DOC step 1: hg_doc (Y,X,hgdoc = hgtr::DOC_NSTATE) double, layout hgtr::doc_pack; written only with hg_t2_doc = 1, read
+  // when present (with hg_state)
+  static const int HG_DOCN = hgtr::DOC_NSTATE;
+  bool write_hg_doc = false, has_hg_doc = false;
+  double hg_doc[HG_DOCN] = {};
   void read_px_hg_vars(const std::string& fname, const int rowidx, const int colidx);
   void write_px_hg_vars(const std::string& fname, const int rowidx, const int colidx);
   // RTS CH4 scheme (b) pool (thermokarst_ch4 with thermokarst_ch4_scheme = 2 only; write_tk_ch4pool

@@ -1670,3 +1670,172 @@ TEST_CASE("M5 parse: hg_t2_mehg_preset default off (unchanged), 1 == explicit M4
   Json::Value g = a; g["hg_t2_mehg_preset"] = 2; CHECK(hgtr::parse(g, r) != "");
   std::remove(T2DEP);
 }
+
+// ---- DOC step 1 (hg_t2_doc / hg_t2_doc_hg; docs_src/DOC_EXPORT_step1_design.md, WORK_NOTES_hg_t2 section 19) ----
+namespace {
+// 4 layers: shallow, deep, deep, mineral (column()); daily water: all thawed, liq 20 mm, no flow unless set
+hgtr::Flux d1flux(int nd, double liq = 20.0) {
+  hgtr::Flux f; f.tr = 1; f.nd = nd;
+  for (int d = 0; d < nd; d++) for (int l = 0; l < MAX_SOI_LAY; l++) { f.d_liq[d][l] = liq; f.d_ice[d][l] = 0.0; }
+  for (int l = 0; l < MAX_SOI_LAY; l++) { f.liq[l] = liq; f.por[l] = 0.5; }
+  return f;
+}
+void d1ts(double (*ts)[MAX_SOI_LAY], double T) { for (int d = 0; d < 31; d++) for (int l = 0; l < MAX_SOI_LAY; l++) ts[d][l] = T; }
+hgtr::Params d1params() { hgtr::Params p; p.t2 = 1; p.t2_diss = 1; p.transport = 1; p.t2_doc = 1; return p; }
+double d1tot(const hgtr::DocState& s) { return s.tot(); }
+}
+TEST_CASE("D1 parse: hg_t2_doc / hg_t2_doc_hg default off, defaults, ranges, dependencies") {
+  hgtr::Params p0 = t2params(); (void)p0;   // writes T2DEP
+  hgtr::Params q; CHECK(hgtr::parse(ms0(), q) == "");
+  CHECK(q.t2_doc == 0); CHECK(q.t2_doc_hg == 0); CHECK(q.doc_fp == 0.3); CHECK(q.doc_tau == 10.0); CHECK(q.doc_q10 == 2.0);
+  CHECK(q.doc_frz == 1.0); CHECK(q.doc_vadv == 1.0); CHECK(q.doc_fconn == 1.0); CHECK(q.doc_minsink == 1); CHECK(q.doc_cmin == 1.0);
+  CHECK(q.doc_cmax == 1000.0); CHECK(q.doc_beta == 0.0); CHECK(q.doc_cref == 220.0); CHECK(q.doc_dump == 0);
+  Json::Value m = ms0(); m["hg_tracer"] = 1; m["hg_t2"] = 1; m["hg_dep_file"] = T2DEP;   // hg_t2 preset: diss + transport on
+  hgtr::Params r;
+  Json::Value a = m; a["hg_t2_doc"] = 1; a["hg_t2_doc_hg"] = 1; a["hg_doc_beta"] = 1.0; a["hg_doc_cref"] = 40.0; a["hg_doc_fconn"] = -1; a["hg_doc_dump"] = 1;
+  REQUIRE(hgtr::parse(a, r) == ""); CHECK(r.t2_doc == 1); CHECK(r.t2_doc_hg == 1); CHECK(r.doc_beta == 1.0); CHECK(r.doc_cref == 40.0); CHECK(r.doc_fconn == -1.0);
+  Json::Value b = m; b["hg_t2_doc_hg"] = 1; CHECK(hgtr::parse(b, r) != "");                       // needs hg_t2_doc
+  Json::Value c = m; c["hg_t2_doc"] = 1; c["hg_t2_diss"] = 0; CHECK(hgtr::parse(c, r) != "");     // needs hg_t2_diss
+  Json::Value e = ms0(); e["hg_tracer"] = 1; e["hg_t2_doc"] = 1; CHECK(hgtr::parse(e, r) != "");   // needs hg_t2
+  Json::Value g = m; g["hg_t2_doc"] = 1; g["hg_doc_fconn"] = -0.5; CHECK(hgtr::parse(g, r) != "");
+  Json::Value h = m; h["hg_t2_doc"] = 1; h["hg_doc_cmin"] = 10; h["hg_doc_cmax"] = 5; CHECK(hgtr::parse(h, r) != "");
+  Json::Value i = m; i["hg_doc_dump"] = 1; CHECK(hgtr::parse(i, r) != "");
+  Json::Value j = m; j["hg_t2_doc"] = 2; CHECK(hgtr::parse(j, r) != "");
+  Json::Value k = m; k["hg_t2_doc"] = 1; k["hg_doc_beta"] = 4; CHECK(hgtr::parse(k, r) != "");
+  std::remove(T2DEP);
+}
+TEST_CASE("D1 DOC steady state (no water flow): D* = P e^-k / (1 - e^-k) per day; Q10 and frozen factor") {
+  hgtr::Params p = d1params(); hgtr::Snap b = column(4); hgtr::Flux f = d1flux(30);
+  double rh[MAX_SOI_LAY] = {}; rh[0] = 30.0; double ts[31][MAX_SOI_LAY]; d1ts(ts, 10.0);
+  hgtr::DocState s;
+  for (int m = 0; m < 40; m++) { hgtr::doc_geom(s, b, m % 12); hgtr::doc_days(p, s, b, f, rh, ts, nullptr); }
+  const double P = 0.3 * 30.0 / 30.0, ek = std::exp(-1.0 / 10.0);
+  CHECK(s.d[0] == doctest::Approx(P * ek / (1.0 - ek)).epsilon(1e-10)); CHECK(s.d[1] == 0.0); CHECK(s.d[3] == 0.0);
+  CHECK(s.exp_m == 0.0); CHECK(s.prod_m == doctest::Approx(9.0)); CHECK(s.min_m == doctest::Approx(9.0).epsilon(1e-9));
+  CHECK(s.conc_m[0] == doctest::Approx(1000.0 * s.d[0] / 20.0).epsilon(1e-6));
+  // Q10: one day at 20 C doubles k; frozen factor 0.5 halves it
+  hgtr::Params p1 = p; p1.doc_fp = 0.0; hgtr::Flux f1 = d1flux(1); double r0[MAX_SOI_LAY] = {};
+  hgtr::DocState s1; hgtr::doc_geom(s1, b, 0); s1.d[0] = 1.0; d1ts(ts, 20.0); hgtr::doc_days(p1, s1, b, f1, r0, ts, nullptr);
+  CHECK(s1.d[0] == doctest::Approx(std::exp(-0.2)).epsilon(1e-14));
+  hgtr::Flux f2 = d1flux(1); f2.d_ice[0][0] = 30.0; p1.doc_frz = 0.5; d1ts(ts, 10.0);
+  hgtr::DocState s2; hgtr::doc_geom(s2, b, 0); s2.d[0] = 1.0; hgtr::doc_days(p1, s2, b, f2, r0, ts, nullptr);
+  CHECK(s2.d[0] == doctest::Approx(std::exp(-0.05)).epsilon(1e-14));
+}
+TEST_CASE("D1 DOC production: thawed days only (evenly if none), total = fp x RH; non-DOC layers produce nothing") {
+  hgtr::Params p = d1params(); p.doc_tau = 1e5; hgtr::Snap b = column(4); hgtr::Flux f = d1flux(10);
+  for (int d = 0; d < 5; d++) { f.d_ice[d][1] = 30.0; }   // layer 1 frozen days 0-4 (below: no transport into it anyway)
+  for (int d = 0; d < 10; d++) { f.d_ice[d][2] = 30.0; }  // layer 2 frozen all month
+  double rh[MAX_SOI_LAY] = {1.0, 2.0, 4.0, 8.0}; double ts[31][MAX_SOI_LAY]; d1ts(ts, 10.0);
+  hgtr::DocState s; hgtr::doc_geom(s, b, 0); double cd[31][MAX_SOI_LAY];
+  hgtr::doc_days(p, s, b, f, rh, ts, cd);
+  CHECK(s.prod_m == doctest::Approx(0.3 * 7.0).epsilon(1e-12));   // mineral layer 3 not a DOC layer
+  CHECK(cd[4][1] > 0.0); CHECK(cd[0][3] == 0.0);
+  CHECK(s.d[1] + s.d[2] == doctest::Approx(0.3 * 6.0).epsilon(1e-3));
+}
+TEST_CASE("D1 DOC flushing: lateral drainage fraction dl / liq per day, export, fconn retention, mineral sink, balance") {
+  hgtr::Params p = d1params(); p.doc_fp = 0.0; p.doc_tau = 1e5; hgtr::Snap b = column(4); hgtr::Flux f = d1flux(10);
+  for (int d = 0; d < 10; d++) { f.d_drain[d][0] = 2.0; }
+  double r0[MAX_SOI_LAY] = {}; double ts[31][MAX_SOI_LAY]; d1ts(ts, 10.0);
+  hgtr::DocState s; hgtr::doc_geom(s, b, 0); s.d[0] = 1.0;
+  hgtr::doc_days(p, s, b, f, r0, ts, nullptr);
+  const double km = std::exp(-1e-5);
+  double x = 1.0; for (int d = 0; d < 10; d++) { x *= km; x *= 0.9; }
+  CHECK(s.d[0] == doctest::Approx(x).epsilon(1e-12)); CHECK(std::fabs(s.bal_m) < 1e-15);
+  CHECK(s.exp_m == doctest::Approx(1.0 - x - s.min_m).epsilon(1e-12)); CHECK(s.wat_m == doctest::Approx(20.0));
+  // fconn 0.25 and vertical flow into the mineral layer (sink) and between organic layers
+  hgtr::Params q = p; q.doc_fconn = 0.25; hgtr::Flux g = d1flux(10);
+  for (int d = 0; d < 10; d++) { g.dq_in[d] = 5.0; g.d_drain[d][1] = 1.0; g.dq_over[d] = 1.0; }
+  hgtr::DocState t; hgtr::doc_geom(t, b, 0); t.d[0] = 1.0; t.d[1] = 2.0; t.d[2] = 0.5;
+  const double t0 = d1tot(t); hgtr::doc_days(q, t, b, g, r0, ts, nullptr);
+  CHECK(t.sink_m > 0.0); CHECK(t.ret_m == doctest::Approx(3.0 * t.exp_m).epsilon(1e-12)); CHECK(t.d[3] == 0.0);
+  CHECK(d1tot(t) == doctest::Approx(t0 - t.min_m - t.exp_m - t.ret_m - t.sink_m).epsilon(1e-14)); CHECK(std::fabs(t.bal_m) < 1e-14);
+  // minsink 0: the mineral layer holds DOC, its export is not reduced by fconn
+  hgtr::Params q0 = q; q0.doc_minsink = 0; hgtr::DocState u; hgtr::doc_geom(u, b, 0); u.d[2] = 1.0; hgtr::doc_days(q0, u, b, g, r0, ts, nullptr);
+  CHECK(u.d[3] > 0.0); CHECK(u.sink_m == 0.0); CHECK(std::fabs(u.bal_m) < 1e-14);
+  // fconn -1: the Hg flow-path share (hg_t2_xpath with a mineral layer below organic) else 1
+  hgtr::Params q1 = p; q1.doc_fconn = -1.0; CHECK(hgtr::doc_fconn(q1, b) == 1.0); q1.t2_xpath = 1; q1.f_conn = 0.4; CHECK(hgtr::doc_fconn(q1, b) == 0.4);
+}
+TEST_CASE("D1 DOC frozen layers immobile; random months conserve DOC; concentration clamp") {
+  hgtr::Params p = d1params(); hgtr::Snap b = column(6); double ts[31][MAX_SOI_LAY];
+  hgtr::Flux f = d1flux(5); for (int d = 0; d < 5; d++) { f.d_ice[d][0] = 40.0; f.d_drain[d][0] = 3.0; f.dq_over[d] = 2.0; }
+  double r0[MAX_SOI_LAY] = {}; d1ts(ts, -2.0);
+  hgtr::DocState s; hgtr::doc_geom(s, b, 0); s.d[0] = 1.0; s.d[1] = 1.0; hgtr::doc_days(p, s, b, f, r0, ts, nullptr);
+  CHECK(s.exp_m == 0.0); CHECK(s.wat_m == 0.0); CHECK(s.d[0] + s.d[1] == doctest::Approx(2.0 - s.min_m));
+  std::mt19937 g(7); std::uniform_real_distribution<double> U(0.0, 1.0);
+  hgtr::DocState t; double maxb = 0.0;
+  for (int m = 0; m < 60; m++) {
+    hgtr::Flux h = d1flux(30); double rh[MAX_SOI_LAY] = {};
+    for (int l = 0; l < 6; l++) rh[l] = 20.0 * U(g);
+    for (int d = 0; d < 30; d++) {
+      h.dq_in[d] = 10.0 * U(g); h.dq_over[d] = (U(g) < 0.3) ? 5.0 * U(g) : 0.0;
+      for (int l = 0; l < 6; l++) { h.d_liq[d][l] = 0.5 + 30.0 * U(g); h.d_ice[d][l] = (U(g) < 0.2) ? 40.0 * U(g) : 0.0; h.d_drain[d][l] = 2.0 * U(g); ts[d][l] = -5.0 + 20.0 * U(g); }
+    }
+    hgtr::doc_geom(t, b, m % 12); const double t0 = d1tot(t); double cd[31][MAX_SOI_LAY];
+    hgtr::doc_days(p, t, b, h, rh, ts, cd);
+    CHECK(d1tot(t) == doctest::Approx(t0 + t.prod_m - t.min_m - t.exp_m - t.ret_m - t.sink_m).epsilon(1e-12));
+    maxb = std::fmax(maxb, std::fabs(t.bal_m));
+    for (int d = 0; d < 30; d++) for (int l = 0; l < 6; l++) { if (cd[d][l] > 0.0) { CHECK(cd[d][l] >= p.doc_cmin); CHECK(cd[d][l] <= p.doc_cmax); } }
+    for (int l = 0; l < 6; l++) { CHECK(t.d[l] >= 0.0); }
+  }
+  CHECK(maxb < 1e-11);
+}
+TEST_CASE("D1 DOC geometry change: pool redistributed over the DOC layers by soil C; no DOC layer left: sink; pack round trip") {
+  hgtr::Snap b = column(5); hgtr::DocState s; hgtr::doc_geom(s, b, 0); s.d[0] = 1.0; s.d[1] = 2.0; s.d[2] = 3.0;
+  hgtr::Snap b2 = b; b2.dz[1] = 0.07; b2.soil[1] = 3000.0;
+  hgtr::doc_geom(s, b2, 1);
+  CHECK(d1tot(s) == doctest::Approx(6.0).epsilon(1e-15)); CHECK(s.d[1] / s.d[0] == doctest::Approx(3000.0 / 1000.0)); CHECK(s.d[3] == 0.0);
+  CHECK(s.dz[1] == 0.07);
+  hgtr::Snap b3 = b2; for (int l = 0; l < 3; l++) b3.type[l] = 3; b3.dz[0] = 0.06;
+  hgtr::doc_geom(s, b3, 2); CHECK(d1tot(s) == 0.0); CHECK(s.sink_m == doctest::Approx(6.0)); CHECK(s.sink_y == doctest::Approx(6.0));
+  hgtr::DocState a; hgtr::doc_geom(a, b, 0); a.d[0] = 0.25; a.d[2] = 1.5; double v[hgtr::DOC_NSTATE]; hgtr::doc_pack(a, v);
+  hgtr::DocState c; hgtr::doc_unpack(c, v); CHECK(c.init); CHECK(c.nsl == 5);
+  for (int l = 0; l < MAX_SOI_LAY; l++) { CHECK(c.d[l] == a.d[l]); CHECK(c.dz[l] == a.dz[l]); }
+  hgtr::doc_geom(c, b, 3); CHECK(c.d[0] == 0.25);   // same geometry: no redistribution
+}
+namespace {
+// T2 transport state for diss_transport_ tests: layers 0-3 of column(4), Hg in all layers
+void d1hg(hgtr::State& s, const hgtr::Snap& b) { s.init = true; s.nsl = b.nsl; for (int l = 0; l < b.nsl; l++) { s.soil[l] = 300.0 + 50.0 * l; s.diss[l] = 1.0 + l; } }
+hgtr::Flux d1wet(int nd) {
+  hgtr::Flux f = d1flux(nd, 25.0);
+  for (int d = 0; d < nd; d++) { f.dq_in[d] = 4.0; f.dq_over[d] = (d % 3 == 0) ? 3.0 : 0.0; for (int l = 0; l < 4; l++) { f.d_drain[d][l] = 0.5 + 0.2 * l; f.d_cdoc[d][l] = (l < 3) ? 10.0 + 15.0 * l + d : 0.0; } }
+  f.d_ice[0][3] = 50.0;
+  return f;
+}
+bool d1same(const hgtr::State& a, const hgtr::State& b) {
+  for (int l = 0; l < MAX_SOI_LAY; l++) { if (a.soil[l] != b.soil[l] || a.diss[l] != b.diss[l] || a.mehg[l] != b.mehg[l]) return false; }
+  return a.m.export_ == b.m.export_ && a.m.runoff == b.m.runoff && a.m.drain == b.m.drain && a.m.down == b.m.down;
+}
+}
+TEST_CASE("D1 coupling: beta 0 or cdoc_on 0 or hg_t2_doc_hg 0 bit-identical; Hg conserved and linear with beta 1") {
+  hgtr::Params p = d1params(); p.t2_xpath = 1; p.f_conn = 0.6; hgtr::Snap b = column(4); hgtr::Flux f = d1wet(20);
+  hgtr::Flux f0 = f; f0.cdoc_on = 0;
+  hgtr::State ref; d1hg(ref, b); hgtr::diss_transport_(p, ref, b, f0, ref.m);
+  hgtr::Params pb = p; pb.t2_doc_hg = 1; pb.doc_beta = 0.0; hgtr::Flux f1 = f; f1.cdoc_on = 1;
+  hgtr::State s0; d1hg(s0, b); hgtr::diss_transport_(pb, s0, b, f1, s0.m); CHECK(d1same(s0, ref));   // beta 0
+  hgtr::Params pc = p; pc.t2_doc_hg = 0; pc.doc_beta = 1.0;
+  hgtr::State s1; d1hg(s1, b); hgtr::diss_transport_(pc, s1, b, f1, s1.m); CHECK(d1same(s1, ref));   // hg_t2_doc_hg 0
+  hgtr::Params pd = p; pd.t2_doc_hg = 1; pd.doc_beta = 1.0; pd.doc_cref = 40.0;
+  hgtr::State s2; d1hg(s2, b); hgtr::diss_transport_(pd, s2, b, f0, s2.m); CHECK(d1same(s2, ref));   // cdoc_on 0
+  hgtr::State s3; d1hg(s3, b); const double h0 = s3.soiltot() + s3.disstot(); hgtr::diss_transport_(pd, s3, b, f1, s3.m);
+  CHECK(!d1same(s3, ref)); CHECK(s3.m.export_ != ref.m.export_);
+  CHECK(s3.soiltot() + s3.disstot() + s3.m.export_ == doctest::Approx(h0).epsilon(1e-13));
+  CHECK(s3.m.orgexp > 0.0); CHECK(s3.m.orgexp <= s3.m.export_ * (1.0 + 1e-14));
+  hgtr::State s4; d1hg(s4, b); for (int l = 0; l < 4; l++) { s4.soil[l] *= 2.0; s4.diss[l] *= 2.0; }
+  hgtr::diss_transport_(pd, s4, b, f1, s4.m);
+  for (int l = 0; l < 4; l++) { CHECK(s4.soil[l] == doctest::Approx(2.0 * s3.soil[l]).epsilon(1e-13)); CHECK(s4.diss[l] == doctest::Approx(2.0 * s3.diss[l]).epsilon(1e-13)); }
+  CHECK(s4.m.export_ == doctest::Approx(2.0 * s3.m.export_).epsilon(1e-13));
+}
+TEST_CASE("D1 coupling beta 1, cref = f_C / Kd: dissolved share = DOC / (DOC + soil C) (Akerblom epsilon = 1 limit); moss / mineral Kd unchanged") {
+  hgtr::Params p = d1params(); p.t2_doc_hg = 1; p.doc_beta = 1.0; p.tau_sorb = 1e-3; p.d_cryo = 0.0; p.d_bio = 0.0;
+  const double kdo = std::pow(10.0, p.t2_log_kd_org); p.doc_cref = 0.5e6 / kdo;   // f_C 0.5 (kg C / kg) / Kd (L/kg) in mg C/L
+  p.t2_kdsplit = 0;
+  hgtr::Snap b = column(4); hgtr::Flux f = d1flux(1, 25.0); f.cdoc_on = 1; f.d_ice[0][1] = 50.0;   // layer 0 thawed only; no flow
+  const double c = 37.0; f.d_cdoc[0][0] = c; f.d_cdoc[0][3] = 0.0;
+  hgtr::State s; d1hg(s, b); const double H0 = s.soil[0] + s.diss[0];
+  hgtr::diss_transport_(p, s, b, f, s.m);
+  const double doc = c * 25.0 / 1000.0;   // g C/m2 in the layer water
+  CHECK(s.diss[0] / (s.soil[0] + s.diss[0]) == doctest::Approx(doc / (doc + b.soil[0])).epsilon(1e-12));
+  CHECK(s.soil[0] + s.diss[0] == doctest::Approx(H0).epsilon(1e-14));
+  hgtr::Params p0 = p; p0.t2_doc_hg = 0; hgtr::State r; d1hg(r, b); hgtr::diss_transport_(p0, r, b, f, r.m);
+  CHECK(s.diss[3] == r.diss[3]); CHECK(s.soil[3] == r.soil[3]);   // mineral layer unchanged
+}

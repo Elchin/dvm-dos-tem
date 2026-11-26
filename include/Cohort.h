@@ -166,6 +166,8 @@ public :
   void hg_mehg_month(const hgtr::Flux & fbgc);
   // phase M2 (hg_t2_mehg_lag = 1): the month's MeHg drivers, applied after the end-of-month transport step
   double hg_dts[31][MAX_SOI_LAY] = {}; int hg_dnd = 0;
+  hgtr::DocState hgdoc;                     // DOC step 1 (hg_t2_doc = 1): diagnostic DOC pools (restart hg_doc)
+  double hg_doc_rh[MAX_SOI_LAY] = {};       // DOC step 1: the month's layer decomposition C (copy of the Hg BGC flux)
   double hg_dwt[31] = {};   // phase M4 A (hg_t2_mehg_satd): the month's daily water table (m; Hg-only copy)   // phase M3 (hg_t2_mehg_frzd): the month's daily layer T (Hg-only copy)
   double hg_mlag_f[MAX_SOI_LAY] = {};                     // phase M3: daily-mean freeze factor, kept for the lag step
   double hg_mlag_a[MAX_SOI_LAY] = {}, hg_mlag_t[MAX_SOI_LAY] = {}; int hg_mlag_nsl = 0; bool hg_mlag_ch4 = false, hg_mlag_pend = false;
